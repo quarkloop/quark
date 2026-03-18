@@ -21,11 +21,7 @@
 // # Implementations
 //
 //	TTLFreshnessPolicy          — stale after a fixed duration
-//	RequestCountFreshnessPolicy — stale after N requests
 //	ImmutableFreshnessPolicy    — never stale (for contracts, resumes)
-//	LocationSensitiveFreshnessPolicy — stale when location changes
-//	ExternalFreshnessPolicy     — delegates to a caller-supplied function
-//	CompositeFreshnessPolicy    — combines multiple policies (Any / All)
 package freshness
 
 import "time"
@@ -42,23 +38,6 @@ import "time"
 type ValidationContext struct {
 	// Now is the current wall-clock time.  Required.
 	Now time.Time
-
-	// RequestCount is the number of LLM requests sent since the context was
-	// created.  Used by RequestCountFreshnessPolicy.
-	RequestCount int64
-
-	// Location is an optional geolocation tag for the current session,
-	// e.g. "Berlin, DE" or a lat/lng pair formatted as a string.
-	// Used by LocationSensitiveFreshnessPolicy.
-	Location string
-
-	// SessionID is an opaque identifier for the current conversation session.
-	// Policies can use it to detect session boundaries.
-	SessionID string
-
-	// Extra carries any application-specific key/value pairs that custom
-	// FreshnessPolicy implementations may need.
-	Extra map[string]string
 }
 
 // Age returns how long ago ts occurred relative to ctx.Now.
