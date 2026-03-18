@@ -1,15 +1,12 @@
-// Package supervisor implements the supervisor agent process.
+// Package runtime implements the agent runtime process.
 //
-// A supervisor is a long-lived process that:
-//   - Loads a Quarkfile and lock file from the space directory.
+// A runtime is a long-lived process that:
 //   - Opens the space knowledge base.
 //   - Resolves agent and model configuration.
-//   - Runs the Executor (ORIENT → PLAN → DISPATCH → MONITOR → ASSESS loop).
-//   - Listens on an HTTP port for health, stats, logs, and chat.
-//   - Listens on a Unix socket for worker IPC connections.
+//   - Runs the Agent (ORIENT → PLAN → DISPATCH → MONITOR → ASSESS loop).
+//   - Listens on an HTTP port for health, stats, and chat.
 //   - Reports health to the api-server.
-//   - Spawns worker processes via exec for each plan step.
-package supervisor
+package runtime
 
 import (
 	"bytes"
@@ -17,7 +14,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -25,43 +21,34 @@ import (
 
 	"github.com/quarkloop/agent/pkg/agent"
 	"github.com/quarkloop/agent/pkg/infra/httpserver"
-	"github.com/quarkloop/agent/pkg/ipc"
 	"github.com/quarkloop/agent/pkg/model"
 	"github.com/quarkloop/agent/pkg/skill"
 	"github.com/quarkloop/core/pkg/kb"
 )
 
-// Config holds startup parameters for a supervisor process.
+// Config holds startup parameters for a runtime process.
 type Config struct {
 	SpaceID   string
 	Dir       string
 	Port      int
 	APIServer string
-	IPCSocket string
 }
 
-// Supervisor is the running supervisor agent for one space.
-type Supervisor struct {
-	cfg      *Config
-	kb       kb.Store
-	executor *agent.Executor
-	ipcSrv   *ipc.Server
-	httpSrv  *httpserver.Server
+// Runtime is the running agent runtime for one space.
+type Runtime struct {
+	cfg     *Config
+	kb      kb.Store
+	agent   *agent.Agent
+	httpSrv *httpserver.Server
 }
 
-// New wires all dependencies and returns a ready-to-run Supervisor.
-func New(cfg *Config) (*Supervisor, error) {
+// New wires all dependencies and returns a ready-to-run Runtime.
+func New(cfg *Config) (*Runtime, error) {
 	absDir, err := filepath.Abs(cfg.Dir)
 	if err != nil {
 		return nil, fmt.Errorf("resolving dir: %w", err)
 	}
 	cfg.Dir = absDir
-
-	// Derive IPC socket path if not set.
-	if cfg.IPCSocket == "" {
-		home, _ := os.UserHomeDir()
-		cfg.IPCSocket = fmt.Sprintf("%s/.quark/agents/%s/ipc.sock", home, cfg.SpaceID)
-	}
 
 	// Open knowledge base.
 	k, err := kb.Open(cfg.Dir)
@@ -70,7 +57,7 @@ func New(cfg *Config) (*Supervisor, error) {
 	}
 
 	// Build model gateway from environment.
-	gw, err := buildGateway(cfg.Dir)
+	gw, err := buildGateway()
 	if err != nil {
 		k.Close()
 		return nil, fmt.Errorf("building gateway: %w", err)
@@ -79,101 +66,72 @@ func New(cfg *Config) (*Supervisor, error) {
 	// Build skill dispatcher (empty — workers use tool CLIs directly).
 	disp := skill.NewHTTPDispatcher()
 
-	// Resolve supervisor agent definition.
-	supervisorDef := defaultSupervisorDef()
+	// Resolve agent definition.
+	def := defaultAgentDef()
 
-	// Create executor.
-	exec := agent.NewExecutor(k, gw, disp, agent.NewSupervisorEngine(), supervisorDef, map[string]*agent.Definition{})
-	if err := exec.InitContext(supervisorDef.Config.ContextWindow); err != nil {
+	// Create agent.
+	a := agent.NewAgent(def, k, gw, disp)
+	if err := a.InitContext(def.Config.ContextWindow); err != nil {
 		k.Close()
 		return nil, fmt.Errorf("initialising context: %w", err)
 	}
 
-	// Set up IPC server for worker connections.
-	ipcSrv, err := ipc.NewServer(cfg.IPCSocket, handleWorkerConn(exec))
-	if err != nil {
-		k.Close()
-		return nil, fmt.Errorf("ipc server: %w", err)
-	}
-
 	// Set up HTTP API server.
 	mux := http.NewServeMux()
-	registerRoutes(mux, cfg.SpaceID, k, exec)
+	registerRoutes(mux, cfg.SpaceID, k, a)
 	srv := httpserver.New("127.0.0.1", cfg.Port, mux)
 
-	return &Supervisor{
-		cfg:      cfg,
-		kb:       k,
-		executor: exec,
-		ipcSrv:   ipcSrv,
-		httpSrv:  srv,
+	return &Runtime{
+		cfg:     cfg,
+		kb:      k,
+		agent:   a,
+		httpSrv: srv,
 	}, nil
 }
 
-// Run starts the HTTP server, IPC server, reports health, and runs the agent loop.
+// Run starts the HTTP server, reports health, and runs the agent loop.
 // Blocks until ctx is cancelled.
-func (s *Supervisor) Run(ctx context.Context) error {
+func (r *Runtime) Run(ctx context.Context) error {
 	// Start HTTP server.
 	go func() {
-		if err := s.httpSrv.Start(); err != nil && err != http.ErrServerClosed {
-			log.Printf("supervisor %s: http server: %v", s.cfg.SpaceID, err)
+		if err := r.httpSrv.Start(); err != nil && err != http.ErrServerClosed {
+			log.Printf("runtime %s: http server: %v", r.cfg.SpaceID, err)
 		}
 	}()
 
-	// Start IPC server.
-	go s.ipcSrv.Serve()
-
 	// Wait for HTTP to be ready then report health.
-	if err := waitHTTP(fmt.Sprintf("http://127.0.0.1:%d/health", s.cfg.Port), 10*time.Second); err != nil {
-		log.Printf("supervisor %s: http not ready: %v", s.cfg.SpaceID, err)
+	if err := waitHTTP(fmt.Sprintf("http://127.0.0.1:%d/health", r.cfg.Port), 10*time.Second); err != nil {
+		log.Printf("runtime %s: http not ready: %v", r.cfg.SpaceID, err)
 	}
-	if err := s.reportHealth(); err != nil {
-		log.Printf("supervisor %s: health report failed: %v", s.cfg.SpaceID, err)
+	if err := r.reportHealth(); err != nil {
+		log.Printf("runtime %s: health report failed: %v", r.cfg.SpaceID, err)
 	}
-	go s.heartbeat(ctx)
+	go r.heartbeat(ctx)
 
-	log.Printf("supervisor %s ready on port %d", s.cfg.SpaceID, s.cfg.Port)
+	log.Printf("runtime %s ready on port %d", r.cfg.SpaceID, r.cfg.Port)
 
 	// Run the agent execution loop.
-	return s.executor.Run(ctx)
+	return r.agent.Run(ctx)
 }
 
-// Close shuts down the HTTP server, IPC server, and KB.
-func (s *Supervisor) Close() {
-	s.ipcSrv.Close()
-	s.httpSrv.Shutdown(context.Background())
-	s.kb.Close()
+// Close shuts down the HTTP server and KB.
+func (r *Runtime) Close() {
+	r.httpSrv.Shutdown(context.Background())
+	r.kb.Close()
 }
 
-// handleWorkerConn returns an IPC connection handler that processes worker results.
-func handleWorkerConn(exec *agent.Executor) func(net.Conn) {
-	return func(conn net.Conn) {
-		defer conn.Close()
-		res, err := ipc.ReadResult(conn, func(ev *ipc.EventMessage) {
-			log.Printf("worker event [%s]: %s", ev.StepID, ev.Message)
-		})
-		if err != nil {
-			log.Printf("ipc: read result: %v", err)
-			return
-		}
-		log.Printf("worker result [%s]: status=%s", res.StepID, res.Status)
-		// Result is written to KB by the worker directly; supervisor
-		// reads it in the MONITOR phase of the next cycle.
-	}
-}
-
-func (s *Supervisor) reportHealth() error {
+func (r *Runtime) reportHealth() error {
 	type healthReport struct {
 		SpaceID string `json:"space_id"`
 		PID     int    `json:"pid"`
 		Port    int    `json:"port"`
 	}
 	body, _ := json.Marshal(healthReport{
-		SpaceID: s.cfg.SpaceID,
+		SpaceID: r.cfg.SpaceID,
 		PID:     os.Getpid(),
-		Port:    s.cfg.Port,
+		Port:    r.cfg.Port,
 	})
-	url := fmt.Sprintf("%s/api/v1/spaces/%s/health", s.cfg.APIServer, s.cfg.SpaceID)
+	url := fmt.Sprintf("%s/api/v1/spaces/%s/health", r.cfg.APIServer, r.cfg.SpaceID)
 	resp, err := http.Post(url, "application/json", bytes.NewReader(body))
 	if err != nil {
 		return err
@@ -182,7 +140,7 @@ func (s *Supervisor) reportHealth() error {
 	return nil
 }
 
-func (s *Supervisor) heartbeat(ctx context.Context) {
+func (r *Runtime) heartbeat(ctx context.Context) {
 	tick := time.NewTicker(10 * time.Second)
 	defer tick.Stop()
 	for {
@@ -190,8 +148,8 @@ func (s *Supervisor) heartbeat(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-tick.C:
-			if err := s.reportHealth(); err != nil {
-				log.Printf("supervisor %s: heartbeat failed: %v", s.cfg.SpaceID, err)
+			if err := r.reportHealth(); err != nil {
+				log.Printf("runtime %s: heartbeat failed: %v", r.cfg.SpaceID, err)
 			}
 		}
 	}
@@ -210,13 +168,12 @@ func waitHTTP(url string, timeout time.Duration) error {
 	return fmt.Errorf("timed out waiting for %s", url)
 }
 
-func buildGateway(dir string) (model.Gateway, error) {
+func buildGateway() (model.Gateway, error) {
 	if os.Getenv("QUARK_DRY_RUN") == "1" {
 		log.Printf("QUARK_DRY_RUN=1 — using noop model gateway")
 		return model.New(model.GatewayConfig{Provider: "noop", Model: "noop"})
 	}
 
-	// Read provider from Quarkfile via environment (set by api-server at launch).
 	provider := os.Getenv("QUARK_MODEL_PROVIDER")
 	modelName := os.Getenv("QUARK_MODEL_NAME")
 	if provider == "" {
@@ -241,7 +198,7 @@ func buildGateway(dir string) (model.Gateway, error) {
 	})
 }
 
-func defaultSupervisorDef() *agent.Definition {
+func defaultAgentDef() *agent.Definition {
 	return &agent.Definition{
 		Ref:     "quark/supervisor@latest",
 		Name:    "supervisor",
@@ -259,8 +216,8 @@ func defaultSupervisorDef() *agent.Definition {
 	}
 }
 
-// registerRoutes mounts the supervisor HTTP endpoints onto mux.
-func registerRoutes(mux *http.ServeMux, spaceID string, k kb.Store, exec *agent.Executor) {
+// registerRoutes mounts the runtime HTTP endpoints onto mux.
+func registerRoutes(mux *http.ServeMux, spaceID string, k kb.Store, a *agent.Agent) {
 	// Health
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -270,7 +227,7 @@ func registerRoutes(mux *http.ServeMux, spaceID string, k kb.Store, exec *agent.
 	// Stats
 	mux.HandleFunc("GET /stats", func(w http.ResponseWriter, r *http.Request) {
 		result := map[string]interface{}{"space_id": spaceID, "agent_count": 1}
-		if cs := exec.ContextStats(); cs != nil {
+		if cs := a.ContextStats(); cs != nil {
 			if raw, err := json.Marshal(cs); err == nil {
 				var m map[string]interface{}
 				if json.Unmarshal(raw, &m) == nil {
@@ -289,7 +246,7 @@ func registerRoutes(mux *http.ServeMux, spaceID string, k kb.Store, exec *agent.
 			http.Error(w, `{"error":"invalid request"}`, http.StatusBadRequest)
 			return
 		}
-		resp, err := exec.Chat(r.Context(), req)
+		resp, err := a.Chat(r.Context(), req)
 		if err != nil {
 			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
 			return
@@ -306,10 +263,4 @@ func registerRoutes(mux *http.ServeMux, spaceID string, k kb.Store, exec *agent.
 			os.Exit(0)
 		}()
 	})
-}
-
-// IPC socket path helper — mirrors the api-server's ipcSocketPath.
-func IPCSocketPath(spaceID string) string {
-	home, _ := os.UserHomeDir()
-	return fmt.Sprintf("%s/.quark/agents/%s/ipc.sock", home, spaceID)
 }
