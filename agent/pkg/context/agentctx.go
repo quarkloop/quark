@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/quarkloop/agent/pkg/context/contradiction"
 	msg "github.com/quarkloop/agent/pkg/context/message"
-	"github.com/quarkloop/agent/pkg/context/semantic"
 )
 
 // =============================================================================
@@ -35,10 +33,6 @@ type AgentContext struct {
 	compact       compactionTracker
 	tput          throughputTracker
 
-	// opt-in write-time middleware (nil = disabled)
-	semanticCompressor    *semantic.SemanticCompressor
-	contradictionDetector contradiction.ContradictionDetector
-	pendingContradictions []contradiction.ContradictionWarning
 }
 
 // =============================================================================
@@ -70,22 +64,10 @@ func (ac *AgentContext) AppendMessage(ctx context.Context, message *Message) err
 	ac.mu.Lock()
 	defer ac.mu.Unlock()
 
-	// Semantic middleware may suppress the append (auto-merge path).
-	skipAppend, _ := ac.runSemanticMiddleware(message)
-	if skipAppend {
-		return nil
-	}
-
-	// Contradiction middleware always allows append but accumulates warnings.
-	ac.runContradictionMiddleware(message)
-
 	ac.index[message.id.value] = len(ac.messages)
 	ac.messages = append(ac.messages, message)
 	ac.cachedTokens = ac.cachedTokens.Add(message.tokenCount)
 	ac.tput.recordAppend(message.tokenCount)
-
-	// Register in middleware indices after successful append.
-	ac.indexInMiddleware(message)
 	return nil
 }
 
@@ -120,7 +102,6 @@ func (ac *AgentContext) RemoveMessageByID(ctx context.Context, id MessageID) err
 		ac.index[ac.messages[i].id.value] = i
 	}
 	ac.tput.recordRemove(1)
-	ac.removeFromMiddleware(id.value)
 	return nil
 }
 
@@ -223,18 +204,6 @@ func (ac *AgentContext) Compact(ctx context.Context) error {
 	}
 
 	// Rebuild index and running total in one pass.
-	// Also remove evicted messages from middleware indices.
-	evictedIDs := make(map[string]bool, len(ac.messages)-len(compacted))
-	for _, m := range ac.messages {
-		evictedIDs[m.id.value] = true
-	}
-	for _, m := range compacted {
-		delete(evictedIDs, m.id.value)
-	}
-	for id := range evictedIDs {
-		ac.removeFromMiddleware(id)
-	}
-
 	ac.messages = compacted
 	ac.index = make(map[string]int, len(compacted))
 	ac.cachedTokens = TokenCount{}
