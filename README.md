@@ -25,27 +25,28 @@ It reads the goal from the KB, produces a structured execution plan, fans out ea
 
 ### Multi-module workspace
 
-quark is structured as a Go workspace with seven independent modules:
+quark is structured as a Go workspace with eight independent modules:
 
 ```
 quark/
   go.work
 
-  store/          github.com/quarkloop/store          — JSONL collection store
-  kb/             github.com/quarkloop/kb             — knowledge base + kb CLI
-  agent/          github.com/quarkloop/agent          — executor, IPC, supervisor, worker, model, context
-  space/          github.com/quarkloop/space          — Quarkfile, registry, repo ops + space CLI
-  api-server/     github.com/quarkloop/api-server     — HTTP API, process controller + quark CLI
-  tools/bash/     github.com/quarkloop/tools/bash     — bash executor tool
+  store/          github.com/quarkloop/store              — JSONL collection store
+  kb/             github.com/quarkloop/kb                 — knowledge base + kb CLI
+  agent/          github.com/quarkloop/agent              — executor, IPC, supervisor, worker, model, context
+  space/          github.com/quarkloop/space              — Quarkfile, registry, repo ops + space CLI
+  api-server/     github.com/quarkloop/api-server         — HTTP API and process controller
+  cli/            github.com/quarkloop/cli                — quark CLI (all commands)
+  tools/bash/     github.com/quarkloop/tools/bash         — bash executor tool
   tools/web-search/ github.com/quarkloop/tools/web-search — web search tool
 ```
 
 **Dependency graph** (no cycles):
 
 ```
-store ← kb ← agent ← api-server
+store ← kb ← agent ← api-server ← cli
 store ← agent
-space ← api-server
+space ← api-server ← cli
 ```
 
 ### Seven binaries
@@ -55,7 +56,7 @@ space ← api-server
 | `agent supervisor` | `agent` | Long-lived process per space — HTTP server + IPC + agent loop |
 | `agent worker`     | `agent` | Short-lived step executor — connects via IPC, runs one step, exits |
 | `api-server` | `api-server` | Manages space lifecycle, port allocation, restart policy |
-| `quark`      | `api-server` | CLI: run/stop/ps/logs/inspect/init/lock/validate |
+| `quark`      | `cli`        | CLI: run/stop/ps/logs/inspect/init/lock/validate |
 | `space`      | `space`      | CLI: init/lock/validate/scaffold-registry (filesystem ops) |
 | `kb`         | `kb`         | CLI: get/set/delete/list on the space knowledge base |
 | `bash`       | `tools/bash` | Tool: `run` (one-shot) + `serve` (HTTP skill server) |
@@ -76,9 +77,11 @@ space ← api-server
 git clone https://github.com/quarkloop/quark
 cd quark
 
-# api-server and quark CLI
+# api-server
 GOWORK=off go build -mod=vendor -o bin/api-server  ./api-server/cmd/api-server
-GOWORK=off go build -mod=vendor -o bin/quark       ./api-server/cmd/quark
+
+# quark CLI
+GOWORK=off go build -mod=vendor -o bin/quark       ./cli/cmd/quark
 
 # agent binary (supervisor and worker modes)
 GOWORK=off go build -mod=vendor -o bin/agent       ./agent/cmd/agent
