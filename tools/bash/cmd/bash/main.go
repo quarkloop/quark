@@ -13,28 +13,21 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"net/http"
-	"os"
-	"os/exec"
 
 	"github.com/spf13/cobra"
+
+	"github.com/quarkloop/core/pkg/toolkit"
+	"github.com/quarkloop/tools/bash/pkg/bash"
 )
 
 func main() {
-	root := &cobra.Command{
-		Use:          "bash",
-		Short:        "quark bash tool — execute shell commands",
-		SilenceUsage: true,
-	}
+	root := toolkit.NewToolCommand("bash", "execute shell commands")
 
 	root.AddCommand(runCmd())
 	root.AddCommand(serveCmd())
 
-	if err := root.Execute(); err != nil {
-		os.Exit(1)
-	}
+	toolkit.Execute(root)
 }
 
 func runCmd() *cobra.Command {
@@ -46,7 +39,7 @@ func runCmd() *cobra.Command {
 			if command == "" {
 				return fmt.Errorf("--cmd is required")
 			}
-			out, err := exec.Command("bash", "-c", command).CombinedOutput()
+			out, err := bash.Execute(command)
 			fmt.Print(string(out))
 			return err
 		},
@@ -61,33 +54,7 @@ func serveCmd() *cobra.Command {
 		Use:   "serve",
 		Short: "Start an HTTP server that executes shell commands on request",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			http.HandleFunc("POST /run", func(w http.ResponseWriter, r *http.Request) {
-				var req struct {
-					Cmd string `json:"cmd"`
-				}
-				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-					http.Error(w, `{"error":"invalid request"}`, http.StatusBadRequest)
-					return
-				}
-				if req.Cmd == "" {
-					http.Error(w, `{"error":"cmd is required"}`, http.StatusBadRequest)
-					return
-				}
-				out, err := exec.Command("bash", "-c", req.Cmd).CombinedOutput()
-				exitCode := 0
-				if err != nil {
-					if exitErr, ok := err.(*exec.ExitError); ok {
-						exitCode = exitErr.ExitCode()
-					}
-				}
-				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(map[string]interface{}{
-					"output":    string(out),
-					"exit_code": exitCode,
-				})
-			})
-			fmt.Printf("bash tool listening on %s\n", addr)
-			return http.ListenAndServe(addr, nil)
+			return bash.Serve(addr)
 		},
 	}
 	cmd.Flags().StringVar(&addr, "addr", "127.0.0.1:8091", "Address to listen on")
