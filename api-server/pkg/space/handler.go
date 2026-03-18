@@ -10,11 +10,13 @@ import (
 
 	stderrors "errors"
 
-	"github.com/quarkloop/api-server/pkg/cli/config"
 	"github.com/quarkloop/agent/pkg/errors"
 	"github.com/quarkloop/agent/pkg/infra/httpserver"
 	"github.com/quarkloop/space/pkg/quarkfile"
 )
+
+// serverVersion is the api-server version reported in system info.
+const serverVersion = "0.1.0-dev"
 
 // Handler is the HTTP layer for the space subsystem.
 //
@@ -296,7 +298,7 @@ func (h *Handler) SystemInfo(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	httpserver.WriteJSON(w, http.StatusOK, map[string]interface{}{
-		"version":        config.Version,
+		"version":        serverVersion,
 		"spaces_total":   len(spaces),
 		"spaces_running": running,
 	})
