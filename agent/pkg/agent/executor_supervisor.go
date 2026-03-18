@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/quarkloop/agent/pkg/context/freshness"
+	"github.com/quarkloop/agent/pkg/plan"
 )
 
 // supervisorCycle executes one ORIENT → PLAN → DISPATCH → MONITOR → ASSESS pass.
@@ -18,7 +19,7 @@ func (e *Executor) supervisorCycle(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("orient: %w", err)
 	}
-	if err := e.plan(ctx, state); err != nil {
+	if err := e.updatePlan(ctx, state); err != nil {
 		return false, fmt.Errorf("plan: %w", err)
 	}
 	if err := e.dispatch(ctx); err != nil {
@@ -60,16 +61,13 @@ func (e *Executor) orient(_ context.Context) (map[string]interface{}, error) {
 		state["goal"] = string(goal)
 	}
 
-	if planData, err := e.kb.Get(NSPlans, KeyMasterPlan); err == nil {
-		var plan Plan
-		if err := json.Unmarshal(planData, &plan); err == nil {
-			state["plan"] = &plan
-			counts := map[string]int{"pending": 0, "running": 0, "complete": 0, "failed": 0}
-			for _, s := range plan.Steps {
-				counts[string(s.Status)]++
-			}
-			state["step_counts"] = counts
+	if p, err := e.planStore.Load(); err == nil {
+		state["plan"] = p
+		counts := map[string]int{"pending": 0, "running": 0, "complete": 0, "failed": 0}
+		for _, s := range p.Steps {
+			counts[string(s.Status)]++
 		}
+		state["step_counts"] = counts
 	}
 
 	eventKeys, _ := e.kb.List(NSEvents)
@@ -101,15 +99,15 @@ func (e *Executor) orient(_ context.Context) (map[string]interface{}, error) {
 
 // ─── PLAN ────────────────────────────────────────────────────────────────────
 
-// plan calls the model gateway to produce or update the master plan.
-func (e *Executor) plan(ctx context.Context, state map[string]interface{}) error {
-	if plan, ok := state["plan"].(*Plan); ok {
-		if plan.Complete {
+// updatePlan calls the model gateway to produce or update the master plan.
+func (e *Executor) updatePlan(ctx context.Context, state map[string]interface{}) error {
+	if p, ok := state["plan"].(*plan.Plan); ok {
+		if p.Complete {
 			return nil
 		}
 		allSettled := true
-		for _, s := range plan.Steps {
-			if s.Status == StepPending {
+		for _, s := range p.Steps {
+			if s.Status == plan.StepPending {
 				allSettled = false
 				break
 			}
@@ -165,14 +163,14 @@ Rules:
 		Summary  string `json:"summary"`
 	}
 	if err := json.Unmarshal(planData, &check); err == nil && check.Complete {
-		existing, _ := e.loadPlan()
+		existing, _ := e.planStore.Load()
 		if existing == nil {
-			existing = &Plan{}
+			existing = &plan.Plan{}
 		}
 		existing.Complete = true
 		existing.Summary = check.Summary
 		existing.UpdatedAt = time.Now()
-		return e.savePlan(existing)
+		return e.planStore.Save(existing)
 	}
 
 	// Parse new/updated plan
@@ -190,8 +188,8 @@ Rules:
 	}
 
 	// Merge with existing plan — preserve status of steps we already know about.
-	existing, _ := e.loadPlan()
-	existingStatus := map[string]Step{}
+	existing, _ := e.planStore.Load()
+	existingStatus := map[string]plan.Step{}
 	if existing != nil {
 		for _, s := range existing.Steps {
 			existingStatus[s.ID] = s
@@ -199,14 +197,14 @@ Rules:
 	}
 
 	now := time.Now()
-	mergedSteps := make([]Step, 0, len(newPlan.Steps))
+	mergedSteps := make([]plan.Step, 0, len(newPlan.Steps))
 	for _, ns := range newPlan.Steps {
-		step := Step{
+		step := plan.Step{
 			ID:          ns.ID,
 			Agent:       ns.Agent,
 			Description: ns.Description,
 			DependsOn:   ns.DependsOn,
-			Status:      StepPending,
+			Status:      plan.StepPending,
 		}
 		if prev, ok := existingStatus[ns.ID]; ok {
 			step.Status = prev.Status
@@ -218,33 +216,33 @@ Rules:
 		mergedSteps = append(mergedSteps, step)
 	}
 
-	plan := &Plan{
+	p := &plan.Plan{
 		Goal:      newPlan.Goal,
 		Steps:     mergedSteps,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
 	if existing != nil {
-		plan.CreatedAt = existing.CreatedAt
+		p.CreatedAt = existing.CreatedAt
 	}
-	return e.savePlan(plan)
+	return e.planStore.Save(p)
 }
 
 // ─── DISPATCH ────────────────────────────────────────────────────────────────
 
 // dispatch reads the current plan and spawns goroutines for ready steps.
 func (e *Executor) dispatch(ctx context.Context) error {
-	plan, err := e.loadPlan()
-	if err != nil || plan == nil || plan.Complete {
+	p, err := e.planStore.Load()
+	if err != nil || p == nil || p.Complete {
 		return nil
 	}
 
-	for i := range plan.Steps {
-		step := &plan.Steps[i]
-		if step.Status != StepPending {
+	for i := range p.Steps {
+		step := &p.Steps[i]
+		if step.Status != plan.StepPending {
 			continue
 		}
-		if !e.depsComplete(plan, step) {
+		if !plan.DepsComplete(p, step) {
 			continue
 		}
 		e.mu.Lock()
@@ -258,9 +256,9 @@ func (e *Executor) dispatch(ctx context.Context) error {
 		}
 
 		now := time.Now()
-		step.Status = StepRunning
+		step.Status = plan.StepRunning
 		step.StartedAt = &now
-		if err := e.savePlan(plan); err != nil {
+		if err := e.planStore.Save(p); err != nil {
 			return err
 		}
 		log.Printf("executor: dispatching step %s to agent %s", step.ID, step.Agent)
@@ -273,8 +271,8 @@ func (e *Executor) dispatch(ctx context.Context) error {
 
 // monitor reads completion events from the KB and updates the plan accordingly.
 func (e *Executor) monitor(_ context.Context) error {
-	plan, err := e.loadPlan()
-	if err != nil || plan == nil {
+	p, err := e.planStore.Load()
+	if err != nil || p == nil {
 		return nil
 	}
 
@@ -298,16 +296,16 @@ func (e *Executor) monitor(_ context.Context) error {
 		if err := json.Unmarshal(data, &event); err != nil {
 			continue
 		}
-		for i := range plan.Steps {
-			if plan.Steps[i].ID == event.StepID {
+		for i := range p.Steps {
+			if p.Steps[i].ID == event.StepID {
 				now := time.Now()
-				plan.Steps[i].FinishedAt = &now
-				plan.Steps[i].Result = event.Result
-				plan.Steps[i].Error = event.Error
+				p.Steps[i].FinishedAt = &now
+				p.Steps[i].Result = event.Result
+				p.Steps[i].Error = event.Error
 				if event.Status == "complete" {
-					plan.Steps[i].Status = StepComplete
+					p.Steps[i].Status = plan.StepComplete
 				} else {
-					plan.Steps[i].Status = StepFailed
+					p.Steps[i].Status = plan.StepFailed
 				}
 				e.mu.Lock()
 				delete(e.activeSteps, event.StepID)
@@ -321,7 +319,7 @@ func (e *Executor) monitor(_ context.Context) error {
 	}
 
 	if modified {
-		return e.savePlan(plan)
+		return e.planStore.Save(p)
 	}
 	return nil
 }
@@ -330,27 +328,27 @@ func (e *Executor) monitor(_ context.Context) error {
 
 // assess checks whether the goal is fully achieved.
 func (e *Executor) assess(_ context.Context) (bool, error) {
-	plan, err := e.loadPlan()
-	if err != nil || plan == nil {
+	p, err := e.planStore.Load()
+	if err != nil || p == nil {
 		return false, nil
 	}
-	if plan.Complete {
-		log.Printf("executor: plan complete — %s", plan.Summary)
+	if p.Complete {
+		log.Printf("executor: plan complete — %s", p.Summary)
 		return true, nil
 	}
-	if len(plan.Steps) > 0 {
+	if len(p.Steps) > 0 {
 		allDone := true
-		for _, s := range plan.Steps {
-			if s.Status != StepComplete {
+		for _, s := range p.Steps {
+			if s.Status != plan.StepComplete {
 				allDone = false
 				break
 			}
 		}
 		if allDone {
-			plan.Complete = true
-			plan.Summary = "All steps completed successfully."
-			plan.UpdatedAt = time.Now()
-			e.savePlan(plan)
+			p.Complete = true
+			p.Summary = "All steps completed successfully."
+			p.UpdatedAt = time.Now()
+			e.planStore.Save(p)
 			return true, nil
 		}
 	}

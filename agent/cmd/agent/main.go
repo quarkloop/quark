@@ -12,28 +12,22 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
 	"github.com/quarkloop/agent/pkg/infra/signals"
 	"github.com/quarkloop/agent/pkg/supervisor"
 	"github.com/quarkloop/agent/pkg/worker"
+	"github.com/quarkloop/core/pkg/toolkit"
 )
 
 func main() {
-	root := &cobra.Command{
-		Use:          "agent",
-		Short:        "quark agent — supervisor and worker process",
-		SilenceUsage: true,
-	}
+	root := toolkit.NewToolCommand("agent", "supervisor and worker process")
 
 	root.AddCommand(supervisorCmd())
 	root.AddCommand(workerCmd())
 
-	if err := root.Execute(); err != nil {
-		os.Exit(1)
-	}
+	toolkit.Execute(root)
 }
 
 func supervisorCmd() *cobra.Command {

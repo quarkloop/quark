@@ -10,12 +10,13 @@ import (
 
 	llmctx "github.com/quarkloop/agent/pkg/context"
 	msg "github.com/quarkloop/agent/pkg/context/message"
+	"github.com/quarkloop/agent/pkg/plan"
 )
 
 // ─── WORKER ──────────────────────────────────────────────────────────────────
 
 // runWorker drives one worker agent through its EXECUTE → REPORT loop.
-func (e *Executor) runWorker(ctx context.Context, step Step) {
+func (e *Executor) runWorker(ctx context.Context, step plan.Step) {
 	log.Printf("worker[%s]: starting (%s)", step.ID, step.Agent)
 
 	result, err := e.executeStep(ctx, step)
@@ -41,7 +42,7 @@ func (e *Executor) runWorker(ctx context.Context, step Step) {
 
 // executeStep runs a single step using a short-lived AgentContext.
 // Supports multi-turn tool loops with linked ToolCall/ToolResult pairs.
-func (e *Executor) executeStep(ctx context.Context, step Step) (string, error) {
+func (e *Executor) executeStep(ctx context.Context, step plan.Step) (string, error) {
 	def, ok := e.agents[step.Agent]
 	if !ok && step.Agent != AuthorSupervisor {
 		return "", fmt.Errorf("unknown agent %q", step.Agent)
@@ -118,7 +119,7 @@ func (e *Executor) executeStep(ctx context.Context, step Step) (string, error) {
 }
 
 // executeStepRaw is the fallback for when worker context build fails.
-func (e *Executor) executeStepRaw(ctx context.Context, step Step, systemPrompt string) (string, error) {
+func (e *Executor) executeStepRaw(ctx context.Context, step plan.Step, systemPrompt string) (string, error) {
 	artifacts := e.gatherArtifacts()
 	userMsg := fmt.Sprintf("Task: %s\n\nContext from knowledge base:\n%s\n\nComplete this task and provide a detailed result.",
 		step.Description, artifacts)

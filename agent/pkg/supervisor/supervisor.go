@@ -28,7 +28,7 @@ import (
 	"github.com/quarkloop/agent/pkg/ipc"
 	"github.com/quarkloop/agent/pkg/model"
 	"github.com/quarkloop/agent/pkg/skill"
-	"github.com/quarkloop/kb/pkg/kb"
+	"github.com/quarkloop/core/pkg/kb"
 )
 
 // Config holds startup parameters for a supervisor process.

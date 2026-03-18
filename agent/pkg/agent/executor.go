@@ -21,9 +21,10 @@ import (
 	"sync"
 
 	llmctx "github.com/quarkloop/agent/pkg/context"
-	"github.com/quarkloop/kb/pkg/kb"
 	"github.com/quarkloop/agent/pkg/model"
+	"github.com/quarkloop/agent/pkg/plan"
 	"github.com/quarkloop/agent/pkg/skill"
+	"github.com/quarkloop/core/pkg/kb"
 )
 
 // Executor coordinates the supervisor and worker agent lifecycle inside a
@@ -42,6 +43,7 @@ type Executor struct {
 	engine      Engine
 	supervisor  *Definition
 	agents      map[string]*Definition
+	planStore   *plan.Store
 	mu          sync.Mutex
 	activeSteps map[string]struct{} // step IDs currently running
 
@@ -73,6 +75,7 @@ func NewExecutor(
 		engine:      engine,
 		supervisor:  supervisor,
 		agents:      agents,
+		planStore:   plan.NewStore(k, NSPlans, KeyMasterPlan),
 		activeSteps: map[string]struct{}{},
 	}
 }

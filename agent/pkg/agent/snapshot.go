@@ -8,7 +8,7 @@ import (
 	"fmt"
 
 	llmctx "github.com/quarkloop/agent/pkg/context"
-	"github.com/quarkloop/kb/pkg/kb"
+	"github.com/quarkloop/core/pkg/kb"
 )
 
 // KBSnapshotRepository implements context snapshot persistence backed by the
