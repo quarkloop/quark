@@ -12,7 +12,7 @@ import (
 	"github.com/quarkloop/api-server/pkg/api"
 	"github.com/quarkloop/api-server/pkg/space"
 	"github.com/quarkloop/agent/pkg/infra/term"
-	"github.com/quarkloop/space/pkg/quarkfile"
+	"github.com/quarkloop/tools/space/pkg/quarkfile"
 )
 
 const waitPollInterval = 500 * time.Millisecond
