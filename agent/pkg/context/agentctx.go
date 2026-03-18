@@ -67,7 +67,7 @@ func (ac *AgentContext) AppendMessage(ctx context.Context, message *Message) err
 	ac.index[message.id.value] = len(ac.messages)
 	ac.messages = append(ac.messages, message)
 	ac.cachedTokens = ac.cachedTokens.Add(message.tokenCount)
-	ac.tput.recordAppend(message.tokenCount)
+	ac.tput.recordAppend()
 	return nil
 }
 

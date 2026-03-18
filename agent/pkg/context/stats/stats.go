@@ -11,8 +11,7 @@
 //   - Window:      budget usage, remaining capacity, pressure level
 //   - Composition: per-type and per-author breakdowns
 //   - Visibility:  message counts per surface (user / LLM / developer)
-//   - Distribution: avg / median / p90 / std-dev of per-message token counts
-//   - Throughput:  append and removal rates since context creation
+//   - Throughput:  cumulative append and removal counts
 //   - Timing:      oldest/newest message timestamps, context age
 //   - Compaction:  history of Compact() invocations
 package stats
@@ -75,49 +74,15 @@ type TokensByVisibility struct {
 }
 
 // =============================================================================
-// DistributionStats
-// =============================================================================
-
-// DistributionStats captures the statistical distribution of token counts
-// across all messages in the context window.
-type DistributionStats struct {
-	// AvgTokensPerMessage is the arithmetic mean of per-message token counts.
-	AvgTokensPerMessage float64 `json:"avg_tokens_per_message"`
-	// MedianTokens is the median per-message token count (p50).
-	MedianTokens float64 `json:"median_tokens"`
-	// P90Tokens is the 90th-percentile per-message token count.
-	P90Tokens float64 `json:"p90_tokens"`
-	// MaxTokensPerMessage is the highest single-message token count.
-	MaxTokensPerMessage int32 `json:"max_tokens_per_message"`
-	// MinTokensPerMessage is the lowest single-message token count.
-	MinTokensPerMessage int32 `json:"min_tokens_per_message"`
-	// StdDevTokens is the standard deviation of per-message token counts.
-	StdDevTokens float64 `json:"std_dev_tokens"`
-	// PeakMessageID is the ID of the message with the highest token count.
-	PeakMessageID string `json:"peak_message_id,omitempty"`
-	// PeakMessageType is the type of the peak-token message.
-	PeakMessageType message.MessageType `json:"peak_message_type,omitempty"`
-}
-
-// =============================================================================
 // ThroughputStats
 // =============================================================================
 
-// ThroughputStats measures the rate of message and token activity since the
-// AgentContext was created.
+// ThroughputStats tracks cumulative message activity since context creation.
 type ThroughputStats struct {
 	// TotalAppended is the cumulative number of AppendMessage calls.
 	TotalAppended int64 `json:"total_appended"`
 	// TotalRemoved is the cumulative number of messages removed or evicted.
 	TotalRemoved int64 `json:"total_removed"`
-	// MessagesPerSecond is the average append rate since context creation.
-	MessagesPerSecond float64 `json:"messages_per_second"`
-	// TokensPerSecond is the average token ingest rate since context creation.
-	TokensPerSecond float64 `json:"tokens_per_second"`
-	// TotalTokensIngested is the sum of all token counts ever appended.
-	TotalTokensIngested int64 `json:"total_tokens_ingested"`
-	// ContextUptimeSeconds is the elapsed time since the context was created.
-	ContextUptimeSeconds float64 `json:"context_uptime_seconds"`
 }
 
 // =============================================================================
@@ -223,10 +188,6 @@ type Snapshot struct {
 	Visibility         VisibilityStats    `json:"visibility"`
 	TokensByVisibility TokensByVisibility `json:"tokens_by_visibility"`
 
-	// --- Distribution ---
-
-	Distribution DistributionStats `json:"distribution"`
-
 	// --- Throughput ---
 
 	Throughput ThroughputStats `json:"throughput"`
@@ -295,14 +256,6 @@ func (s Snapshot) Summarise() string {
 		s.TokensByVisibility.LLMTokens.Value(),
 		s.TokensByVisibility.DeveloperTokens.Value())
 
-	if s.TotalMessages > 0 {
-		d := s.Distribution
-		fmt.Fprintf(&sb, "║  Tok/msg     : avg=%.1f  median=%.1f  p90=%.1f  σ=%.1f\n",
-			d.AvgTokensPerMessage, d.MedianTokens, d.P90Tokens, d.StdDevTokens)
-		fmt.Fprintf(&sb, "║  Peak msg    : %d tokens  id=%s  type=%s\n",
-			d.MaxTokensPerMessage, d.PeakMessageID, d.PeakMessageType)
-	}
-
 	if len(s.ByType) > 0 {
 		sb.WriteString("║  By type:\n")
 		type kv struct {
@@ -339,10 +292,8 @@ func (s Snapshot) Summarise() string {
 
 	t := s.Throughput
 	if t.TotalAppended > 0 {
-		fmt.Fprintf(&sb, "║  Throughput  : %.2f msg/s  %.1f tok/s  uptime=%.1fs\n",
-			t.MessagesPerSecond, t.TokensPerSecond, t.ContextUptimeSeconds)
-		fmt.Fprintf(&sb, "║  Ingested    : %d msgs total  %d tokens total\n",
-			t.TotalAppended, t.TotalTokensIngested)
+		fmt.Fprintf(&sb, "║  Throughput  : appended=%d  removed=%d\n",
+			t.TotalAppended, t.TotalRemoved)
 	}
 
 	fmt.Fprintf(&sb, "║  Age         : %.2fs  (last msg %.2fs ago)\n",
@@ -363,26 +314,3 @@ func (s Snapshot) Summarise() string {
 	return sb.String()
 }
 
-// =============================================================================
-// Percentile helper
-// =============================================================================
-
-// Percentile returns the p-th percentile of a pre-sorted float64 slice.
-// p must be in [0, 100].
-func Percentile(sorted []float64, p float64) float64 {
-	n := len(sorted)
-	if n == 0 {
-		return 0
-	}
-	if n == 1 {
-		return sorted[0]
-	}
-	rank := p / 100.0 * float64(n-1)
-	lo := int(rank)
-	hi := lo + 1
-	if hi >= n {
-		return sorted[n-1]
-	}
-	frac := rank - float64(lo)
-	return sorted[lo]*(1-frac) + sorted[hi]*frac
-}

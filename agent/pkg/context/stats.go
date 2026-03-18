@@ -1,8 +1,6 @@
 package llmctx
 
 import (
-	"math"
-	"sort"
 	"time"
 
 	ctxstats "github.com/quarkloop/agent/pkg/context/stats"
@@ -24,7 +22,6 @@ type (
 	AuthorStats        = ctxstats.AuthorStats
 	VisibilityStats    = ctxstats.VisibilityStats
 	TokensByVisibility = ctxstats.TokensByVisibility
-	DistributionStats  = ctxstats.DistributionStats
 	ThroughputStats    = ctxstats.ThroughputStats
 	WindowPressure     = ctxstats.WindowPressure
 	CompactionEvent    = ctxstats.CompactionEvent
@@ -80,19 +77,16 @@ func (t *compactionTracker) avgCompressionRatio() float64 {
 // -----------------------------------------------------------------------------
 
 type throughputTracker struct {
-	createdAt           time.Time
-	totalAppended       int64
-	totalRemoved        int64
-	totalTokensIngested int64
+	totalAppended int64
+	totalRemoved  int64
 }
 
 func newThroughputTracker() throughputTracker {
-	return throughputTracker{createdAt: time.Now().UTC()}
+	return throughputTracker{}
 }
 
-func (t *throughputTracker) recordAppend(tokens TokenCount) {
+func (t *throughputTracker) recordAppend() {
 	t.totalAppended++
-	t.totalTokensIngested += int64(tokens.Value())
 }
 
 func (t *throughputTracker) recordRemove(n int) {
@@ -100,79 +94,9 @@ func (t *throughputTracker) recordRemove(n int) {
 }
 
 func (t *throughputTracker) snapshot() ThroughputStats {
-	uptime := time.Since(t.createdAt).Seconds()
-	if uptime < 0.001 {
-		uptime = 0.001
-	}
 	return ThroughputStats{
-		TotalAppended:        t.totalAppended,
-		TotalRemoved:         t.totalRemoved,
-		MessagesPerSecond:    float64(t.totalAppended) / uptime,
-		TokensPerSecond:      float64(t.totalTokensIngested) / uptime,
-		TotalTokensIngested:  t.totalTokensIngested,
-		ContextUptimeSeconds: uptime,
-	}
-}
-
-// -----------------------------------------------------------------------------
-// buildDistribution — pure function, needs []*Message
-// -----------------------------------------------------------------------------
-
-func buildDistribution(messages []*Message) DistributionStats {
-	n := len(messages)
-	if n == 0 {
-		return DistributionStats{}
-	}
-
-	values := make([]float64, n)
-	var sum float64
-	var maxVal int32
-	var minVal int32 = math.MaxInt32
-	peakID := ""
-	var peakType MessageType
-
-	for i, m := range messages {
-		v := float64(m.TokenCount().Value())
-		values[i] = v
-		sum += v
-		iv := m.TokenCount().Value()
-		if iv > maxVal {
-			maxVal = iv
-			peakID = m.ID().String()
-			peakType = m.Type()
-		}
-		if iv < minVal {
-			minVal = iv
-		}
-	}
-
-	avg := sum / float64(n)
-	sorted := make([]float64, n)
-	copy(sorted, values)
-	sort.Float64s(sorted)
-
-	median := ctxstats.Percentile(sorted, 50)
-	p90 := ctxstats.Percentile(sorted, 90)
-
-	var variance float64
-	for _, v := range values {
-		d := v - avg
-		variance += d * d
-	}
-	var stddev float64
-	if n > 1 {
-		stddev = math.Sqrt(variance / float64(n-1))
-	}
-
-	return DistributionStats{
-		AvgTokensPerMessage: avg,
-		MedianTokens:        median,
-		P90Tokens:           p90,
-		MaxTokensPerMessage: maxVal,
-		MinTokensPerMessage: minVal,
-		StdDevTokens:        stddev,
-		PeakMessageID:       peakID,
-		PeakMessageType:     peakType,
+		TotalAppended: t.totalAppended,
+		TotalRemoved:  t.totalRemoved,
 	}
 }
 
@@ -280,7 +204,6 @@ func buildStats(
 		ByAuthor:                byAuthor,
 		Visibility:              vis,
 		TokensByVisibility:      tvByVis,
-		Distribution:            buildDistribution(messages),
 		Throughput:              tput.snapshot(),
 		CapturedAt:              time.Now().UTC(),
 		OldestMessageAt:         oldest,

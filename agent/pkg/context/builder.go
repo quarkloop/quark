@@ -95,7 +95,7 @@ func (b *AgentContextBuilder) Build() (*AgentContext, error) {
 		ac.messages = append(ac.messages, b.systemPrompt)
 		ac.index[b.systemPrompt.id.value] = 0
 		ac.cachedTokens = b.systemPrompt.tokenCount
-		ac.tput.recordAppend(b.systemPrompt.tokenCount)
+		ac.tput.recordAppend()
 	}
 	return ac, nil
 }
