@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/quarkloop/agent/pkg/activity"
 	llmctx "github.com/quarkloop/agent/pkg/context"
 	msg "github.com/quarkloop/agent/pkg/context/message"
 	"github.com/quarkloop/agent/pkg/plan"
@@ -77,7 +78,9 @@ func (a *Agent) executeStep(ctx context.Context, step plan.Step) (string, error)
 		}
 
 		log.Printf("worker[%s]: tool call %s(%s)", step.ID, toolCall.ToolName, string(toolCall.Arguments))
+		a.emit(activity.ToolCalled, map[string]string{"step": step.ID, "tool": toolCall.ToolName})
 		result := a.executeTool(ctx, step.ID, *toolCall)
+		a.emit(activity.ToolCompleted, map[string]string{"step": step.ID, "tool": toolCall.ToolName, "error": result.ErrorMessage})
 
 		callID, _ := a.idGen.Next()
 		resultID, _ := a.idGen.Next()

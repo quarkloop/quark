@@ -21,9 +21,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/quarkloop/agent/pkg/activity"
 	llmctx "github.com/quarkloop/agent/pkg/context"
 	"github.com/quarkloop/agent/pkg/model"
 	"github.com/quarkloop/agent/pkg/plan"
+	"github.com/quarkloop/agent/pkg/session"
 	"github.com/quarkloop/agent/pkg/skill"
 	"github.com/quarkloop/core/pkg/kb"
 )
@@ -51,6 +53,11 @@ type Agent struct {
 	visPolicy *llmctx.VisibilityPolicy
 	adapterReg *llmctx.AdapterRegistry
 	snapRepo  *KBSnapshotRepository
+
+	// session & activity (optional)
+	session      *session.Session
+	sessionStore *session.Store
+	activity     activity.Sink
 }
 
 // Option configures an Agent.
@@ -60,6 +67,21 @@ type Option func(*Agent)
 func WithSubAgents(agents map[string]*Definition) Option {
 	return func(a *Agent) {
 		a.subAgents = agents
+	}
+}
+
+// WithSession attaches a session and its store to the agent.
+func WithSession(sess *session.Session, store *session.Store) Option {
+	return func(a *Agent) {
+		a.session = sess
+		a.sessionStore = store
+	}
+}
+
+// WithActivitySink attaches an activity sink for event streaming.
+func WithActivitySink(sink activity.Sink) Option {
+	return func(a *Agent) {
+		a.activity = sink
 	}
 }
 
@@ -167,16 +189,38 @@ func (a *Agent) buildFreshContext(windowSize int) error {
 	return nil
 }
 
+// emit sends an activity event if a sink is configured.
+func (a *Agent) emit(eventType activity.EventType, data interface{}) {
+	if a.activity == nil {
+		return
+	}
+	sessionID := ""
+	if a.session != nil {
+		sessionID = a.session.ID
+	}
+	id := fmt.Sprintf("%s-%d", eventType, time.Now().UnixNano())
+	a.activity.Emit(activity.Event{
+		ID:        id,
+		SessionID: sessionID,
+		Type:      eventType,
+		Timestamp: time.Now().UTC(),
+		Data:      data,
+	})
+}
+
 // Run starts the supervisor cycle loop, blocking until the goal is complete
 // or ctx is cancelled. Must be called after InitContext.
 func (a *Agent) Run(ctx context.Context) error {
 	log.Printf("agent: starting (name=%s model=%s/%s)",
 		a.def.Name, a.gateway.Provider(), a.gateway.ModelName())
 
+	a.emit(activity.SessionStarted, map[string]string{"agent": a.def.Name})
+
 	for {
 		select {
 		case <-ctx.Done():
 			a.saveCheckpoint()
+			a.emit(activity.SessionEnded, map[string]string{"reason": "cancelled"})
 			return ctx.Err()
 		default:
 		}
@@ -186,6 +230,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			select {
 			case <-ctx.Done():
 				a.saveCheckpoint()
+				a.emit(activity.SessionEnded, map[string]string{"reason": "cancelled"})
 				return ctx.Err()
 			case <-time.After(10 * time.Second):
 			}
@@ -194,11 +239,14 @@ func (a *Agent) Run(ctx context.Context) error {
 		if done {
 			log.Printf("agent: goal complete")
 			a.saveCheckpoint()
+			a.emit(activity.SessionEnded, map[string]string{"reason": "complete"})
 			return nil
 		}
 		a.saveCheckpoint()
+		a.emit(activity.CheckpointSaved, nil)
 		select {
 		case <-ctx.Done():
+			a.emit(activity.SessionEnded, map[string]string{"reason": "cancelled"})
 			return ctx.Err()
 		case <-time.After(2 * time.Second):
 		}

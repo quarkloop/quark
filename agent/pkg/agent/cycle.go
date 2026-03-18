@@ -7,6 +7,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/quarkloop/agent/pkg/activity"
 	"github.com/quarkloop/agent/pkg/context/freshness"
 	"github.com/quarkloop/agent/pkg/plan"
 )
@@ -262,6 +263,7 @@ func (a *Agent) dispatch(ctx context.Context) error {
 			return err
 		}
 		log.Printf("agent: dispatching step %s to agent %s", step.ID, step.Agent)
+		a.emit(activity.StepDispatched, map[string]string{"step": step.ID, "agent": step.Agent})
 		go a.runWorker(ctx, *step)
 	}
 	return nil
@@ -312,6 +314,11 @@ func (a *Agent) monitor(_ context.Context) error {
 				a.mu.Unlock()
 				a.kb.Delete(NSEvents, key)
 				modified = true
+				if event.Status == "complete" {
+					a.emit(activity.StepCompleted, map[string]string{"step": event.StepID})
+				} else {
+					a.emit(activity.StepFailed, map[string]string{"step": event.StepID, "error": event.Error})
+				}
 				log.Printf("agent: step %s → %s", event.StepID, event.Status)
 				break
 			}
