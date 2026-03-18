@@ -1,0 +1,12 @@
+package signals
+
+import (
+	"context"
+	"os"
+	"os/signal"
+	"syscall"
+)
+
+func NotifyContext(parent context.Context) (context.Context, context.CancelFunc) {
+	return signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+}
