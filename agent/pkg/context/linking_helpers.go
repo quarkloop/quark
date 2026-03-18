@@ -58,13 +58,6 @@ func (m *Message) WithChildMessage(child *Message) *Message {
 	return m.WithLinks(m.links.AddChild(child.ID().String()))
 }
 
-// WithReference returns a copy of m with refID added to its References list.
-// A reference is a soft association — the two messages are related but form
-// independent eviction units.
-func (m *Message) WithReference(ref *Message) *Message {
-	return m.WithLinks(m.links.AddReference(ref.ID().String()))
-}
-
 // LinkPair returns copies of parent and child with bidirectional containment
 // links established.
 //

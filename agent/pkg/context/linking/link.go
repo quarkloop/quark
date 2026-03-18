@@ -10,10 +10,6 @@
 //     ToolCall without evicting the ToolResult leaves an orphaned result that
 //     confuses the model.
 //
-//   - Reference: a ReasoningMessage was triggered by a TextMessage.  A
-//     PlanStep relates to a ToolCallMessage.  These are softer links that
-//     inform compaction priority but do not create eviction units.
-//
 // # Usage
 //
 // Attach a MessageLinks value to a Message via the parent llmctx package's
@@ -27,8 +23,6 @@
 //                 the other.
 //   - ChildIDs:   messages this one contains (inverse of ParentID).
 //                 Maintained automatically when ChildIDs are set on a parent.
-//   - References: soft association — eviction of either side is independent,
-//                 but the compactor should prefer evicting both together.
 package linking
 
 // =============================================================================
@@ -48,14 +42,11 @@ type MessageLinks struct {
 	// These are the inverse of ParentID entries on the children.
 	ChildIDs []string `json:"child_ids,omitempty"`
 
-	// References lists message IDs that are semantically related but not
-	// structurally contained.  Eviction of either side is independent.
-	References []string `json:"references,omitempty"`
 }
 
 // IsZero reports whether this MessageLinks carries any relationships.
 func (l MessageLinks) IsZero() bool {
-	return l.ParentID == "" && len(l.ChildIDs) == 0 && len(l.References) == 0
+	return l.ParentID == "" && len(l.ChildIDs) == 0
 }
 
 // HasParent reports whether the message has a containment parent.
@@ -87,30 +78,10 @@ func (l MessageLinks) AddChild(id string) MessageLinks {
 	return out
 }
 
-// AddReference returns a copy of l with id appended to References.
-// Deduplicates: adding an existing ID is a no-op.
-func (l MessageLinks) AddReference(id string) MessageLinks {
-	for _, existing := range l.References {
-		if existing == id {
-			return l
-		}
-	}
-	out := l
-	out.References = append(append([]string(nil), l.References...), id)
-	return out
-}
-
 // RemoveChild returns a copy of l with id removed from ChildIDs.
 func (l MessageLinks) RemoveChild(id string) MessageLinks {
 	out := l
 	out.ChildIDs = filterStrings(l.ChildIDs, func(s string) bool { return s != id })
-	return out
-}
-
-// RemoveReference returns a copy of l with id removed from References.
-func (l MessageLinks) RemoveReference(id string) MessageLinks {
-	out := l
-	out.References = filterStrings(l.References, func(s string) bool { return s != id })
 	return out
 }
 
