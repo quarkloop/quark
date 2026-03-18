@@ -147,9 +147,6 @@ type MessageType = msg.MessageType
 const (
 	SystemPromptType      MessageType = msg.SystemPromptType
 	TextMessageType       MessageType = msg.TextType
-	ImageMessageType      MessageType = msg.ImageType
-	PDFMessageType        MessageType = msg.PDFType
-	AudioMessageType      MessageType = msg.AudioType
 	ToolCallMessageType   MessageType = msg.ToolCallType
 	ToolResultMessageType MessageType = msg.ToolResultType
 	MemoryMessageType     MessageType = msg.MemoryType

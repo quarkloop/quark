@@ -165,24 +165,6 @@ func unmarshalPayload(kind MessageType, raw json.RawMessage) (msg.Payload, error
 		if err == nil {
 			p = v
 		}
-	case ImageMessageType:
-		var v msg.ImagePayload
-		err = decode(&v, &p)
-		if err == nil {
-			p = v
-		}
-	case PDFMessageType:
-		var v msg.PDFPayload
-		err = decode(&v, &p)
-		if err == nil {
-			p = v
-		}
-	case AudioMessageType:
-		var v msg.AudioPayload
-		err = decode(&v, &p)
-		if err == nil {
-			p = v
-		}
 	case ToolCallMessageType:
 		var v msg.ToolCallPayload
 		err = decode(&v, &p)
@@ -294,33 +276,6 @@ func NewTextMessage(
 	return newMessage(id, authorId, author, MediumWeight,
 		defaultVisibility[TextMessageType],
 		msg.TextPayload{Text: text}, tc)
-}
-
-// NewImageMessage creates an image message for vision-capable agents.
-func NewImageMessage(
-	id MessageID, authorId AuthorID, author MessageAuthor,
-	payload msg.ImagePayload, tc TokenComputer,
-) (*Message, error) {
-	return newMessage(id, authorId, author, MediumWeight,
-		defaultVisibility[ImageMessageType], payload, tc)
-}
-
-// NewPDFMessage creates a PDF document message for document-QA or RAG workflows.
-func NewPDFMessage(
-	id MessageID, authorId AuthorID, author MessageAuthor,
-	payload msg.PDFPayload, tc TokenComputer,
-) (*Message, error) {
-	return newMessage(id, authorId, author, MediumWeight,
-		defaultVisibility[PDFMessageType], payload, tc)
-}
-
-// NewAudioMessage creates an audio message for speech-enabled agents.
-func NewAudioMessage(
-	id MessageID, authorId AuthorID, author MessageAuthor,
-	payload msg.AudioPayload, tc TokenComputer,
-) (*Message, error) {
-	return newMessage(id, authorId, author, MediumWeight,
-		defaultVisibility[AudioMessageType], payload, tc)
 }
 
 // NewToolCallMessage records the LLM's decision to invoke a tool.
@@ -577,18 +532,6 @@ func (m *Message) AsSystemPrompt() (msg.SystemPromptPayload, bool) {
 }
 func (m *Message) AsText() (msg.TextPayload, bool) {
 	p, ok := m.payload.(msg.TextPayload)
-	return p, ok
-}
-func (m *Message) AsImage() (msg.ImagePayload, bool) {
-	p, ok := m.payload.(msg.ImagePayload)
-	return p, ok
-}
-func (m *Message) AsPDF() (msg.PDFPayload, bool) {
-	p, ok := m.payload.(msg.PDFPayload)
-	return p, ok
-}
-func (m *Message) AsAudio() (msg.AudioPayload, bool) {
-	p, ok := m.payload.(msg.AudioPayload)
 	return p, ok
 }
 func (m *Message) AsToolCall() (msg.ToolCallPayload, bool) {

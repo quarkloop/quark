@@ -20,9 +20,6 @@ import msg "github.com/quarkloop/agent/pkg/context/message"
 type (
 	SystemPromptPayload = msg.SystemPromptPayload
 	TextPayload         = msg.TextPayload
-	ImagePayload        = msg.ImagePayload
-	PDFPayload          = msg.PDFPayload
-	AudioPayload        = msg.AudioPayload
 	ToolCallPayload     = msg.ToolCallPayload
 	ToolResultPayload   = msg.ToolResultPayload
 	MemoryPayload       = msg.MemoryPayload
@@ -70,39 +67,3 @@ const (
 // PlanStep re-export.
 type PlanStep = msg.PlanStep
 
-// ---------------------------------------------------------------------------
-// Image types and constants
-// ---------------------------------------------------------------------------
-
-// ImageMediaType re-exports for llmctx.ImageMediaType* usage.
-type ImageMediaType = msg.ImageMediaType
-
-const (
-	ImageMediaTypeJPEG = msg.ImageMediaTypeJPEG
-	ImageMediaTypePNG  = msg.ImageMediaTypePNG
-	ImageMediaTypeGIF  = msg.ImageMediaTypeGIF
-	ImageMediaTypeWEBP = msg.ImageMediaTypeWEBP
-)
-
-// ImageSource re-exports for llmctx.ImageSource* usage.
-type ImageSource = msg.ImageSource
-
-const (
-	ImageSourceBase64 = msg.ImageSourceBase64
-	ImageSourceURL    = msg.ImageSourceURL
-	ImageSourceFile   = msg.ImageSourceFile
-)
-
-// ---------------------------------------------------------------------------
-// Audio types and constants
-// ---------------------------------------------------------------------------
-
-// AudioMediaType re-exports for llmctx.AudioMediaType* usage.
-type AudioMediaType = msg.AudioMediaType
-
-const (
-	AudioMediaTypeMP3  = msg.AudioMediaTypeMP3
-	AudioMediaTypeWAV  = msg.AudioMediaTypeWAV
-	AudioMediaTypeWEBM = msg.AudioMediaTypeWEBM
-	AudioMediaTypeOGG  = msg.AudioMediaTypeOGG
-)

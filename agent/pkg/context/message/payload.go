@@ -31,9 +31,6 @@ type MessageType string
 const (
 	SystemPromptType      MessageType = "system_prompt"
 	TextType              MessageType = "text"
-	ImageType             MessageType = "image"
-	PDFType               MessageType = "pdf"
-	AudioType             MessageType = "audio"
 	ToolCallType          MessageType = "tool_call"
 	ToolResultType        MessageType = "tool_result"
 	MemoryType            MessageType = "memory"
@@ -130,12 +127,6 @@ func derefPayload(p Payload) Payload {
 	case *SystemPromptPayload:
 		return *v
 	case *TextPayload:
-		return *v
-	case *ImagePayload:
-		return *v
-	case *PDFPayload:
-		return *v
-	case *AudioPayload:
 		return *v
 	case *ToolCallPayload:
 		return *v

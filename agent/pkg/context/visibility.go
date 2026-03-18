@@ -103,11 +103,6 @@ var defaultVisibility = map[MessageType]Visibility{
 	// Text turns: fully visible; this is the main conversation surface.
 	TextMessageType: VisibleToAll,
 
-	// Images, PDFs, audio: visible everywhere so users see what they sent.
-	ImageMessageType: VisibleToAll,
-	PDFMessageType:   VisibleToAll,
-	AudioMessageType: VisibleToAll,
-
 	// Tool I/O: visible to LLM (required for function calling) and dev tooling,
 	// but hidden from users by default (too noisy). Override if your UI
 	// renders tool activity explicitly.
