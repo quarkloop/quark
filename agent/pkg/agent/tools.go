@@ -16,10 +16,10 @@ import (
 // ─── WORKER ──────────────────────────────────────────────────────────────────
 
 // runWorker drives one worker agent through its EXECUTE → REPORT loop.
-func (e *Executor) runWorker(ctx context.Context, step plan.Step) {
+func (a *Agent) runWorker(ctx context.Context, step plan.Step) {
 	log.Printf("worker[%s]: starting (%s)", step.ID, step.Agent)
 
-	result, err := e.executeStep(ctx, step)
+	result, err := a.executeStep(ctx, step)
 
 	event := map[string]string{
 		"step_id": step.ID,
@@ -35,36 +35,36 @@ func (e *Executor) runWorker(ctx context.Context, step plan.Step) {
 	}
 
 	data, _ := json.Marshal(event)
-	if err := e.kb.Set(NSEvents, step.ID+"-done", data); err != nil {
+	if err := a.kb.Set(NSEvents, step.ID+"-done", data); err != nil {
 		log.Printf("worker[%s]: failed to write event: %v", step.ID, err)
 	}
 }
 
 // executeStep runs a single step using a short-lived AgentContext.
 // Supports multi-turn tool loops with linked ToolCall/ToolResult pairs.
-func (e *Executor) executeStep(ctx context.Context, step plan.Step) (string, error) {
-	def, ok := e.agents[step.Agent]
-	if !ok && step.Agent != AuthorSupervisor {
+func (a *Agent) executeStep(ctx context.Context, step plan.Step) (string, error) {
+	def, ok := a.subAgents[step.Agent]
+	if !ok && step.Agent != a.def.Name {
 		return "", fmt.Errorf("unknown agent %q", step.Agent)
 	}
-	if step.Agent == AuthorSupervisor {
-		def = e.supervisor
+	if step.Agent == a.def.Name {
+		def = a.def
 	}
 
-	systemPrompt := resolveSystemPrompt(e, def, step.Agent)
+	systemPrompt := resolveSystemPrompt(a, def, step.Agent)
 
-	workerCtx, err := e.buildWorkerContext(systemPrompt, def.Config.ContextWindow)
+	workerCtx, err := a.buildWorkerContext(systemPrompt, def.Config.ContextWindow)
 	if err != nil {
-		return e.executeStepRaw(ctx, step, systemPrompt)
+		return a.executeStepRaw(ctx, step, systemPrompt)
 	}
 
-	artifacts := e.gatherArtifacts()
+	artifacts := a.gatherArtifacts()
 	userMsg := fmt.Sprintf("Task: %s\n\nContext from knowledge base:\n%s\n\nComplete this task and provide a detailed result.",
 		step.Description, artifacts)
 
 	var finalResult string
 	for iter := 0; iter < MaxToolIterations; iter++ {
-		resp, err := e.inferWithContext(ctx, workerCtx, userMsg)
+		resp, err := a.inferWithContext(ctx, workerCtx, userMsg)
 		if err != nil {
 			return "", fmt.Errorf("infer iter %d: %w", iter, err)
 		}
@@ -77,25 +77,25 @@ func (e *Executor) executeStep(ctx context.Context, step plan.Step) (string, err
 		}
 
 		log.Printf("worker[%s]: tool call %s(%s)", step.ID, toolCall.ToolName, string(toolCall.Arguments))
-		result := e.executeTool(ctx, step.ID, *toolCall)
+		result := a.executeTool(ctx, step.ID, *toolCall)
 
-		callID, _ := e.idGen.Next()
-		resultID, _ := e.idGen.Next()
+		callID, _ := a.idGen.Next()
+		resultID, _ := a.idGen.Next()
 		agentAuthor, _ := llmctx.NewAuthorID(step.Agent)
 		toolAuthor, _ := llmctx.NewAuthorID(AuthorToolExecutor)
 
 		tc, tr, err := llmctx.NewLinkedToolExchange(
 			callID, agentAuthor, *toolCall,
 			resultID, toolAuthor, result,
-			e.tc,
+			a.tc,
 		)
 		if err != nil {
 			log.Printf("worker[%s]: failed to create linked exchange: %v", step.ID, err)
 			continue
 		}
 
-		tc = tc.WithVisibility(e.visPolicy.For(llmctx.ToolCallMessageType))
-		tr = tr.WithVisibility(e.visPolicy.For(llmctx.ToolResultMessageType))
+		tc = tc.WithVisibility(a.visPolicy.For(llmctx.ToolCallMessageType))
+		tr = tr.WithVisibility(a.visPolicy.For(llmctx.ToolResultMessageType))
 
 		workerCtx.AppendMessage(ctx, tc)
 		workerCtx.AppendMessage(ctx, tr)
@@ -107,7 +107,7 @@ func (e *Executor) executeStep(ctx context.Context, step plan.Step) (string, err
 		finalResult = "Task completed with tool interactions."
 	}
 
-	if err := e.kb.Set(NSArtifacts, step.ID, []byte(finalResult)); err != nil {
+	if err := a.kb.Set(NSArtifacts, step.ID, []byte(finalResult)); err != nil {
 		log.Printf("worker[%s]: failed to write artifact: %v", step.ID, err)
 	}
 
@@ -119,14 +119,14 @@ func (e *Executor) executeStep(ctx context.Context, step plan.Step) (string, err
 }
 
 // executeStepRaw is the fallback for when worker context build fails.
-func (e *Executor) executeStepRaw(ctx context.Context, step plan.Step, systemPrompt string) (string, error) {
-	artifacts := e.gatherArtifacts()
+func (a *Agent) executeStepRaw(ctx context.Context, step plan.Step, systemPrompt string) (string, error) {
+	artifacts := a.gatherArtifacts()
 	userMsg := fmt.Sprintf("Task: %s\n\nContext from knowledge base:\n%s\n\nComplete this task and provide a detailed result.",
 		step.Description, artifacts)
 
-	sysID, _ := e.idGen.Next()
+	sysID, _ := a.idGen.Next()
 	agentAuthor, _ := llmctx.NewAuthorID(step.Agent)
-	sysMsg, err := llmctx.NewSystemPromptMessage(sysID, agentAuthor, systemPrompt, e.tc)
+	sysMsg, err := llmctx.NewSystemPromptMessage(sysID, agentAuthor, systemPrompt, a.tc)
 	if err != nil {
 		return "", err
 	}
@@ -135,26 +135,26 @@ func (e *Executor) executeStepRaw(ctx context.Context, step plan.Step, systemPro
 	ac, err := llmctx.NewAgentContextBuilder().
 		WithSystemPrompt(sysMsg).
 		WithContextWindow(window).
-		WithTokenComputer(e.tc).
+		WithTokenComputer(a.tc).
 		Build()
 	if err != nil {
 		return "", err
 	}
 
-	m, _ := e.newUserMsg(userMsg)
+	m, _ := a.newUserMsg(userMsg)
 	ac.AppendMessage(ctx, m)
 
-	adapter, _ := e.adapterReg.Get(e.gateway.Provider())
+	adapter, _ := a.adapterReg.Get(a.gateway.Provider())
 	ca := llmctx.NewContextAdapter(ac, adapter)
 	payload, err := ca.BuildRequest(llmctx.RequestOptions{
-		Model:     e.gateway.ModelName(),
-		MaxTokens: e.gateway.MaxTokens(),
+		Model:     a.gateway.ModelName(),
+		MaxTokens: a.gateway.MaxTokens(),
 	})
 	if err != nil {
 		return "", err
 	}
 
-	resp, err := e.gateway.InferRaw(ctx, payload)
+	resp, err := a.gateway.InferRaw(ctx, payload)
 	if err != nil {
 		return "", err
 	}
@@ -162,15 +162,15 @@ func (e *Executor) executeStepRaw(ctx context.Context, step plan.Step, systemPro
 }
 
 // buildWorkerContext creates a short-lived AgentContext for a worker step.
-func (e *Executor) buildWorkerContext(systemPrompt string, windowSize int) (*llmctx.AgentContext, error) {
+func (a *Agent) buildWorkerContext(systemPrompt string, windowSize int) (*llmctx.AgentContext, error) {
 	if windowSize <= 0 {
 		windowSize = DefaultContextWindow
 	}
 	window, _ := llmctx.NewContextWindow(int32(windowSize))
 
-	sysID, _ := e.idGen.Next()
+	sysID, _ := a.idGen.Next()
 	agentAuthor, _ := llmctx.NewAuthorID(AuthorWorker)
-	sysMsg, err := llmctx.NewSystemPromptMessage(sysID, agentAuthor, systemPrompt, e.tc)
+	sysMsg, err := llmctx.NewSystemPromptMessage(sysID, agentAuthor, systemPrompt, a.tc)
 	if err != nil {
 		return nil, err
 	}
@@ -191,8 +191,8 @@ func (e *Executor) buildWorkerContext(systemPrompt string, windowSize int) (*llm
 		WithSystemPrompt(sysMsg).
 		WithContextWindow(window).
 		WithCompactor(compactor).
-		WithTokenComputer(e.tc).
-		WithIDGenerator(e.idGen).
+		WithTokenComputer(a.tc).
+		WithIDGenerator(a.idGen).
 		Build()
 }
 
@@ -227,7 +227,7 @@ func parseToolCall(content string) *msg.ToolCallPayload {
 
 // executeTool dispatches a tool call to the skill dispatcher and returns
 // a structured result payload.
-func (e *Executor) executeTool(ctx context.Context, stepID string, call msg.ToolCallPayload) msg.ToolResultPayload {
+func (a *Agent) executeTool(ctx context.Context, stepID string, call msg.ToolCallPayload) msg.ToolResultPayload {
 	var input map[string]interface{}
 	if err := json.Unmarshal(call.Arguments, &input); err != nil {
 		log.Printf("worker[%s]: failed to parse tool args: %v", stepID, err)
@@ -239,7 +239,7 @@ func (e *Executor) executeTool(ctx context.Context, stepID string, call msg.Tool
 		}
 	}
 
-	out, err := e.dispatcher.Invoke(ctx, call.ToolName, input)
+	out, err := a.dispatcher.Invoke(ctx, call.ToolName, input)
 	if err != nil {
 		return msg.ToolResultPayload{
 			ToolCallID:   call.ToolCallID,
@@ -250,7 +250,7 @@ func (e *Executor) executeTool(ctx context.Context, stepID string, call msg.Tool
 	}
 
 	outData, _ := json.Marshal(out)
-	e.kb.Set(NSArtifacts, stepID+"-skill-"+call.ToolName, outData)
+	a.kb.Set(NSArtifacts, stepID+"-skill-"+call.ToolName, outData)
 	log.Printf("worker[%s]: skill %s invoked successfully", stepID, call.ToolName)
 
 	return msg.ToolResultPayload{
@@ -262,11 +262,11 @@ func (e *Executor) executeTool(ctx context.Context, stepID string, call msg.Tool
 
 // resolveSystemPrompt finds the system prompt for an agent, checking KB config,
 // the agent definition, and falling back to a default.
-func resolveSystemPrompt(e *Executor, def *Definition, agentName string) string {
+func resolveSystemPrompt(a *Agent, def *Definition, agentName string) string {
 	if def.SystemPrompt != "" {
 		return def.SystemPrompt
 	}
-	if data, err := e.kb.Get(NSConfig, agentName+"-prompt"); err == nil {
+	if data, err := a.kb.Get(NSConfig, agentName+"-prompt"); err == nil {
 		return string(data)
 	}
 	return fmt.Sprintf("You are %s, a specialized AI agent. Complete the assigned task thoroughly and return the result.", agentName)

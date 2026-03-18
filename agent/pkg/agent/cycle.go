@@ -12,41 +12,41 @@ import (
 )
 
 // supervisorCycle executes one ORIENT → PLAN → DISPATCH → MONITOR → ASSESS pass.
-func (e *Executor) supervisorCycle(ctx context.Context) (bool, error) {
-	e.scanFreshness(ctx)
+func (a *Agent) supervisorCycle(ctx context.Context) (bool, error) {
+	a.scanFreshness(ctx)
 
-	state, err := e.orient(ctx)
+	state, err := a.orient(ctx)
 	if err != nil {
 		return false, fmt.Errorf("orient: %w", err)
 	}
-	if err := e.updatePlan(ctx, state); err != nil {
+	if err := a.updatePlan(ctx, state); err != nil {
 		return false, fmt.Errorf("plan: %w", err)
 	}
-	if err := e.dispatch(ctx); err != nil {
+	if err := a.dispatch(ctx); err != nil {
 		return false, fmt.Errorf("dispatch: %w", err)
 	}
-	if err := e.monitor(ctx); err != nil {
+	if err := a.monitor(ctx); err != nil {
 		return false, fmt.Errorf("monitor: %w", err)
 	}
-	return e.assess(ctx)
+	return a.assess(ctx)
 }
 
 // ─── FRESHNESS ───────────────────────────────────────────────────────────────
 
-// scanFreshness runs the llmctx freshness scanner on the supervisor context,
+// scanFreshness runs the llmctx freshness scanner on the agent context,
 // removing stale messages that cannot be refreshed.
-func (e *Executor) scanFreshness(ctx context.Context) {
-	if e.supervisorCtx == nil {
+func (a *Agent) scanFreshness(ctx context.Context) {
+	if a.ctx == nil {
 		return
 	}
 	vctx := freshness.ValidationContext{Now: time.Now().UTC()}
-	report, err := e.supervisorCtx.RefreshStale(ctx, vctx)
+	report, err := a.ctx.RefreshStale(ctx, vctx)
 	if err != nil {
-		log.Printf("executor: freshness scan error: %v", err)
+		log.Printf("agent: freshness scan error: %v", err)
 		return
 	}
 	if report.HasIssues() {
-		log.Printf("executor: freshness scan: %d stale (refreshed=%d, removed=%d, flagged=%d)",
+		log.Printf("agent: freshness scan: %d stale (refreshed=%d, removed=%d, flagged=%d)",
 			len(report.Stale), report.RefreshedCount, report.RemovedCount, report.FlaggedCount)
 	}
 }
@@ -54,14 +54,14 @@ func (e *Executor) scanFreshness(ctx context.Context) {
 // ─── ORIENT ──────────────────────────────────────────────────────────────────
 
 // orient reads KB state and builds a concise summary for the supervisor.
-func (e *Executor) orient(_ context.Context) (map[string]interface{}, error) {
+func (a *Agent) orient(_ context.Context) (map[string]interface{}, error) {
 	state := map[string]interface{}{}
 
-	if goal, err := e.kb.Get(NSConfig, KeyGoal); err == nil {
+	if goal, err := a.kb.Get(NSConfig, KeyGoal); err == nil {
 		state["goal"] = string(goal)
 	}
 
-	if p, err := e.planStore.Load(); err == nil {
+	if p, err := a.planStore.Load(); err == nil {
 		state["plan"] = p
 		counts := map[string]int{"pending": 0, "running": 0, "complete": 0, "failed": 0}
 		for _, s := range p.Steps {
@@ -70,10 +70,10 @@ func (e *Executor) orient(_ context.Context) (map[string]interface{}, error) {
 		state["step_counts"] = counts
 	}
 
-	eventKeys, _ := e.kb.List(NSEvents)
+	eventKeys, _ := a.kb.List(NSEvents)
 	events := []string{}
 	for _, k := range eventKeys {
-		if data, err := e.kb.Get(NSEvents, k); err == nil {
+		if data, err := a.kb.Get(NSEvents, k); err == nil {
 			events = append(events, string(data))
 		}
 	}
@@ -81,15 +81,15 @@ func (e *Executor) orient(_ context.Context) (map[string]interface{}, error) {
 		state["recent_events"] = events
 	}
 
-	agentNames := make([]string, 0, len(e.agents))
-	for name := range e.agents {
+	agentNames := make([]string, 0, len(a.subAgents))
+	for name := range a.subAgents {
 		agentNames = append(agentNames, name)
 	}
 	state["available_agents"] = agentNames
-	state["available_skills"] = e.dispatcher.List()
+	state["available_skills"] = a.dispatcher.List()
 
-	if e.supervisorCtx != nil {
-		s := e.supervisorCtx.Stats()
+	if a.ctx != nil {
+		s := a.ctx.Stats()
 		state["context_pressure"] = string(s.Pressure)
 		state["context_tokens"] = s.TotalTokens.Value()
 	}
@@ -100,7 +100,7 @@ func (e *Executor) orient(_ context.Context) (map[string]interface{}, error) {
 // ─── PLAN ────────────────────────────────────────────────────────────────────
 
 // updatePlan calls the model gateway to produce or update the master plan.
-func (e *Executor) updatePlan(ctx context.Context, state map[string]interface{}) error {
+func (a *Agent) updatePlan(ctx context.Context, state map[string]interface{}) error {
 	if p, ok := state["plan"].(*plan.Plan); ok {
 		if p.Complete {
 			return nil
@@ -145,12 +145,12 @@ Rules:
 - If the goal is already fully achieved, return {"complete": true, "summary": "<what was done>"}.
 - Respond with ONLY the JSON object, no explanation.`, string(stateJSON))
 
-	resp, err := e.inferWithContext(ctx, e.supervisorCtx, userMsg)
+	resp, err := a.inferWithContext(ctx, a.ctx, userMsg)
 	if err != nil {
 		return fmt.Errorf("model infer: %w", err)
 	}
 
-	log.Printf("executor: plan response (%d tokens): %s", resp.TotalTokens(), truncate(resp.Content, 200))
+	log.Printf("agent: plan response (%d tokens): %s", resp.TotalTokens(), truncate(resp.Content, 200))
 
 	planData, err := extractJSON(resp.Content)
 	if err != nil {
@@ -163,14 +163,14 @@ Rules:
 		Summary  string `json:"summary"`
 	}
 	if err := json.Unmarshal(planData, &check); err == nil && check.Complete {
-		existing, _ := e.planStore.Load()
+		existing, _ := a.planStore.Load()
 		if existing == nil {
 			existing = &plan.Plan{}
 		}
 		existing.Complete = true
 		existing.Summary = check.Summary
 		existing.UpdatedAt = time.Now()
-		return e.planStore.Save(existing)
+		return a.planStore.Save(existing)
 	}
 
 	// Parse new/updated plan
@@ -188,7 +188,7 @@ Rules:
 	}
 
 	// Merge with existing plan — preserve status of steps we already know about.
-	existing, _ := e.planStore.Load()
+	existing, _ := a.planStore.Load()
 	existingStatus := map[string]plan.Step{}
 	if existing != nil {
 		for _, s := range existing.Steps {
@@ -225,14 +225,14 @@ Rules:
 	if existing != nil {
 		p.CreatedAt = existing.CreatedAt
 	}
-	return e.planStore.Save(p)
+	return a.planStore.Save(p)
 }
 
 // ─── DISPATCH ────────────────────────────────────────────────────────────────
 
 // dispatch reads the current plan and spawns goroutines for ready steps.
-func (e *Executor) dispatch(ctx context.Context) error {
-	p, err := e.planStore.Load()
+func (a *Agent) dispatch(ctx context.Context) error {
+	p, err := a.planStore.Load()
 	if err != nil || p == nil || p.Complete {
 		return nil
 	}
@@ -245,12 +245,12 @@ func (e *Executor) dispatch(ctx context.Context) error {
 		if !plan.DepsComplete(p, step) {
 			continue
 		}
-		e.mu.Lock()
-		_, alreadyActive := e.activeSteps[step.ID]
+		a.mu.Lock()
+		_, alreadyActive := a.activeSteps[step.ID]
 		if !alreadyActive {
-			e.activeSteps[step.ID] = struct{}{}
+			a.activeSteps[step.ID] = struct{}{}
 		}
-		e.mu.Unlock()
+		a.mu.Unlock()
 		if alreadyActive {
 			continue
 		}
@@ -258,11 +258,11 @@ func (e *Executor) dispatch(ctx context.Context) error {
 		now := time.Now()
 		step.Status = plan.StepRunning
 		step.StartedAt = &now
-		if err := e.planStore.Save(p); err != nil {
+		if err := a.planStore.Save(p); err != nil {
 			return err
 		}
-		log.Printf("executor: dispatching step %s to agent %s", step.ID, step.Agent)
-		go e.runWorker(ctx, *step)
+		log.Printf("agent: dispatching step %s to agent %s", step.ID, step.Agent)
+		go a.runWorker(ctx, *step)
 	}
 	return nil
 }
@@ -270,20 +270,20 @@ func (e *Executor) dispatch(ctx context.Context) error {
 // ─── MONITOR ─────────────────────────────────────────────────────────────────
 
 // monitor reads completion events from the KB and updates the plan accordingly.
-func (e *Executor) monitor(_ context.Context) error {
-	p, err := e.planStore.Load()
+func (a *Agent) monitor(_ context.Context) error {
+	p, err := a.planStore.Load()
 	if err != nil || p == nil {
 		return nil
 	}
 
-	eventKeys, err := e.kb.List(NSEvents)
+	eventKeys, err := a.kb.List(NSEvents)
 	if err != nil {
 		return nil
 	}
 
 	modified := false
 	for _, key := range eventKeys {
-		data, err := e.kb.Get(NSEvents, key)
+		data, err := a.kb.Get(NSEvents, key)
 		if err != nil {
 			continue
 		}
@@ -307,19 +307,19 @@ func (e *Executor) monitor(_ context.Context) error {
 				} else {
 					p.Steps[i].Status = plan.StepFailed
 				}
-				e.mu.Lock()
-				delete(e.activeSteps, event.StepID)
-				e.mu.Unlock()
-				e.kb.Delete(NSEvents, key)
+				a.mu.Lock()
+				delete(a.activeSteps, event.StepID)
+				a.mu.Unlock()
+				a.kb.Delete(NSEvents, key)
 				modified = true
-				log.Printf("executor: step %s → %s", event.StepID, event.Status)
+				log.Printf("agent: step %s → %s", event.StepID, event.Status)
 				break
 			}
 		}
 	}
 
 	if modified {
-		return e.planStore.Save(p)
+		return a.planStore.Save(p)
 	}
 	return nil
 }
@@ -327,13 +327,13 @@ func (e *Executor) monitor(_ context.Context) error {
 // ─── ASSESS ──────────────────────────────────────────────────────────────────
 
 // assess checks whether the goal is fully achieved.
-func (e *Executor) assess(_ context.Context) (bool, error) {
-	p, err := e.planStore.Load()
+func (a *Agent) assess(_ context.Context) (bool, error) {
+	p, err := a.planStore.Load()
 	if err != nil || p == nil {
 		return false, nil
 	}
 	if p.Complete {
-		log.Printf("executor: plan complete — %s", p.Summary)
+		log.Printf("agent: plan complete — %s", p.Summary)
 		return true, nil
 	}
 	if len(p.Steps) > 0 {
@@ -348,7 +348,7 @@ func (e *Executor) assess(_ context.Context) (bool, error) {
 			p.Complete = true
 			p.Summary = "All steps completed successfully."
 			p.UpdatedAt = time.Now()
-			e.planStore.Save(p)
+			a.planStore.Save(p)
 			return true, nil
 		}
 	}

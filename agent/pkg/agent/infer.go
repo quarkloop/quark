@@ -17,9 +17,9 @@ import (
 // inferWithContext appends a user message to the AgentContext, builds the
 // payload via ContextAdapter, calls gateway.InferRaw, appends the agent
 // response, and auto-compacts if pressure is high.
-func (e *Executor) inferWithContext(ctx context.Context, ac *llmctx.AgentContext, userMsg string) (*model.RawResponse, error) {
+func (a *Agent) inferWithContext(ctx context.Context, ac *llmctx.AgentContext, userMsg string) (*model.RawResponse, error) {
 	if userMsg != "" {
-		m, err := e.newUserMsg(userMsg)
+		m, err := a.newUserMsg(userMsg)
 		if err != nil {
 			return nil, fmt.Errorf("build user msg: %w", err)
 		}
@@ -28,94 +28,94 @@ func (e *Executor) inferWithContext(ctx context.Context, ac *llmctx.AgentContext
 		}
 	}
 
-	adapter, err := e.adapterReg.Get(e.gateway.Provider())
+	adapter, err := a.adapterReg.Get(a.gateway.Provider())
 	if err != nil {
-		return nil, fmt.Errorf("adapter for %s: %w", e.gateway.Provider(), err)
+		return nil, fmt.Errorf("adapter for %s: %w", a.gateway.Provider(), err)
 	}
 	ca := llmctx.NewContextAdapter(ac, adapter)
 
 	payload, err := ca.BuildRequest(llmctx.RequestOptions{
-		Model:     e.gateway.ModelName(),
-		MaxTokens: e.gateway.MaxTokens(),
+		Model:     a.gateway.ModelName(),
+		MaxTokens: a.gateway.MaxTokens(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
 
-	resp, err := e.gateway.InferRaw(ctx, payload)
+	resp, err := a.gateway.InferRaw(ctx, payload)
 	if err != nil {
 		return nil, fmt.Errorf("gateway: %w", err)
 	}
 
-	agtMsg, err := e.newAgentMsg(AuthorAgent, resp.Content)
+	agtMsg, err := a.newAgentMsg(AuthorAgent, resp.Content)
 	if err == nil {
 		ac.AppendMessage(ctx, agtMsg)
 	}
 
 	if ac.Pressure() >= llmctx.PressureHigh {
-		log.Printf("executor: context pressure %s — auto-compacting", ac.Pressure())
+		log.Printf("agent: context pressure %s — auto-compacting", ac.Pressure())
 		if err := ac.Compact(ctx); err != nil {
-			log.Printf("executor: compact error: %v", err)
+			log.Printf("agent: compact error: %v", err)
 		}
 	}
 
 	return resp, nil
 }
 
-// ─── Message factories (Task 4: consolidate helpers) ─────────────────────────
+// ─── Message factories ───────────────────────────────────────────────────────
 
 // newUserMsg creates a new user text message with auto-generated ID.
-func (e *Executor) newUserMsg(text string) (*llmctx.Message, error) {
-	id, err := e.idGen.Next()
+func (a *Agent) newUserMsg(text string) (*llmctx.Message, error) {
+	id, err := a.idGen.Next()
 	if err != nil {
 		return nil, err
 	}
 	author, _ := llmctx.NewAuthorID(AuthorUser)
-	return llmctx.NewTextMessage(id, author, llmctx.UserAuthor, text, e.tc)
+	return llmctx.NewTextMessage(id, author, llmctx.UserAuthor, text, a.tc)
 }
 
 // newAgentMsg creates a new agent text message with auto-generated ID.
-func (e *Executor) newAgentMsg(authorName, text string) (*llmctx.Message, error) {
-	id, err := e.idGen.Next()
+func (a *Agent) newAgentMsg(authorName, text string) (*llmctx.Message, error) {
+	id, err := a.idGen.Next()
 	if err != nil {
 		return nil, err
 	}
 	author, _ := llmctx.NewAuthorID(authorName)
-	return llmctx.NewTextMessage(id, author, llmctx.AgentAuthor, text, e.tc)
+	return llmctx.NewTextMessage(id, author, llmctx.AgentAuthor, text, a.tc)
 }
 
 // ─── Snapshot persistence ────────────────────────────────────────────────────
 
-// saveCheckpoint saves the supervisor context to KB for session resumption.
-func (e *Executor) saveCheckpoint() {
-	if e.supervisorCtx == nil || e.snapRepo == nil {
+// saveCheckpoint saves the agent context to KB for session resumption.
+func (a *Agent) saveCheckpoint() {
+	if a.ctx == nil || a.snapRepo == nil {
 		return
 	}
-	snapID, err := e.idGen.Next()
+	snapID, err := a.idGen.Next()
 	if err != nil {
-		log.Printf("executor: checkpoint ID error: %v", err)
+		log.Printf("agent: checkpoint ID error: %v", err)
 		return
 	}
-	snap := llmctx.SnapshotFromContext(snapID, e.supervisorCtx)
-	if err := e.snapRepo.SaveLatestSnapshot(snap); err != nil {
-		log.Printf("executor: checkpoint save error: %v", err)
+	snap := llmctx.SnapshotFromContext(snapID, a.ctx)
+	if err := a.snapRepo.SaveLatestSnapshot(snap); err != nil {
+		log.Printf("agent: checkpoint save error: %v", err)
 	}
 }
 
 // ─── KB helpers ──────────────────────────────────────────────────────────────
 
 // gatherArtifacts reads relevant KB entries to provide as worker context.
-func (e *Executor) gatherArtifacts() string {
+func (a *Agent) gatherArtifacts() string {
 	var sb strings.Builder
 	namespaces := []string{NSMemory, NSDocuments, NSArtifacts, NSNotes}
 	for _, ns := range namespaces {
-		keys, err := e.kb.List(ns)
+		keys, err := a.kb.List(ns)
 		if err != nil || len(keys) == 0 {
 			continue
 		}
 		sb.WriteString(fmt.Sprintf("\n[%s]\n", ns))
 		for _, k := range keys {
-			data, err := e.kb.Get(ns, k)
+			data, err := a.kb.Get(ns, k)
 			if err != nil {
 				continue
 			}
@@ -129,21 +129,21 @@ func (e *Executor) gatherArtifacts() string {
 
 // buildSupervisorSystemPrompt resolves the supervisor's system prompt from
 // KB config, file path, inline text, or a generated default.
-func (e *Executor) buildSupervisorSystemPrompt(state map[string]interface{}) string {
-	if data, err := e.kb.Get(NSConfig, KeySupervisorPrompt); err == nil && len(data) > 0 {
+func (a *Agent) buildSupervisorSystemPrompt(state map[string]interface{}) string {
+	if data, err := a.kb.Get(NSConfig, KeySupervisorPrompt); err == nil && len(data) > 0 {
 		return string(data)
 	}
-	if e.supervisor.SystemPrompt != "" {
-		if !strings.Contains(e.supervisor.SystemPrompt, "\n") {
-			if data, err := os.ReadFile(e.supervisor.SystemPrompt); err == nil {
+	if a.def.SystemPrompt != "" {
+		if !strings.Contains(a.def.SystemPrompt, "\n") {
+			if data, err := os.ReadFile(a.def.SystemPrompt); err == nil {
 				return string(data)
 			}
 		}
-		return e.supervisor.SystemPrompt
+		return a.def.SystemPrompt
 	}
 
 	agents := []string{}
-	for name := range e.agents {
+	for name := range a.subAgents {
 		agents = append(agents, name)
 	}
 	return fmt.Sprintf(`You are the supervisor agent orchestrating a multi-agent space.
@@ -159,7 +159,7 @@ Your job is to:
 
 Always respond with valid JSON as instructed.`,
 		strings.Join(agents, ", "),
-		strings.Join(e.dispatcher.List(), ", "))
+		strings.Join(a.dispatcher.List(), ", "))
 }
 
 // ─── Utility ─────────────────────────────────────────────────────────────────
