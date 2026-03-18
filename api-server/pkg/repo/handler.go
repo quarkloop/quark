@@ -10,7 +10,7 @@ import (
 
 	"github.com/quarkloop/api-server/pkg/api"
 	"github.com/quarkloop/agent/pkg/infra/httpserver"
-	spacerepo "github.com/quarkloop/space/pkg/repo"
+	spacerepo "github.com/quarkloop/tools/space/pkg/repo"
 )
 
 // Handler implements HTTP handlers for repo management operations.

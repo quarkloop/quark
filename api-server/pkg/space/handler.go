@@ -12,7 +12,7 @@ import (
 
 	"github.com/quarkloop/agent/pkg/errors"
 	"github.com/quarkloop/agent/pkg/infra/httpserver"
-	"github.com/quarkloop/space/pkg/quarkfile"
+	"github.com/quarkloop/tools/space/pkg/quarkfile"
 )
 
 // serverVersion is the api-server version reported in system info.

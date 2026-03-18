@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/quarkloop/store/pkg/store"
+	"github.com/quarkloop/core/pkg/store"
 )
 
 // Store defines the interface for persisting space records.
