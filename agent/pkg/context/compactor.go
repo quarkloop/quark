@@ -2,31 +2,17 @@ package llmctx
 
 import (
 	"fmt"
+	"sort"
 
-	comp "github.com/quarkloop/agent/pkg/context/compactor"
+	"github.com/quarkloop/agent/pkg/context/message"
 )
 
 // =============================================================================
-// compactor.go  —  Root-package compactor bridge
-//
-// The canonical compactor implementations live in llmctx/compactor.
-// This file:
-//   1. Keeps the root Compactor interface (taking []*Message) for backward
-//      compatibility with AgentContext.
-//   2. Re-exports the compactor type names as aliases.
-//   3. Provides adapted constructors that wrap llmctx/compactor implementations
-//      inside a root-level Compactor.
-//
-// The bridge works via toCompactorMessages() which converts []*Message to
-// []comp.Message (both *Message satisfies comp.Message interface).
+// Compactor interface
 // =============================================================================
 
-// ---------------------------------------------------------------------------
-// Root Compactor interface — kept for AgentContext compatibility
-// ---------------------------------------------------------------------------
-
 // Compactor reduces the message list so that the total token count fits within
-// a ContextWindow. Implementations are provided by llmctx/compactor.
+// a ContextWindow.
 //
 // Contract:
 //   - Return a new slice; do not mutate the input.
@@ -40,82 +26,60 @@ type Compactor interface {
 // Lower score = more evictable. Should return a value in [0.0, 1.0].
 type ScorerFunc func(m *Message) float64
 
-// ---------------------------------------------------------------------------
-// Type aliases from llmctx/compactor (public types)
-// ---------------------------------------------------------------------------
+// =============================================================================
+// Preview types
+// =============================================================================
 
 // EvictedMessage is a lightweight record of one message that would be removed.
-type EvictedMessage = comp.EvictedMessage
+type EvictedMessage struct {
+	ID       string      `json:"id"`
+	Type     MessageType `json:"type"`
+	Author   string      `json:"author"`
+	Weight   int32       `json:"weight"`
+	Tokens   TokenCount  `json:"tokens"`
+	Position int         `json:"position"`
+}
 
 // CompactionPreview is the immutable result of a dry-run compaction.
-// Note: field types differ slightly from the sub-package (IDs are strings).
-type CompactionPreview = comp.Preview
+type CompactionPreview struct {
+	WouldCompact    bool           `json:"would_compact"`
+	Evicted         []EvictedMessage `json:"evicted"`
+	RetainedCount   int            `json:"retained_count"`
+	TokensBefore    TokenCount     `json:"tokens_before"`
+	TokensAfter     TokenCount     `json:"tokens_after"`
+	TokensReclaimed TokenCount     `json:"tokens_reclaimed"`
+	WouldFit        bool           `json:"would_fit"`
+}
+
+// EvictionCount returns the number of messages that would be evicted.
+func (p CompactionPreview) EvictionCount() int { return len(p.Evicted) }
+
+// CompressionRatio returns TokensAfter / TokensBefore as a [0,1] ratio.
+func (p CompactionPreview) CompressionRatio() float64 {
+	if p.TokensBefore.IsZero() {
+		return 1.0
+	}
+	return float64(p.TokensAfter.Value()) / float64(p.TokensBefore.Value())
+}
 
 // CompactorWithPreview is implemented by compactors that support dry-run
 // previews natively.
-// Note: this interface uses []*Message (root slice) via the bridge.
 type CompactorWithPreview interface {
 	Compactor
 	Preview(messages []*Message, window ContextWindow) CompactionPreview
 }
 
-// ---------------------------------------------------------------------------
-// Message conversion helpers
-// ---------------------------------------------------------------------------
+// =============================================================================
+// Internal helpers
+// =============================================================================
 
-// toCompactorMessages converts []*Message to []comp.Message for use with
-// llmctx/compactor implementations.
-func toCompactorMessages(messages []*Message) []comp.Message {
-	out := make([]comp.Message, len(messages))
-	for i, m := range messages {
-		out[i] = m
+func totalTokens(messages []*Message) TokenCount {
+	var total TokenCount
+	for _, m := range messages {
+		total = total.Add(m.TokenCount())
 	}
-	return out
+	return total
 }
-
-// fromCompactorMessages recovers []*Message from a []comp.Message returned
-// by a sub-package compactor. Since the elements are the original *Message
-// pointers (just wrapped in the interface), a simple type assertion suffices.
-func fromCompactorMessages(messages []comp.Message) ([]*Message, error) {
-	out := make([]*Message, len(messages))
-	for i, m := range messages {
-		msg, ok := m.(*Message)
-		if !ok {
-			return nil, fmt.Errorf("compactor: unexpected message type %T", m)
-		}
-		out[i] = msg
-	}
-	return out, nil
-}
-
-// ---------------------------------------------------------------------------
-// rootCompactorAdapter — wraps a comp.Compactor in the root Compactor interface
-// ---------------------------------------------------------------------------
-
-// rootCompactorAdapter bridges llmctx/compactor.Compactor ↔ root Compactor.
-type rootCompactorAdapter struct {
-	inner comp.Compactor
-}
-
-func (a *rootCompactorAdapter) Compact(messages []*Message, window ContextWindow) ([]*Message, error) {
-	compMsgs := toCompactorMessages(messages)
-	result, err := a.inner.Compact(compMsgs, window)
-	if err != nil {
-		return nil, err
-	}
-	return fromCompactorMessages(result)
-}
-
-// Preview implements the optional CompactorWithPreview interface if the inner
-// compactor supports it.
-func (a *rootCompactorAdapter) Preview(messages []*Message, window ContextWindow) CompactionPreview {
-	compMsgs := toCompactorMessages(messages)
-	return comp.PreviewCompact(a.inner, compMsgs, window)
-}
-
-// ---------------------------------------------------------------------------
-// Internal helpers (used by compactor_preview.go and graph_compactor.go)
-// ---------------------------------------------------------------------------
 
 func findSystemPromptIndex(messages []*Message) int {
 	for i, m := range messages {
@@ -126,14 +90,6 @@ func findSystemPromptIndex(messages []*Message) int {
 	return -1
 }
 
-func totalTokens(messages []*Message) TokenCount {
-	var total TokenCount
-	for _, m := range messages {
-		total = total.Add(m.TokenCount())
-	}
-	return total
-}
-
 func cloneMessages(messages []*Message) []*Message {
 	out := make([]*Message, len(messages))
 	copy(out, messages)
@@ -141,7 +97,7 @@ func cloneMessages(messages []*Message) []*Message {
 }
 
 func filterMessages(messages []*Message, keep func(i int, m *Message) bool) []*Message {
-	out := messages[:0]
+	out := make([]*Message, 0, len(messages))
 	for i, m := range messages {
 		if keep(i, m) {
 			out = append(out, m)
@@ -150,107 +106,433 @@ func filterMessages(messages []*Message, keep func(i int, m *Message) bool) []*M
 	return out
 }
 
-// ---------------------------------------------------------------------------
-// Public constructors — return root Compactor wrapping sub-package implementation
-// ---------------------------------------------------------------------------
+// =============================================================================
+// WeightBasedCompactor
+// =============================================================================
 
-// NewWeightBasedCompactor returns a Compactor that evicts by ascending weight.
-func NewWeightBasedCompactor() CompactorWithPreview {
-	return &rootCompactorAdapter{inner: comp.NewWeightBasedCompactor()}
+// WeightBasedCompactor evicts messages in ascending weight order (lowest first),
+// breaking ties by position (oldest first). The system prompt is never evicted.
+type WeightBasedCompactor struct{}
+
+// NewWeightBasedCompactor returns a WeightBasedCompactor.
+func NewWeightBasedCompactor() *WeightBasedCompactor {
+	return &WeightBasedCompactor{}
 }
 
-// NewFIFOCompactor returns a Compactor that evicts the oldest messages first.
-func NewFIFOCompactor() CompactorWithPreview {
-	return &rootCompactorAdapter{inner: comp.NewFIFOCompactor()}
-}
-
-// NewSlidingWindowCompactor validates maxMessages and returns a count-limited Compactor.
-func NewSlidingWindowCompactor(maxMessages int) (CompactorWithPreview, error) {
-	inner, err := comp.NewSlidingWindowCompactor(maxMessages)
-	if err != nil {
-		return nil, newErr(ErrCodeInvalidConfig, err.Error(), err)
+func (WeightBasedCompactor) Compact(messages []*Message, window ContextWindow) ([]*Message, error) {
+	if window.IsUnbound() || !totalTokens(messages).ExceedsWindow(window) {
+		return messages, nil
 	}
-	return &rootCompactorAdapter{inner: inner}, nil
+	sysIdx := findSystemPromptIndex(messages)
+	result := cloneMessages(messages)
+
+	type candidate struct{ idx, weight int32 }
+	candidates := make([]candidate, 0, len(result))
+	for i, m := range result {
+		if i == sysIdx {
+			continue
+		}
+		candidates = append(candidates, candidate{idx: int32(i), weight: m.Weight().Value()})
+	}
+	sort.Slice(candidates, func(a, b int) bool {
+		if candidates[a].weight != candidates[b].weight {
+			return candidates[a].weight < candidates[b].weight
+		}
+		return candidates[a].idx < candidates[b].idx
+	})
+
+	evict := make(map[int]bool, len(candidates))
+	total := totalTokens(result)
+	for _, c := range candidates {
+		if !total.ExceedsWindow(window) {
+			break
+		}
+		total = total.Sub(result[c.idx].TokenCount())
+		evict[int(c.idx)] = true
+	}
+
+	return filterMessages(result, func(i int, _ *Message) bool { return !evict[i] }), nil
 }
 
-// NewScoreCompactor validates scorer and returns a score-based Compactor.
-func NewScoreCompactor(scorer ScorerFunc) (CompactorWithPreview, error) {
+func (WeightBasedCompactor) Preview(messages []*Message, window ContextWindow) CompactionPreview {
+	tokensBefore := totalTokens(messages)
+	if window.IsUnbound() || !tokensBefore.ExceedsWindow(window) {
+		return noopPreview(len(messages), tokensBefore)
+	}
+
+	sysIdx := findSystemPromptIndex(messages)
+	type cand struct{ idx, weight int32 }
+	candidates := make([]cand, 0, len(messages))
+	for i, m := range messages {
+		if i != sysIdx {
+			candidates = append(candidates, cand{int32(i), m.Weight().Value()})
+		}
+	}
+	sort.Slice(candidates, func(a, b int) bool {
+		if candidates[a].weight != candidates[b].weight {
+			return candidates[a].weight < candidates[b].weight
+		}
+		return candidates[a].idx < candidates[b].idx
+	})
+
+	var evicted []EvictedMessage
+	total := tokensBefore
+	for _, c := range candidates {
+		if !total.ExceedsWindow(window) {
+			break
+		}
+		m := messages[c.idx]
+		total = total.Sub(m.TokenCount())
+		evicted = append(evicted, makeEvicted(m, int(c.idx)))
+	}
+	return makePreview(evicted, len(messages), tokensBefore, total, window)
+}
+
+// =============================================================================
+// FIFOCompactor
+// =============================================================================
+
+// FIFOCompactor evicts the oldest non-system messages first.
+type FIFOCompactor struct{}
+
+func NewFIFOCompactor() *FIFOCompactor { return &FIFOCompactor{} }
+
+func (FIFOCompactor) Compact(messages []*Message, window ContextWindow) ([]*Message, error) {
+	if window.IsUnbound() || !totalTokens(messages).ExceedsWindow(window) {
+		return messages, nil
+	}
+	sysIdx := findSystemPromptIndex(messages)
+	result := cloneMessages(messages)
+
+	evict := make(map[int]bool)
+	total := totalTokens(result)
+	for i, m := range result {
+		if !total.ExceedsWindow(window) {
+			break
+		}
+		if i == sysIdx {
+			continue
+		}
+		total = total.Sub(m.TokenCount())
+		evict[i] = true
+	}
+
+	return filterMessages(result, func(i int, _ *Message) bool { return !evict[i] }), nil
+}
+
+func (FIFOCompactor) Preview(messages []*Message, window ContextWindow) CompactionPreview {
+	tokensBefore := totalTokens(messages)
+	if window.IsUnbound() || !tokensBefore.ExceedsWindow(window) {
+		return noopPreview(len(messages), tokensBefore)
+	}
+
+	sysIdx := findSystemPromptIndex(messages)
+	var evicted []EvictedMessage
+	total := tokensBefore
+	for i, m := range messages {
+		if !total.ExceedsWindow(window) {
+			break
+		}
+		if i == sysIdx {
+			continue
+		}
+		total = total.Sub(m.TokenCount())
+		evicted = append(evicted, makeEvicted(m, i))
+	}
+	return makePreview(evicted, len(messages), tokensBefore, total, window)
+}
+
+// =============================================================================
+// SlidingWindowCompactor
+// =============================================================================
+
+// SlidingWindowCompactor retains only the N most-recent non-system messages.
+type SlidingWindowCompactor struct {
+	maxMessages int
+}
+
+func NewSlidingWindowCompactor(maxMessages int) (*SlidingWindowCompactor, error) {
+	if maxMessages <= 0 {
+		return nil, newErr(ErrCodeInvalidConfig,
+			fmt.Sprintf("SlidingWindowCompactor maxMessages must be > 0, got %d", maxMessages), nil)
+	}
+	return &SlidingWindowCompactor{maxMessages: maxMessages}, nil
+}
+
+func (s *SlidingWindowCompactor) Compact(messages []*Message, _ ContextWindow) ([]*Message, error) {
+	sysIdx := findSystemPromptIndex(messages)
+
+	var sysMsg *Message
+	rest := make([]*Message, 0, len(messages))
+	for i, m := range messages {
+		if i == sysIdx {
+			sysMsg = m
+		} else {
+			rest = append(rest, m)
+		}
+	}
+
+	if len(rest) > s.maxMessages {
+		rest = rest[len(rest)-s.maxMessages:]
+	}
+
+	if sysMsg == nil {
+		return rest, nil
+	}
+	out := make([]*Message, 0, len(rest)+1)
+	return append(append(out, sysMsg), rest...), nil
+}
+
+func (s *SlidingWindowCompactor) Preview(messages []*Message, _ ContextWindow) CompactionPreview {
+	tokensBefore := totalTokens(messages)
+	sysIdx := findSystemPromptIndex(messages)
+
+	type indexed struct {
+		m   *Message
+		pos int
+	}
+	nonSystem := make([]indexed, 0, len(messages))
+	for i, m := range messages {
+		if i != sysIdx {
+			nonSystem = append(nonSystem, indexed{m, i})
+		}
+	}
+	if len(nonSystem) <= s.maxMessages {
+		return noopPreview(len(messages), tokensBefore)
+	}
+
+	trimCount := len(nonSystem) - s.maxMessages
+	evicted := make([]EvictedMessage, 0, trimCount)
+	total := tokensBefore
+	for i := 0; i < trimCount; i++ {
+		m := nonSystem[i].m
+		total = total.Sub(m.TokenCount())
+		evicted = append(evicted, makeEvicted(m, nonSystem[i].pos))
+	}
+	return CompactionPreview{
+		WouldCompact:    true,
+		Evicted:         evicted,
+		RetainedCount:   len(messages) - len(evicted),
+		TokensBefore:    tokensBefore,
+		TokensAfter:     total,
+		TokensReclaimed: tokensBefore.Sub(total),
+		WouldFit:        true,
+	}
+}
+
+func (s *SlidingWindowCompactor) MaxMessages() int { return s.maxMessages }
+
+// =============================================================================
+// ScoreCompactor
+// =============================================================================
+
+// ScoreCompactor evicts the lowest-scored messages until the context fits.
+type ScoreCompactor struct {
+	scorer ScorerFunc
+}
+
+func NewScoreCompactor(scorer ScorerFunc) (*ScoreCompactor, error) {
 	if scorer == nil {
 		return nil, newErr(ErrCodeInvalidConfig, "ScoreCompactor: scorer must not be nil", nil)
 	}
-	// Wrap the root ScorerFunc into a comp.ScorerFunc.
-	innerScorer := func(m comp.Message) float64 {
-		msg, ok := m.(*Message)
-		if !ok {
-			return 0.5
-		}
-		return scorer(msg)
-	}
-	inner, err := comp.NewScoreCompactor(innerScorer)
-	if err != nil {
-		return nil, newErr(ErrCodeInvalidConfig, err.Error(), err)
-	}
-	return &rootCompactorAdapter{inner: inner}, nil
+	return &ScoreCompactor{scorer: scorer}, nil
 }
 
-// NewPipelineCompactor chains Compactors in sequence.
-func NewPipelineCompactor(stages ...Compactor) (CompactorWithPreview, error) {
+func (sc *ScoreCompactor) Compact(messages []*Message, window ContextWindow) ([]*Message, error) {
+	if window.IsUnbound() || !totalTokens(messages).ExceedsWindow(window) {
+		return messages, nil
+	}
+	sysIdx := findSystemPromptIndex(messages)
+
+	type scored struct {
+		idx   int
+		score float64
+	}
+	candidates := make([]scored, 0, len(messages))
+	for i, m := range messages {
+		if i == sysIdx {
+			continue
+		}
+		candidates = append(candidates, scored{idx: i, score: sc.scorer(m)})
+	}
+	sort.Slice(candidates, func(a, b int) bool {
+		return candidates[a].score < candidates[b].score
+	})
+
+	evict := make(map[int]bool, len(candidates))
+	total := totalTokens(messages)
+	for _, c := range candidates {
+		if !total.ExceedsWindow(window) {
+			break
+		}
+		total = total.Sub(messages[c.idx].TokenCount())
+		evict[c.idx] = true
+	}
+
+	return filterMessages(messages, func(i int, _ *Message) bool { return !evict[i] }), nil
+}
+
+func (sc *ScoreCompactor) Preview(messages []*Message, window ContextWindow) CompactionPreview {
+	tokensBefore := totalTokens(messages)
+	if window.IsUnbound() || !tokensBefore.ExceedsWindow(window) {
+		return noopPreview(len(messages), tokensBefore)
+	}
+
+	sysIdx := findSystemPromptIndex(messages)
+	type scored struct {
+		idx   int
+		score float64
+	}
+	candidates := make([]scored, 0, len(messages))
+	for i, m := range messages {
+		if i != sysIdx {
+			candidates = append(candidates, scored{i, sc.scorer(m)})
+		}
+	}
+	sort.Slice(candidates, func(a, b int) bool {
+		return candidates[a].score < candidates[b].score
+	})
+
+	var evicted []EvictedMessage
+	total := tokensBefore
+	for _, c := range candidates {
+		if !total.ExceedsWindow(window) {
+			break
+		}
+		m := messages[c.idx]
+		total = total.Sub(m.TokenCount())
+		evicted = append(evicted, makeEvicted(m, c.idx))
+	}
+	return makePreview(evicted, len(messages), tokensBefore, total, window)
+}
+
+// =============================================================================
+// PipelineCompactor
+// =============================================================================
+
+// PipelineCompactor chains Compactors in sequence.
+type PipelineCompactor struct {
+	stages []Compactor
+}
+
+func NewPipelineCompactor(stages ...Compactor) (*PipelineCompactor, error) {
 	if len(stages) == 0 {
 		return nil, newErr(ErrCodeInvalidConfig,
 			"PipelineCompactor: at least one stage is required", nil)
 	}
-	innerStages := make([]comp.Compactor, len(stages))
 	for i, s := range stages {
 		if s == nil {
 			return nil, newErr(ErrCodeInvalidConfig,
 				fmt.Sprintf("PipelineCompactor: stage at index %d is nil", i), nil)
 		}
-		innerStages[i] = &rootToCompAdapter{s}
 	}
-	inner, err := comp.NewPipelineCompactor(innerStages...)
-	if err != nil {
-		return nil, newErr(ErrCodeInvalidConfig, err.Error(), err)
-	}
-	return &rootCompactorAdapter{inner: inner}, nil
+	return &PipelineCompactor{stages: stages}, nil
 }
 
-// NewThresholdCompactor activates inner at a usage % threshold.
-func NewThresholdCompactor(inner Compactor, pct int) (CompactorWithPreview, error) {
+func (p *PipelineCompactor) Compact(messages []*Message, window ContextWindow) ([]*Message, error) {
+	current := messages
+	for i, stage := range p.stages {
+		if !totalTokens(current).ExceedsWindow(window) {
+			break
+		}
+		result, err := stage.Compact(current, window)
+		if err != nil {
+			return nil, fmt.Errorf("PipelineCompactor stage %d failed: %w", i, err)
+		}
+		current = result
+	}
+	return current, nil
+}
+
+func (p *PipelineCompactor) Preview(messages []*Message, window ContextWindow) CompactionPreview {
+	tokensBefore := totalTokens(messages)
+	if window.IsUnbound() || !tokensBefore.ExceedsWindow(window) {
+		return noopPreview(len(messages), tokensBefore)
+	}
+
+	var allEvicted []EvictedMessage
+	current := cloneMessages(messages)
+	for _, stage := range p.stages {
+		if !totalTokens(current).ExceedsWindow(window) {
+			break
+		}
+		sp := PreviewCompaction(stage, current, window)
+		allEvicted = append(allEvicted, sp.Evicted...)
+		evictSet := make(map[string]bool, len(sp.Evicted))
+		for _, e := range sp.Evicted {
+			evictSet[e.ID] = true
+		}
+		next := make([]*Message, 0, len(current))
+		for _, m := range current {
+			if !evictSet[m.ID().String()] {
+				next = append(next, m)
+			}
+		}
+		current = next
+	}
+
+	tokensAfter := totalTokens(current)
+	return CompactionPreview{
+		WouldCompact:    len(allEvicted) > 0,
+		Evicted:         allEvicted,
+		RetainedCount:   len(current),
+		TokensBefore:    tokensBefore,
+		TokensAfter:     tokensAfter,
+		TokensReclaimed: tokensBefore.Sub(tokensAfter),
+		WouldFit:        !tokensAfter.ExceedsWindow(window),
+	}
+}
+
+// =============================================================================
+// ThresholdCompactor
+// =============================================================================
+
+// ThresholdCompactor activates its inner Compactor only when token usage
+// reaches a configured percentage of the context window.
+type ThresholdCompactor struct {
+	inner Compactor
+	pct   int // 1–100
+}
+
+func NewThresholdCompactor(inner Compactor, pct int) (*ThresholdCompactor, error) {
 	if inner == nil {
 		return nil, newErr(ErrCodeInvalidConfig,
 			"ThresholdCompactor: inner compactor must not be nil", nil)
 	}
-	innerComp, err := comp.NewThresholdCompactor(&rootToCompAdapter{inner}, pct)
-	if err != nil {
-		return nil, newErr(ErrCodeInvalidConfig, err.Error(), err)
+	if pct < 1 || pct > 100 {
+		return nil, newErr(ErrCodeInvalidConfig,
+			fmt.Sprintf("ThresholdCompactor: pct must be 1–100, got %d", pct), nil)
 	}
-	return &rootCompactorAdapter{inner: innerComp}, nil
+	return &ThresholdCompactor{inner: inner, pct: pct}, nil
 }
 
-// ---------------------------------------------------------------------------
-// rootToCompAdapter — wraps a root Compactor inside comp.Compactor
-// (used when nesting PipelineCompactor stages)
-// ---------------------------------------------------------------------------
-
-type rootToCompAdapter struct {
-	inner Compactor
+func (t *ThresholdCompactor) Compact(messages []*Message, window ContextWindow) ([]*Message, error) {
+	if window.IsUnbound() {
+		return messages, nil
+	}
+	threshold := int32(float64(window.Value()) * float64(t.pct) / 100.0)
+	if totalTokens(messages).Value() < threshold {
+		return messages, nil
+	}
+	return t.inner.Compact(messages, window)
 }
 
-func (a *rootToCompAdapter) Compact(messages []comp.Message, window ContextWindow) ([]comp.Message, error) {
-	rootMsgs, err := fromCompactorMessages(messages)
-	if err != nil {
-		return nil, err
+func (t *ThresholdCompactor) Preview(messages []*Message, window ContextWindow) CompactionPreview {
+	tokensBefore := totalTokens(messages)
+	if !window.IsUnbound() {
+		threshold := int32(float64(window.Value()) * float64(t.pct) / 100.0)
+		if tokensBefore.Value() < threshold {
+			return noopPreview(len(messages), tokensBefore)
+		}
 	}
-	result, err := a.inner.Compact(rootMsgs, window)
-	if err != nil {
-		return nil, err
-	}
-	return toCompactorMessages(result), nil
+	return PreviewCompaction(t.inner, messages, window)
 }
 
-// ---------------------------------------------------------------------------
-// Scorer factories — root-level wrappers
-// ---------------------------------------------------------------------------
+func (t *ThresholdCompactor) ThresholdPct() int { return t.pct }
+
+// =============================================================================
+// Scorer factories
+// =============================================================================
 
 // RecencyScorer assigns higher scores to more-recent messages (less evictable).
 func RecencyScorer(messages []*Message) ScorerFunc {
@@ -279,7 +561,7 @@ func WeightScorer(maxWeight int32) ScorerFunc {
 }
 
 // TypePriorityScorer assigns scores by MessageType.
-func TypePriorityScorer(priorities map[MessageType]float64) ScorerFunc {
+func TypePriorityScorer(priorities map[message.MessageType]float64) ScorerFunc {
 	return func(m *Message) float64 {
 		if score, ok := priorities[m.Type()]; ok {
 			return score

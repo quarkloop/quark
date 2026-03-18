@@ -1,27 +1,24 @@
 package llmctx
 
-import comp "github.com/quarkloop/agent/pkg/context/compactor"
-
 // =============================================================================
-// compactor_preview.go  —  Root-package preview bridge
-//
-// CompactionPreview, EvictedMessage, CompactorWithPreview, and
-// PreviewCompaction are all aliases/wrappers over llmctx/compactor types.
-// The canonical implementations live there.
+// compactor_preview.go  —  Preview helpers for dry-run compaction
 // =============================================================================
 
 // PreviewCompaction performs a dry-run using any Compactor.
 // If c implements CompactorWithPreview, its native Preview is called.
 // Otherwise Compact is called on a shallow clone and the result is diffed.
 func PreviewCompaction(c Compactor, messages []*Message, window ContextWindow) CompactionPreview {
-	compMsgs := toCompactorMessages(messages)
-	// If root compactor embeds a CompactorWithPreview (our rootCompactorAdapter does),
-	// call it directly. Otherwise use the sub-package universal fallback.
 	if cwp, ok := c.(CompactorWithPreview); ok {
 		return cwp.Preview(messages, window)
 	}
-	// Fallback: wrap the root compactor as a comp.Compactor and use sub-package preview.
-	return comp.PreviewCompact(&rootToCompAdapter{c}, compMsgs, window)
+	// Fallback: run Compact on a clone and diff the results.
+	tokensBefore := totalTokens(messages)
+	clone := cloneMessages(messages)
+	compacted, err := c.Compact(clone, window)
+	if err != nil {
+		return noopPreview(len(messages), tokensBefore)
+	}
+	return buildPreviewFromDiff(messages, compacted, tokensBefore, window)
 }
 
 // PreviewCompact on AgentContext performs a dry-run without modifying the context.
@@ -39,7 +36,6 @@ func (ac *AgentContext) PreviewCompact() (CompactionPreview, error) {
 }
 
 // makeEvicted creates an EvictedMessage from a root *Message.
-// Used by graph_compactor.go preview path.
 func makeEvicted(m *Message, pos int) EvictedMessage {
 	return EvictedMessage{
 		ID:       m.ID().String(),
@@ -48,6 +44,20 @@ func makeEvicted(m *Message, pos int) EvictedMessage {
 		Weight:   m.Weight().Value(),
 		Tokens:   m.TokenCount(),
 		Position: pos,
+	}
+}
+
+// makePreview builds a CompactionPreview from pre-computed eviction data.
+func makePreview(evicted []EvictedMessage, msgCount int, tokensBefore, tokensAfter TokenCount, window ContextWindow) CompactionPreview {
+	reclaimed := tokensBefore.Sub(tokensAfter)
+	return CompactionPreview{
+		WouldCompact:    len(evicted) > 0,
+		Evicted:         evicted,
+		RetainedCount:   msgCount - len(evicted),
+		TokensBefore:    tokensBefore,
+		TokensAfter:     tokensAfter,
+		TokensReclaimed: reclaimed,
+		WouldFit:        !tokensAfter.ExceedsWindow(window),
 	}
 }
 
