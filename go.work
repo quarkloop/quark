@@ -1,12 +1,23 @@
 go 1.22
 
 use (
+	./core
 	./agent
 	./api-server
 	./cli
-	./kb
-	./space
-	./store
 	./tools/bash
+	./tools/kb
+	./tools/space
 	./tools/web-search
+)
+
+replace (
+	github.com/quarkloop/core v0.0.0 => ./core
+	github.com/quarkloop/agent v0.0.0 => ./agent
+	github.com/quarkloop/api-server v0.0.0 => ./api-server
+	github.com/quarkloop/cli v0.0.0 => ./cli
+	github.com/quarkloop/tools/bash v0.0.0 => ./tools/bash
+	github.com/quarkloop/tools/kb v0.0.0 => ./tools/kb
+	github.com/quarkloop/tools/space v0.0.0 => ./tools/space
+	github.com/quarkloop/tools/web-search v0.0.0 => ./tools/web-search
 )
