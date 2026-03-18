@@ -3,6 +3,7 @@ go 1.22
 use (
 	./agent
 	./api-server
+	./cli
 	./kb
 	./space
 	./store
