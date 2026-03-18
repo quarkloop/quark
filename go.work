@@ -1,0 +1,11 @@
+go 1.22
+
+use (
+	./agent
+	./api-server
+	./kb
+	./space
+	./store
+	./tools/bash
+	./tools/web-search
+)
