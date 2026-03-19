@@ -12,10 +12,23 @@ type Definition struct {
 	Capabilities   Capabilities `json:"capabilities"`
 }
 
+// ApprovalPolicy controls whether plans require explicit user approval
+// before the supervisor executes them.
+type ApprovalPolicy string
+
+const (
+	// ApprovalRequired means plans are created as drafts and need explicit
+	// user approval before execution. This is the default.
+	ApprovalRequired ApprovalPolicy = "required"
+	// ApprovalAuto means plans are automatically approved for execution.
+	ApprovalAuto ApprovalPolicy = "auto"
+)
+
 type Config struct {
-	ContextWindow int    `json:"context_window"`
-	Compaction    string `json:"compaction"`
-	MemoryPolicy  string `json:"memory_policy"`
+	ContextWindow  int            `json:"context_window"`
+	Compaction     string         `json:"compaction"`
+	MemoryPolicy   string         `json:"memory_policy"`
+	ApprovalPolicy ApprovalPolicy `json:"approval_policy"`
 }
 
 type Capabilities struct {

@@ -24,7 +24,7 @@ import (
 	"github.com/quarkloop/agent/pkg/activity"
 	llmctx "github.com/quarkloop/agent/pkg/context"
 	"github.com/quarkloop/agent/pkg/model"
-	"github.com/quarkloop/agent/pkg/plan"
+	planpkg "github.com/quarkloop/agent/pkg/plan"
 	"github.com/quarkloop/agent/pkg/session"
 	"github.com/quarkloop/agent/pkg/skill"
 	"github.com/quarkloop/core/pkg/kb"
@@ -37,22 +37,24 @@ import (
 //
 // Usage: NewAgent → InitContext → Run.
 type Agent struct {
-	def        *Definition
-	kb         kb.Store
-	gateway    model.Gateway
-	dispatcher skill.Invoker
-	subAgents  map[string]*Definition
-	planStore  *plan.Store
-	mu         sync.Mutex
-	activeSteps map[string]struct{} // step IDs currently running
+	def             *Definition
+	kb              kb.Store
+	gateway         model.Gateway
+	dispatcher      skill.Invoker
+	subAgents       map[string]*Definition
+	planStore       *planpkg.Store
+	masterPlanStore *planpkg.MasterPlanStore
+	mode            Mode
+	mu              sync.Mutex
+	activeSteps     map[string]struct{} // step IDs currently running
 
 	// llmctx integration
-	ctx       *llmctx.AgentContext
-	tc        llmctx.TokenComputer
-	idGen     llmctx.IDGenerator
-	visPolicy *llmctx.VisibilityPolicy
+	ctx        *llmctx.AgentContext
+	tc         llmctx.TokenComputer
+	idGen      llmctx.IDGenerator
+	visPolicy  *llmctx.VisibilityPolicy
 	adapterReg *llmctx.AdapterRegistry
-	snapRepo  *KBSnapshotRepository
+	snapRepo   *KBSnapshotRepository
 
 	// session & activity (optional)
 	session      *session.Session
@@ -85,6 +87,13 @@ func WithActivitySink(sink activity.Sink) Option {
 	}
 }
 
+// WithMode sets the initial working mode for the agent.
+func WithMode(m Mode) Option {
+	return func(a *Agent) {
+		a.mode = m
+	}
+}
+
 // NewAgent constructs an Agent. InitContext must be called before Run.
 func NewAgent(
 	def *Definition,
@@ -94,13 +103,15 @@ func NewAgent(
 	opts ...Option,
 ) *Agent {
 	a := &Agent{
-		def:         def,
-		kb:          k,
-		gateway:     gw,
-		dispatcher:  disp,
-		subAgents:   map[string]*Definition{},
-		planStore:   plan.NewStore(k, NSPlans, KeyMasterPlan),
-		activeSteps: map[string]struct{}{},
+		def:             def,
+		kb:              k,
+		gateway:         gw,
+		dispatcher:      disp,
+		subAgents:       map[string]*Definition{},
+		planStore:       planpkg.NewStore(k, NSPlans, KeyMasterPlan),
+		masterPlanStore: planpkg.NewMasterPlanStore(k, NSPlans, KeyMasterPlanDoc),
+		mode:            ModeAuto,
+		activeSteps:     map[string]struct{}{},
 	}
 	for _, opt := range opts {
 		opt(a)
@@ -134,6 +145,7 @@ func (a *Agent) InitContext(windowSize int) error {
 	a.visPolicy.Set(llmctx.MemoryMessageType, llmctx.VisibleToLLMAndDev)
 
 	a.snapRepo = NewKBSnapshotRepository(a.kb)
+	a.restoreMode()
 
 	// Try to restore context from a previous session.
 	if snap, err := a.snapRepo.LoadLatestSnapshot(); err == nil {
@@ -149,6 +161,24 @@ func (a *Agent) InitContext(windowSize int) error {
 	}
 
 	return a.buildFreshContext(windowSize)
+}
+
+// Mode returns the agent's current working mode.
+func (a *Agent) Mode() Mode { return a.mode }
+
+// SetMode updates the agent's working mode and persists it to the KB.
+func (a *Agent) SetMode(m Mode) {
+	a.mode = m
+	a.kb.Set(NSConfig, KeyMode, []byte(string(m)))
+}
+
+// restoreMode loads the persisted mode from the KB. Falls back to ModeAuto.
+func (a *Agent) restoreMode() {
+	if data, err := a.kb.Get(NSConfig, KeyMode); err == nil {
+		if m, err := ParseMode(string(data)); err == nil {
+			a.mode = m
+		}
+	}
 }
 
 // buildFreshContext creates a new AgentContext.
@@ -167,7 +197,7 @@ func (a *Agent) buildFreshContext(windowSize int) error {
 		return fmt.Errorf("threshold compactor: %w", err)
 	}
 
-	sysPromptText := a.buildSupervisorSystemPrompt(nil)
+	sysPromptText := a.systemPromptForMode(a.mode)
 	sysID, _ := a.idGen.Next()
 	agentAuthor, _ := llmctx.NewAuthorID(a.def.Name)
 	sysMsg, err := llmctx.NewSystemPromptMessage(sysID, agentAuthor, sysPromptText, a.tc)
@@ -208,13 +238,24 @@ func (a *Agent) emit(eventType activity.EventType, data interface{}) {
 	})
 }
 
-// Run starts the supervisor cycle loop, blocking until the goal is complete
-// or ctx is cancelled. Must be called after InitContext.
+// Run starts the agent loop, blocking until ctx is cancelled.
+//
+// Behaviour depends on the current working mode:
+//   - Ask / Auto: idle — all interaction happens via Chat().
+//   - Plan: when an approved plan exists, the LLM-driven supervisorCycle
+//     (ORIENT→PLAN→DISPATCH→MONITOR→ASSESS) executes it. Otherwise idle.
+//   - MasterPlan: same as Plan but orchestrates phases — each phase is
+//     executed as a sub-plan via supervisorCycle.
+//
+// Must be called after InitContext.
 func (a *Agent) Run(ctx context.Context) error {
-	log.Printf("agent: starting (name=%s model=%s/%s)",
-		a.def.Name, a.gateway.Provider(), a.gateway.ModelName())
+	log.Printf("agent: starting (name=%s mode=%s model=%s/%s)",
+		a.def.Name, a.mode, a.gateway.Provider(), a.gateway.ModelName())
 
-	a.emit(activity.SessionStarted, map[string]string{"agent": a.def.Name})
+	a.emit(activity.SessionStarted, map[string]string{
+		"agent": a.def.Name,
+		"mode":  string(a.mode),
+	})
 
 	for {
 		select {
@@ -224,33 +265,136 @@ func (a *Agent) Run(ctx context.Context) error {
 			return ctx.Err()
 		default:
 		}
-		done, err := a.supervisorCycle(ctx)
-		if err != nil {
-			log.Printf("agent: cycle error: %v", err)
-			select {
-			case <-ctx.Done():
-				a.saveCheckpoint()
-				a.emit(activity.SessionEnded, map[string]string{"reason": "cancelled"})
-				return ctx.Err()
-			case <-time.After(10 * time.Second):
-			}
-			continue
-		}
-		if done {
-			log.Printf("agent: goal complete")
-			a.saveCheckpoint()
-			a.emit(activity.SessionEnded, map[string]string{"reason": "complete"})
-			return nil
-		}
-		a.saveCheckpoint()
-		a.emit(activity.CheckpointSaved, nil)
+
+		interval := a.runOnce(ctx)
+
 		select {
 		case <-ctx.Done():
+			a.saveCheckpoint()
 			a.emit(activity.SessionEnded, map[string]string{"reason": "cancelled"})
 			return ctx.Err()
-		case <-time.After(2 * time.Second):
+		case <-time.After(interval):
 		}
 	}
+}
+
+// runOnce executes one iteration of the Run loop. Returns the interval to
+// wait before the next iteration.
+func (a *Agent) runOnce(ctx context.Context) time.Duration {
+	switch a.mode {
+	case ModePlan:
+		return a.runPlanCycle(ctx)
+	case ModeMasterPlan:
+		return a.runMasterPlanCycle(ctx)
+	default:
+		// Ask / Auto: idle, all work via Chat().
+		return 2 * time.Second
+	}
+}
+
+// runPlanCycle checks for an approved plan and runs one supervisorCycle if found.
+func (a *Agent) runPlanCycle(ctx context.Context) time.Duration {
+	p, err := a.planStore.Load()
+	if err != nil || p == nil {
+		return 2 * time.Second // no plan, idle
+	}
+	if p.Complete {
+		return 2 * time.Second // done, idle
+	}
+	if p.Status != planpkg.PlanApproved {
+		return 2 * time.Second // draft, waiting for approval
+	}
+
+	done, err := a.supervisorCycle(ctx)
+	if err != nil {
+		log.Printf("agent: plan cycle error: %v", err)
+		return 5 * time.Second
+	}
+	if done {
+		log.Printf("agent: plan complete")
+		a.saveCheckpoint()
+	}
+	return 2 * time.Second
+}
+
+// runMasterPlanCycle checks for an approved masterplan and executes the next
+// ready phase via supervisorCycle. Each phase's sub-plan is a standard Plan
+// managed through a per-phase planStore.
+func (a *Agent) runMasterPlanCycle(ctx context.Context) time.Duration {
+	mp, err := a.masterPlanStore.Load()
+	if err != nil || mp == nil {
+		return 2 * time.Second
+	}
+	if mp.Complete {
+		return 2 * time.Second
+	}
+	if mp.Status != planpkg.PlanApproved {
+		return 2 * time.Second
+	}
+
+	// Find next ready phase.
+	var phase *planpkg.Phase
+	for i := range mp.Phases {
+		p := &mp.Phases[i]
+		if p.Status == planpkg.StepPending && planpkg.PhaseDepsComplete(mp, p) {
+			phase = p
+			break
+		}
+		if p.Status == planpkg.StepRunning {
+			phase = p
+			break
+		}
+	}
+	if phase == nil {
+		// Check if all done.
+		allDone := true
+		for _, p := range mp.Phases {
+			if p.Status != planpkg.StepComplete {
+				allDone = false
+				break
+			}
+		}
+		if allDone {
+			mp.Complete = true
+			mp.Summary = "All phases completed."
+			a.masterPlanStore.Save(mp)
+			log.Printf("agent: masterplan complete")
+			a.saveCheckpoint()
+		}
+		return 2 * time.Second
+	}
+
+	// Mark phase running if still pending.
+	if phase.Status == planpkg.StepPending {
+		phase.Status = planpkg.StepRunning
+		a.masterPlanStore.Save(mp)
+		a.emit(activity.PhaseStarted, map[string]string{"phase": phase.ID})
+		log.Printf("agent: starting phase %s", phase.ID)
+	}
+
+	// Swap planStore to this phase's sub-plan, run one supervisor cycle.
+	origStore := a.planStore
+	a.planStore = a.masterPlanStore.SubPlanStore(phase.ID)
+
+	done, err := a.supervisorCycle(ctx)
+
+	a.planStore = origStore
+
+	if err != nil {
+		phase.Status = planpkg.StepFailed
+		a.masterPlanStore.Save(mp)
+		a.emit(activity.PhaseFailed, map[string]string{"phase": phase.ID, "error": err.Error()})
+		log.Printf("agent: phase %s failed: %v", phase.ID, err)
+		return 5 * time.Second
+	}
+	if done {
+		phase.Status = planpkg.StepComplete
+		a.masterPlanStore.Save(mp)
+		a.emit(activity.PhaseCompleted, map[string]string{"phase": phase.ID})
+		log.Printf("agent: phase %s complete", phase.ID)
+	}
+
+	return 2 * time.Second
 }
 
 // ExecuteTask runs a single task through the tool loop without the supervisor

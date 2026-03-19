@@ -22,18 +22,23 @@ import (
 type EventType string
 
 const (
-	SessionStarted   EventType = "session.started"
-	SessionEnded     EventType = "session.ended"
-	MessageAdded     EventType = "message.added"
-	ToolCalled       EventType = "tool.called"
-	ToolCompleted    EventType = "tool.completed"
-	PlanCreated      EventType = "plan.created"
-	PlanUpdated      EventType = "plan.updated"
-	StepDispatched   EventType = "step.dispatched"
-	StepCompleted    EventType = "step.completed"
-	StepFailed       EventType = "step.failed"
-	ContextCompacted EventType = "context.compacted"
-	CheckpointSaved  EventType = "checkpoint.saved"
+	SessionStarted    EventType = "session.started"
+	SessionEnded      EventType = "session.ended"
+	MessageAdded      EventType = "message.added"
+	ToolCalled        EventType = "tool.called"
+	ToolCompleted     EventType = "tool.completed"
+	PlanCreated       EventType = "plan.created"
+	PlanUpdated       EventType = "plan.updated"
+	StepDispatched    EventType = "step.dispatched"
+	StepCompleted     EventType = "step.completed"
+	StepFailed        EventType = "step.failed"
+	ContextCompacted  EventType = "context.compacted"
+	CheckpointSaved   EventType = "checkpoint.saved"
+	ModeClassified    EventType = "mode.classified"
+	MasterPlanCreated EventType = "masterplan.created"
+	PhaseStarted      EventType = "phase.started"
+	PhaseCompleted    EventType = "phase.completed"
+	PhaseFailed       EventType = "phase.failed"
 )
 
 // Event is a single activity record.

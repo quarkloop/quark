@@ -32,6 +32,10 @@ const (
 	KeySupervisorPrompt = "supervisor-prompt"
 	// KeyLatestSnapshot is the KB key for the most recent context snapshot.
 	KeyLatestSnapshot = "supervisor-latest"
+	// KeyMasterPlanDoc is the KB key for the master plan document.
+	KeyMasterPlanDoc = "masterplan"
+	// KeyMode is the KB key for the persisted agent working mode.
+	KeyMode = "mode"
 )
 
 // ─── Author identifiers ─────────────────────────────────────────────────────
