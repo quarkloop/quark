@@ -3,8 +3,12 @@
 package e2e
 
 import (
+	"bufio"
 	"context"
 	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/quarkloop/agent/pkg/activity"
@@ -14,16 +18,40 @@ import (
 	"github.com/quarkloop/core/pkg/kb"
 )
 
-// ─── Default test providers ────────────────────────────────────────────────────
-// Hardcoded free-tier keys. Override via environment variables if needed.
+// loadDotEnv reads KEY=VALUE pairs from a .env file and sets them as
+// environment variables (without overwriting already-set vars).
+func loadDotEnv(path string) {
+	f, err := os.Open(path)
+	if err != nil {
+		return // file absent — silently skip
+	}
+	defer f.Close()
 
-const (
-	defaultOpenRouterKey   = "[REDACTED_OPENROUTER_KEY]"
-	defaultOpenRouterModel = "stepfun/step-3.5-flash:free"
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		k, v, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		k = strings.TrimSpace(k)
+		v = strings.TrimSpace(v)
+		if k != "" && os.Getenv(k) == "" {
+			os.Setenv(k, v)
+		}
+	}
+}
 
-	defaultZhipuKey   = "[REDACTED_ZHIPU_KEY]"
-	defaultZhipuModel = "GLM-4.7-Flash"
-)
+func init() {
+	// Locate the repo root .env relative to this source file.
+	_, thisFile, _, _ := runtime.Caller(0)
+	// thisFile is agent/e2e/helpers_test.go; root is three levels up.
+	root := filepath.Join(filepath.Dir(thisFile), "..", "..", "..")
+	loadDotEnv(filepath.Join(root, ".env"))
+}
 
 // providerConfig holds resolved provider settings for a test run.
 type providerConfig struct {
@@ -33,7 +61,7 @@ type providerConfig struct {
 }
 
 // resolveProvider returns the provider configuration for E2E tests.
-// Priority: env var override → hardcoded defaults → OpenRouter first, Zhipu fallback.
+// Priority: OPENROUTER_API_KEY → ZHIPU_API_KEY (both loaded from .env by init).
 func resolveProvider(t *testing.T) (provider, modelName, apiKey string) {
 	t.Helper()
 	cfg := resolveProviderConfig(t)
@@ -43,31 +71,22 @@ func resolveProvider(t *testing.T) (provider, modelName, apiKey string) {
 func resolveProviderConfig(t *testing.T) providerConfig {
 	t.Helper()
 
-	// 1. Environment override — explicit key takes priority.
 	if key := os.Getenv("OPENROUTER_API_KEY"); key != "" {
 		m := os.Getenv("OPENROUTER_MODEL")
 		if m == "" {
-			m = defaultOpenRouterModel
+			m = "stepfun/step-3.5-flash:free"
 		}
 		return providerConfig{"openrouter", m, key}
 	}
 	if key := os.Getenv("ZHIPU_API_KEY"); key != "" {
 		m := os.Getenv("ZHIPU_MODEL")
 		if m == "" {
-			m = defaultZhipuModel
+			m = "GLM-4.7-Flash"
 		}
 		return providerConfig{"zhipu", m, key}
 	}
 
-	// 2. Hardcoded defaults — try OpenRouter first.
-	if defaultOpenRouterKey != "" {
-		return providerConfig{"openrouter", defaultOpenRouterModel, defaultOpenRouterKey}
-	}
-	if defaultZhipuKey != "" {
-		return providerConfig{"zhipu", defaultZhipuModel, defaultZhipuKey}
-	}
-
-	t.Skip("no API key available")
+	t.Skip("no API key available — set OPENROUTER_API_KEY or ZHIPU_API_KEY in .env")
 	return providerConfig{}
 }
 
