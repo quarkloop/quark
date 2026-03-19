@@ -13,14 +13,14 @@ import "github.com/quarkloop/agent/pkg/context/tokenizer"
 // Concrete TokenComputer implementations — aliases of llmctx/tokenizer types.
 // Use these directly or wrap them with NewCachedTokenComputer.
 type (
-	WordApproxTokenComputer  = tokenizer.WordApproxTokenComputer
-	CharApproxTokenComputer  = tokenizer.CharApproxTokenComputer
-	CL100KTokenComputer      = tokenizer.CL100KTokenComputer
-	AnthropicTokenComputer   = tokenizer.AnthropicTokenComputer
-	CachedTokenComputer      = tokenizer.CachedTokenComputer
-	CompositeTokenComputer   = tokenizer.CompositeTokenComputer
-	ClampedTokenComputer     = tokenizer.ClampedTokenComputer
-	WeightedComputer         = tokenizer.WeightedComputer
+	WordApproxTokenComputer = tokenizer.WordApproxTokenComputer
+	CharApproxTokenComputer = tokenizer.CharApproxTokenComputer
+	CL100KTokenComputer     = tokenizer.CL100KTokenComputer
+	AnthropicTokenComputer  = tokenizer.AnthropicTokenComputer
+	CachedTokenComputer     = tokenizer.CachedTokenComputer
+	CompositeTokenComputer  = tokenizer.CompositeTokenComputer
+	ClampedTokenComputer    = tokenizer.ClampedTokenComputer
+	WeightedComputer        = tokenizer.WeightedComputer
 )
 
 // NewCachedTokenComputer wraps delegate with an LRU memoisation layer.

@@ -33,14 +33,15 @@ const serverVersion = "0.1.0-dev"
 //	POST   /api/v1/spaces/{id}/health      Health   — heartbeat from space-runtime
 //	POST   /api/v1/spaces/prune            Prune    — bulk-delete stopped+failed
 //	GET    /api/v1/system/info             SystemInfo
+//
 // Handler implements the HTTP API for space lifecycle management.
 // Routes are registered by RegisterRoutes on the provided mux:
 //
-//   POST/GET /api/v1/spaces, /api/v1/spaces/{id} — CRUD + stop + prune
-//   GET      /api/v1/spaces/{id}/logs    — SSE log stream
-//   GET      /api/v1/spaces/{id}/events  — SSE proxy to space-runtime
-//   POST     /api/v1/spaces/{id}/health  — health report from space-runtime
-//   GET      /api/v1/system/info         — version and space counts
+//	POST/GET /api/v1/spaces, /api/v1/spaces/{id} — CRUD + stop + prune
+//	GET      /api/v1/spaces/{id}/logs    — SSE log stream
+//	GET      /api/v1/spaces/{id}/events  — SSE proxy to space-runtime
+//	POST     /api/v1/spaces/{id}/health  — health report from space-runtime
+//	GET      /api/v1/system/info         — version and space counts
 type Handler struct {
 	store      Store
 	controller *Controller

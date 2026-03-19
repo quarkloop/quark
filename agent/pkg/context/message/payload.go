@@ -29,15 +29,15 @@ import (
 type MessageType string
 
 const (
-	SystemPromptType      MessageType = "system_prompt"
-	TextType              MessageType = "text"
-	ToolCallType          MessageType = "tool_call"
-	ToolResultType        MessageType = "tool_result"
-	MemoryType            MessageType = "memory"
-	ReasoningType         MessageType = "reasoning"
-	LogType               MessageType = "log"
-	ErrorType             MessageType = "error"
-	PlanType              MessageType = "plan"
+	SystemPromptType MessageType = "system_prompt"
+	TextType         MessageType = "text"
+	ToolCallType     MessageType = "tool_call"
+	ToolResultType   MessageType = "tool_result"
+	MemoryType       MessageType = "memory"
+	ReasoningType    MessageType = "reasoning"
+	LogType          MessageType = "log"
+	ErrorType        MessageType = "error"
+	PlanType         MessageType = "plan"
 )
 
 // =============================================================================

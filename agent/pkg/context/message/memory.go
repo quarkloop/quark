@@ -35,9 +35,11 @@ type MemoryPayload struct {
 
 func init() { RegisterPayloadFactory(MemoryType, func() Payload { return &MemoryPayload{} }) }
 
-func (p MemoryPayload) Kind() MessageType          { return MemoryType }
-func (p MemoryPayload) sealPayload()               {}
-func (p MemoryPayload) TextRepresentation() string { return fmt.Sprintf("[memory:%s] %s", p.Scope, p.Summary) }
+func (p MemoryPayload) Kind() MessageType { return MemoryType }
+func (p MemoryPayload) sealPayload()      {}
+func (p MemoryPayload) TextRepresentation() string {
+	return fmt.Sprintf("[memory:%s] %s", p.Scope, p.Summary)
+}
 
 // LLMText injects the summary silently into the model context.
 func (p MemoryPayload) LLMText() string { return p.Summary }

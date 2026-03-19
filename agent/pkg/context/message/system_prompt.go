@@ -12,7 +12,9 @@ type SystemPromptPayload struct {
 	Text string `json:"text"`
 }
 
-func init() { RegisterPayloadFactory(SystemPromptType, func() Payload { return &SystemPromptPayload{} }) }
+func init() {
+	RegisterPayloadFactory(SystemPromptType, func() Payload { return &SystemPromptPayload{} })
+}
 
 func (p SystemPromptPayload) Kind() MessageType          { return SystemPromptType }
 func (p SystemPromptPayload) TextRepresentation() string { return p.Text }

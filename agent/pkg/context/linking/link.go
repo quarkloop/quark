@@ -19,10 +19,10 @@
 // # Link semantics
 //
 //   - ParentID:   this message is contained within the parent message.
-//                 The pair forms an eviction unit — never evict one without
-//                 the other.
+//     The pair forms an eviction unit — never evict one without
+//     the other.
 //   - ChildIDs:   messages this one contains (inverse of ParentID).
-//                 Maintained automatically when ChildIDs are set on a parent.
+//     Maintained automatically when ChildIDs are set on a parent.
 package linking
 
 // =============================================================================
@@ -41,7 +41,6 @@ type MessageLinks struct {
 	// ChildIDs lists messages contained within this one.
 	// These are the inverse of ParentID entries on the children.
 	ChildIDs []string `json:"child_ids,omitempty"`
-
 }
 
 // IsZero reports whether this MessageLinks carries any relationships.
@@ -66,6 +65,7 @@ func (l MessageLinks) ClearParent() MessageLinks {
 	out.ParentID = ""
 	return out
 }
+
 // Deduplicates: adding an existing ID is a no-op.
 func (l MessageLinks) AddChild(id string) MessageLinks {
 	for _, existing := range l.ChildIDs {

@@ -6,9 +6,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/quarkloop/agent/pkg/infra/term"
 	"github.com/quarkloop/api-server/pkg/api"
 	"github.com/quarkloop/api-server/pkg/space"
-	"github.com/quarkloop/agent/pkg/infra/term"
 )
 
 const (

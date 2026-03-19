@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/quarkloop/tools/space/pkg/registry"
 	"github.com/quarkloop/tools/space/pkg/quarkfile"
+	"github.com/quarkloop/tools/space/pkg/registry"
 )
 
 func runLock(dir string) error {

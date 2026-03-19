@@ -19,9 +19,9 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/quarkloop/agent/pkg/infra/httpserver"
 	"github.com/quarkloop/api-server/pkg/repo"
 	"github.com/quarkloop/api-server/pkg/space"
-	"github.com/quarkloop/agent/pkg/infra/httpserver"
 )
 
 // Server is the top-level api-server object, owning the HTTP listener,

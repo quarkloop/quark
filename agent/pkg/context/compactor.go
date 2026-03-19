@@ -42,13 +42,13 @@ type EvictedMessage struct {
 
 // CompactionPreview is the immutable result of a dry-run compaction.
 type CompactionPreview struct {
-	WouldCompact    bool           `json:"would_compact"`
+	WouldCompact    bool             `json:"would_compact"`
 	Evicted         []EvictedMessage `json:"evicted"`
-	RetainedCount   int            `json:"retained_count"`
-	TokensBefore    TokenCount     `json:"tokens_before"`
-	TokensAfter     TokenCount     `json:"tokens_after"`
-	TokensReclaimed TokenCount     `json:"tokens_reclaimed"`
-	WouldFit        bool           `json:"would_fit"`
+	RetainedCount   int              `json:"retained_count"`
+	TokensBefore    TokenCount       `json:"tokens_before"`
+	TokensAfter     TokenCount       `json:"tokens_after"`
+	TokensReclaimed TokenCount       `json:"tokens_reclaimed"`
+	WouldFit        bool             `json:"would_fit"`
 }
 
 // EvictionCount returns the number of messages that would be evicted.

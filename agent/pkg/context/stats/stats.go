@@ -32,8 +32,8 @@ import (
 
 // TypeStats aggregates message count and token count for a single MessageType.
 type TypeStats struct {
-	Count      int32                 `json:"count"`
-	TokenCount tokenizer.TokenCount  `json:"token_count"`
+	Count      int32                `json:"count"`
+	TokenCount tokenizer.TokenCount `json:"token_count"`
 	// AvgTokens is the mean token count per message of this type.
 	AvgTokens float64 `json:"avg_tokens"`
 }
@@ -202,10 +202,10 @@ type Snapshot struct {
 
 	// --- Compaction ---
 
-	CompactionCount         int32            `json:"compaction_count"`
-	LastCompaction          *CompactionEvent `json:"last_compaction,omitempty"`
+	CompactionCount         int32                `json:"compaction_count"`
+	LastCompaction          *CompactionEvent     `json:"last_compaction,omitempty"`
 	TotalTokensReclaimed    tokenizer.TokenCount `json:"total_tokens_reclaimed"`
-	AverageCompressionRatio float64          `json:"average_compression_ratio"`
+	AverageCompressionRatio float64              `json:"average_compression_ratio"`
 }
 
 // String returns a concise human-readable summary for logging.
@@ -313,4 +313,3 @@ func (s Snapshot) Summarise() string {
 	sb.WriteString("╚═══════════════════════════════════════════╝")
 	return sb.String()
 }
-

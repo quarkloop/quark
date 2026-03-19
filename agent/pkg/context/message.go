@@ -63,7 +63,7 @@ type messageWire struct {
 	Weight     MessageWeight `json:"weight"`
 	Visibility Visibility    `json:"visibility"`
 	Kind       MessageType   `json:"kind"`
-	Payload     msg.Payload   `json:"payload"`
+	Payload    msg.Payload   `json:"payload"`
 	TokenCount TokenCount    `json:"token_count"`
 	CreatedAt  Timestamp     `json:"created_at"`
 	UpdatedAt  *Timestamp    `json:"updated_at,omitempty"`
@@ -104,7 +104,7 @@ func (m *Message) UnmarshalJSON(b []byte) error {
 		Weight     MessageWeight   `json:"weight"`
 		Visibility Visibility      `json:"visibility"`
 		Kind       MessageType     `json:"kind"`
-		Payload     json.RawMessage `json:"payload"`
+		Payload    json.RawMessage `json:"payload"`
 		TokenCount TokenCount      `json:"token_count"`
 		CreatedAt  Timestamp       `json:"created_at"`
 		UpdatedAt  *Timestamp      `json:"updated_at,omitempty"`
@@ -358,7 +358,7 @@ func (m *Message) Author() MessageAuthor  { return m.author }
 func (m *Message) Type() MessageType      { return m.payload.Kind() }
 func (m *Message) Weight() MessageWeight  { return m.weight }
 func (m *Message) Visibility() Visibility { return m.vis }
-func (m *Message) Payload() msg.Payload       { return m.payload }
+func (m *Message) Payload() msg.Payload   { return m.payload }
 func (m *Message) TokenCount() TokenCount { return m.tokenCount }
 func (m *Message) CreatedAt() Timestamp   { return m.createdAt }
 func (m *Message) UpdatedAt() *Timestamp  { return m.updatedAt }

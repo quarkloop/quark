@@ -28,33 +28,39 @@ func TestValidate_ValidMinimal(t *testing.T) {
 }
 
 func TestValidate_MissingQuarkVersion(t *testing.T) {
-	qf := base(); qf.Quark = ""
+	qf := base()
+	qf.Quark = ""
 	assertInvalid(t, qf, "quark version")
 }
 
 func TestValidate_MissingMetaName(t *testing.T) {
-	qf := base(); qf.Meta.Name = ""
+	qf := base()
+	qf.Meta.Name = ""
 	assertInvalid(t, qf, "meta.name")
 }
 
 func TestValidate_MissingModelProvider(t *testing.T) {
-	qf := base(); qf.Model.Provider = ""
+	qf := base()
+	qf.Model.Provider = ""
 	assertInvalid(t, qf, "model.provider")
 }
 
 func TestValidate_MissingModelName(t *testing.T) {
-	qf := base(); qf.Model.Name = ""
+	qf := base()
+	qf.Model.Name = ""
 	assertInvalid(t, qf, "model.name")
 }
 
 func TestValidate_InvalidModelProvider(t *testing.T) {
-	qf := base(); qf.Model.Provider = "made-up-provider"
+	qf := base()
+	qf.Model.Provider = "made-up-provider"
 	assertInvalid(t, qf, "provider")
 }
 
 func TestValidate_ValidProviders(t *testing.T) {
 	for _, p := range []string{"anthropic", "openai", "zhipu", "noop"} {
-		qf := base(); qf.Model.Provider = p
+		qf := base()
+		qf.Model.Provider = p
 		if err := quarkfile.Validate(t.TempDir(), qf); err != nil {
 			t.Errorf("provider %q should be valid, got: %v", p, err)
 		}
@@ -62,12 +68,14 @@ func TestValidate_ValidProviders(t *testing.T) {
 }
 
 func TestValidate_MissingSupervisorAgent(t *testing.T) {
-	qf := base(); qf.Supervisor.Agent = ""
+	qf := base()
+	qf.Supervisor.Agent = ""
 	assertInvalid(t, qf, "supervisor.agent")
 }
 
 func TestValidate_SupervisorPromptMissing(t *testing.T) {
-	qf := base(); qf.Supervisor.Prompt = "./prompts/no-such-file.txt"
+	qf := base()
+	qf.Supervisor.Prompt = "./prompts/no-such-file.txt"
 	assertInvalidDir(t, t.TempDir(), qf, "not found")
 }
 
@@ -75,19 +83,22 @@ func TestValidate_SupervisorPromptExists(t *testing.T) {
 	dir := t.TempDir()
 	os.MkdirAll(filepath.Join(dir, "prompts"), 0755)
 	os.WriteFile(filepath.Join(dir, "prompts", "supervisor.txt"), []byte("hello"), 0644)
-	qf := base(); qf.Supervisor.Prompt = "./prompts/supervisor.txt"
+	qf := base()
+	qf.Supervisor.Prompt = "./prompts/supervisor.txt"
 	if err := quarkfile.Validate(dir, qf); err != nil {
 		t.Fatalf("expected valid with existing prompt, got: %v", err)
 	}
 }
 
 func TestValidate_AgentMissingRef(t *testing.T) {
-	qf := base(); qf.Agents = []quarkfile.Agent{{Name: "researcher", Ref: ""}}
+	qf := base()
+	qf.Agents = []quarkfile.Agent{{Name: "researcher", Ref: ""}}
 	assertInvalid(t, qf, "missing ref")
 }
 
 func TestValidate_AgentMissingName(t *testing.T) {
-	qf := base(); qf.Agents = []quarkfile.Agent{{Name: "", Ref: "quark/researcher@latest"}}
+	qf := base()
+	qf.Agents = []quarkfile.Agent{{Name: "", Ref: "quark/researcher@latest"}}
 	assertInvalid(t, qf, "missing name")
 }
 
@@ -100,23 +111,27 @@ func TestValidate_AgentPromptMissing(t *testing.T) {
 }
 
 func TestValidate_SkillMissingRef(t *testing.T) {
-	qf := base(); qf.Skills = []quarkfile.Skill{{Name: "search", Ref: ""}}
+	qf := base()
+	qf.Skills = []quarkfile.Skill{{Name: "search", Ref: ""}}
 	assertInvalid(t, qf, "missing ref")
 }
 
 func TestValidate_SkillMissingName(t *testing.T) {
-	qf := base(); qf.Skills = []quarkfile.Skill{{Name: "", Ref: "quark/web-search@latest"}}
+	qf := base()
+	qf.Skills = []quarkfile.Skill{{Name: "", Ref: "quark/web-search@latest"}}
 	assertInvalid(t, qf, "missing name")
 }
 
 func TestValidate_InvalidRestartPolicy(t *testing.T) {
-	qf := base(); qf.Restart = "whenever-i-feel-like-it"
+	qf := base()
+	qf.Restart = "whenever-i-feel-like-it"
 	assertInvalid(t, qf, "restart")
 }
 
 func TestValidate_ValidRestartPolicies(t *testing.T) {
 	for _, policy := range []string{"on-failure", "always", "never", ""} {
-		qf := base(); qf.Restart = policy
+		qf := base()
+		qf.Restart = policy
 		if err := quarkfile.Validate(t.TempDir(), qf); err != nil {
 			t.Errorf("policy %q should be valid, got: %v", policy, err)
 		}

@@ -3,9 +3,9 @@ package space
 import (
 	"github.com/spf13/cobra"
 
+	"github.com/quarkloop/agent/pkg/infra/term"
 	"github.com/quarkloop/api-server/pkg/api"
 	"github.com/quarkloop/cli/pkg/cli/config"
-	"github.com/quarkloop/agent/pkg/infra/term"
 )
 
 // spaceLsCmd lists all spaces known to the api-server (running and stopped).

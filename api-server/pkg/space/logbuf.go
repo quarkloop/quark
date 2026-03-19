@@ -19,8 +19,8 @@ type ringBuf struct {
 	mu    sync.RWMutex
 	lines []logLine
 	cap   int
-	head  int  // index of the oldest entry in lines[]
-	size  int  // number of valid entries
+	head  int    // index of the oldest entry in lines[]
+	size  int    // number of valid entries
 	seq   uint64 // monotonic write counter; increments on every appended line
 }
 

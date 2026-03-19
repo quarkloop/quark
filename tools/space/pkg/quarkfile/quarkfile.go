@@ -22,6 +22,7 @@ import (
 // QuarkfileFilename is the name of the project configuration file present at
 // the root of every quark project.
 const QuarkfileFilename = "Quarkfile"
+
 // LockfileFilename is the path of the dependency lock file, relative to the
 // project root. The lock file pins every agent and skill ref to an exact
 // SHA-256 digest so builds are reproducible.

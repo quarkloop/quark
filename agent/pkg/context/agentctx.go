@@ -28,11 +28,10 @@ type AgentContext struct {
 	contextWindow ContextWindow
 	compactor     Compactor
 	tc            TokenComputer
-	idGen         IDGenerator      // pluggable ID generation strategy
-	cachedTokens  TokenCount       // running total maintained on every mutation
+	idGen         IDGenerator // pluggable ID generation strategy
+	cachedTokens  TokenCount  // running total maintained on every mutation
 	compact       compactionTracker
 	tput          throughputTracker
-
 }
 
 // =============================================================================

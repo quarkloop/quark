@@ -13,6 +13,7 @@ import (
 //   - restart policy allowlist: on-failure, always, never (empty = default).
 //   - Prompt file references must exist on disk relative to dir.
 //   - Every agent/skill entry must have both ref and name populated.
+//
 // Validate performs semantic validation of qf:
 //   - required fields: quark, meta.name, model.provider, model.name, supervisor.agent
 //   - model.provider must be one of: anthropic, openai, zhipu, noop
