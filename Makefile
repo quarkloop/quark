@@ -19,7 +19,7 @@ BINARIES := \
 	tools/space/cmd/space \
 	tools/web-search/cmd/web-search
 
-.PHONY: all build clean test vet fmt tidy \
+.PHONY: all build clean test test-e2e vet fmt tidy \
 	build-agent build-api-server build-cli \
 	build-tools-bash build-tools-kb build-tools-space build-tools-web-search
 
@@ -55,6 +55,10 @@ test:
 		echo "--- Testing $$mod ---"; \
 		(cd $$mod && go test ./...); \
 	done
+
+## Run E2E tests (requires API keys: OPENROUTER_API_KEY or ZHIPU_API_KEY)
+test-e2e:
+	cd agent && go test -tags e2e -v -timeout 120s ./e2e/
 
 ## Run vet across all modules
 vet:

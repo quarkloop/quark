@@ -41,6 +41,7 @@ core (leaf — no quarkloop deps)
 ```bash
 make build       # 7 binaries in ./bin/
 make test        # tests across all modules
+make test-e2e    # E2E tests (requires OPENROUTER_API_KEY or ZHIPU_API_KEY)
 make vet         # go vet across all modules
 make fmt         # gofmt across all modules
 make tidy        # go mod tidy across all modules
@@ -55,6 +56,43 @@ Individual: `make build-agent`, `make build-tools-space`, etc.
 - **Standalone build**: `GOWORK=off go build -mod=vendor ./path/to/cmd` (requires vendored deps).
 - Each module's `go.mod` has `replace` directives for standalone builds outside the workspace.
 
+## Agent Working Modes
+
+The agent supports four dynamic working modes, set per-message via `ChatRequest.Mode`:
+
+| Mode | Behaviour |
+|------|-----------|
+| `ask` | Read-only: single LLM call, no plans, no tools. |
+| `plan` | Creates a single execution plan with steps. Run() loop dispatches approved plans. |
+| `masterplan` | Creates a multi-phase master plan. Each phase becomes its own sub-plan. |
+| `auto` | LLM classifies the request and routes to ask/plan/masterplan. |
+
+Mode is agent-internal (no CLI flags or api-server changes). Default is `auto`. Mode persists in KB across sessions.
+
+### Approval Policy
+
+`ApprovalPolicy` on `agent.Config` controls plan approval:
+
+| Policy | Constant | Behaviour |
+|--------|----------|-----------|
+| `required` | `ApprovalRequired` | Plans are created as drafts; user must approve before execution. |
+| `auto` | `ApprovalAuto` | Plans are auto-approved for immediate execution. |
+
+## E2E Tests
+
+E2E tests live in `agent/e2e/` and use the `//go:build e2e` build tag. They test full agent flows (chat, modes, activity events, plan approval) against real LLM providers.
+
+```bash
+# With hardcoded free-tier keys (OpenRouter + Zhipu):
+cd agent && go test -tags e2e -v -timeout 120s ./e2e/
+
+# Override provider via env:
+OPENROUTER_API_KEY=sk-... go test -tags e2e -v -timeout 120s ./e2e/
+ZHIPU_API_KEY=... go test -tags e2e -v -timeout 120s ./e2e/
+```
+
+Provider priority: env override → hardcoded defaults → OpenRouter first, Zhipu fallback.
+
 ## Conventions
 
 - CLI tools use `core/pkg/toolkit` for bootstrap (`NewToolCommand` + `Execute`).
@@ -62,5 +100,6 @@ Individual: `make build-agent`, `make build-tools-space`, etc.
 - JSONL-backed key-value store (`core/pkg/store`) for persistence.
 - KB abstraction (`core/pkg/kb`) wraps the store with namespace/key semantics.
 - Agent plan types live in `agent/pkg/plan`.
+- Agent mode and approval policy types live in `agent/pkg/agent`.
 - Tool binaries follow the pattern: `tools/<name>/cmd/<name>/main.go` (thin CLI) + `tools/<name>/pkg/<name>/` (library).
 - Module paths: `github.com/quarkloop/<module>` for top-level, `github.com/quarkloop/tools/<name>` for tools.
