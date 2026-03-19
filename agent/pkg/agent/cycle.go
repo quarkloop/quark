@@ -191,7 +191,14 @@ Rules:
 	// Merge with existing plan — preserve status of steps we already know about.
 	existing, _ := a.planStore.Load()
 	existingStatus := map[string]plan.Step{}
+	planStatus := plan.PlanDraft
+	if a.def.Config.ApprovalPolicy == ApprovalAuto {
+		planStatus = plan.PlanApproved
+	}
 	if existing != nil {
+		if existing.Status != "" {
+			planStatus = existing.Status
+		}
 		for _, s := range existing.Steps {
 			existingStatus[s.ID] = s
 		}
@@ -219,6 +226,7 @@ Rules:
 
 	p := &plan.Plan{
 		Goal:      newPlan.Goal,
+		Status:    planStatus,
 		Steps:     mergedSteps,
 		CreatedAt: now,
 		UpdatedAt: now,

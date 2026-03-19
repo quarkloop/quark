@@ -192,10 +192,19 @@ func (a OpenAIAdapter) BuildMessages(messages []*Message) ([]LLMMessage, error) 
 		if !m.IsVisibleTo(VisibleToLLM) {
 			continue // respect visibility policy
 		}
-		out = append(out, LLMMessage{
+		llmMsg := LLMMessage{
 			Role:    a.RoleFor(m.Author(), m.Type()),
 			Content: m.LLMContent(), // use LLM-specific content representation
-		})
+		}
+		if tc, ok := m.AsToolCall(); ok {
+			llmMsg.ToolCallID = tc.ToolCallID
+			llmMsg.Name = tc.ToolName
+		}
+		if tr, ok := m.AsToolResult(); ok {
+			llmMsg.ToolCallID = tr.ToolCallID
+			llmMsg.Name = tr.ToolName
+		}
+		out = append(out, llmMsg)
 	}
 	return out, nil
 }
