@@ -4,6 +4,16 @@ package plan
 
 import "time"
 
+// PlanStatus tracks the approval lifecycle of a plan or masterplan.
+type PlanStatus string
+
+const (
+	// PlanDraft means the plan has been created but not yet approved by the user.
+	PlanDraft PlanStatus = "draft"
+	// PlanApproved means the user has approved the plan for execution.
+	PlanApproved PlanStatus = "approved"
+)
+
 // StepStatus tracks the lifecycle of a single plan step.
 type StepStatus string
 
@@ -29,10 +39,11 @@ type Step struct {
 
 // Plan is the master execution plan produced and updated by the supervisor.
 type Plan struct {
-	Goal      string    `json:"goal"`
-	Steps     []Step    `json:"steps"`
-	Complete  bool      `json:"complete"`
-	Summary   string    `json:"summary,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Goal      string     `json:"goal"`
+	Status    PlanStatus `json:"status"`
+	Steps     []Step     `json:"steps"`
+	Complete  bool       `json:"complete"`
+	Summary   string     `json:"summary,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
 }
