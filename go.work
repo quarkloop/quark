@@ -7,7 +7,9 @@ use (
 	./cli
 	./tools/bash
 	./tools/kb
+	./tools/read
 	./tools/space
+	./tools/write
 	./tools/web-search
 )
 
@@ -18,6 +20,8 @@ replace (
 	github.com/quarkloop/cli v0.0.0 => ./cli
 	github.com/quarkloop/tools/bash v0.0.0 => ./tools/bash
 	github.com/quarkloop/tools/kb v0.0.0 => ./tools/kb
+	github.com/quarkloop/tools/read v0.0.0 => ./tools/read
 	github.com/quarkloop/tools/space v0.0.0 => ./tools/space
+	github.com/quarkloop/tools/write v0.0.0 => ./tools/write
 	github.com/quarkloop/tools/web-search v0.0.0 => ./tools/web-search
 )
