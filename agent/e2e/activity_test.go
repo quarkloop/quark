@@ -5,6 +5,10 @@ package e2e
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -140,6 +144,134 @@ func TestActivity_PlanApproval_AutoApproves(t *testing.T) {
 	}
 	if p.Status != plan.PlanApproved {
 		t.Errorf("expected status=approved, got: %s", p.Status)
+	}
+}
+
+func TestActivity_ToolEventsIncludeStructuredFields(t *testing.T) {
+	restoreLogger := silenceStdLogger(t)
+	defer restoreLogger()
+
+	h := newLiveBashHarness(t, agent.ApprovalAuto)
+	defer dumpRecentActivity(t, h.feed, 128)
+
+	workDir := t.TempDir()
+	targetFile := filepath.Join(workDir, "activity-tool-fields.txt")
+	commands := []string{
+		"pwd",
+		fmt.Sprintf("printf 'activity-tool-fields\\n' > '%s'", targetFile),
+		fmt.Sprintf("cat '%s'", targetFile),
+	}
+
+	planSingleStepBashTask(t, h.agent, commands, "Do not simulate output.")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 75*time.Second)
+	defer cancel()
+	runDone := make(chan error, 1)
+	go func() {
+		runDone <- h.agent.Run(ctx)
+	}()
+
+	waitForPlanCompletion(t, h.kb, 60*time.Second)
+	cancel()
+	runErr := <-runDone
+	if runErr != nil && runErr != context.Canceled && runErr != context.DeadlineExceeded {
+		t.Fatalf("run failed: %v", runErr)
+	}
+
+	events := h.feed.Recent(128)
+	var sawCall, sawResult bool
+	for _, ev := range events {
+		data := eventData(ev)
+		if data == nil || data["tool"] != "bash" {
+			continue
+		}
+		switch ev.Type {
+		case activity.ToolCalled:
+			if data["args"] == "" {
+				t.Fatal("expected tool.called args field")
+			}
+			if data["cmd"] != "" {
+				sawCall = true
+			}
+		case activity.ToolCompleted:
+			if data["result"] == "" {
+				t.Fatal("expected tool.completed result field")
+			}
+			if data["exit_code"] == "" {
+				t.Fatal("expected tool.completed exit_code field")
+			}
+			if data["output"] != "" || data["result"] != "" {
+				sawResult = true
+			}
+		}
+	}
+	if !sawCall {
+		t.Fatal("expected at least one tool.called event with cmd field")
+	}
+	if !sawResult {
+		t.Fatal("expected at least one tool.completed event with output/result content")
+	}
+}
+
+func TestActivity_ToolFailureVisibleForBash(t *testing.T) {
+	restoreLogger := silenceStdLogger(t)
+	defer restoreLogger()
+
+	h := newLiveBashHarness(t, agent.ApprovalAuto)
+	defer dumpRecentActivity(t, h.feed, 128)
+
+	missingFile := filepath.Join(t.TempDir(), "missing.txt")
+	commands := []string{
+		"pwd",
+		fmt.Sprintf("cat '%s'", missingFile),
+	}
+
+	planSingleStepBashTask(t, h.agent, commands,
+		"The second command is expected to fail because the file does not exist. Do not create the file or retry. The task succeeds when you observe the failure and report it.")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 75*time.Second)
+	defer cancel()
+	runDone := make(chan error, 1)
+	go func() {
+		runDone <- h.agent.Run(ctx)
+	}()
+
+	finalPlan := waitForPlanCompletion(t, h.kb, 60*time.Second)
+	cancel()
+	runErr := <-runDone
+	if runErr != nil && runErr != context.Canceled && runErr != context.DeadlineExceeded {
+		t.Fatalf("run failed: %v", runErr)
+	}
+	if !finalPlan.Complete {
+		t.Fatalf("expected plan complete after observing failure, got: %s", mustJSON(t, finalPlan))
+	}
+	if _, err := os.Stat(missingFile); !os.IsNotExist(err) {
+		t.Fatalf("expected missing file to remain absent, stat err=%v", err)
+	}
+
+	events := h.feed.Recent(128)
+	sawFailure := false
+	for _, ev := range events {
+		data := eventData(ev)
+		if ev.Type != activity.ToolCompleted || data == nil || data["tool"] != "bash" {
+			continue
+		}
+		if data["is_error"] == "true" {
+			sawFailure = true
+			if data["exit_code"] == "" || data["exit_code"] == "0" {
+				t.Fatalf("expected non-zero exit_code in failure event: %v", data)
+			}
+			if !strings.Contains(strings.ToLower(data["error"]), "exit code") {
+				t.Fatalf("expected error field to mention exit code: %v", data)
+			}
+			if !strings.Contains(strings.ToLower(data["output"]), "no such file") &&
+				!strings.Contains(strings.ToLower(data["result"]), "no such file") {
+				t.Fatalf("expected failure output to mention missing file: %v", data)
+			}
+		}
+	}
+	if !sawFailure {
+		t.Fatal("expected at least one failing bash tool.completed event")
 	}
 }
 
