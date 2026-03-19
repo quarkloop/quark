@@ -189,6 +189,8 @@ func buildGateway() (model.Gateway, error) {
 		apiKey = os.Getenv("OPENAI_API_KEY")
 	case "zhipu":
 		apiKey = os.Getenv("ZHIPU_API_KEY")
+	case "openrouter":
+		apiKey = os.Getenv("OPENROUTER_API_KEY")
 	}
 
 	return model.New(model.GatewayConfig{
@@ -224,9 +226,15 @@ func registerRoutes(mux *http.ServeMux, spaceID string, k kb.Store, a *agent.Age
 		json.NewEncoder(w).Encode(map[string]string{"space_id": spaceID, "status": "running"})
 	})
 
+	// Mode
+	mux.HandleFunc("GET /mode", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"mode": string(a.Mode())})
+	})
+
 	// Stats
 	mux.HandleFunc("GET /stats", func(w http.ResponseWriter, r *http.Request) {
-		result := map[string]interface{}{"space_id": spaceID, "agent_count": 1}
+		result := map[string]interface{}{"space_id": spaceID, "agent_count": 1, "mode": string(a.Mode())}
 		if cs := a.ContextStats(); cs != nil {
 			if raw, err := json.Marshal(cs); err == nil {
 				var m map[string]interface{}
