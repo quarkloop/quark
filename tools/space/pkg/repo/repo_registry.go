@@ -84,7 +84,7 @@ required_skills:
 system_prompt: |
   You are a research agent. When given a task:
   1. Identify the key questions to answer
-  2. Use the web-search skill to gather current information
+  2. Use the web-search tool to gather current information
   3. Synthesize findings into a clear, structured report
   4. Cite your sources
 
