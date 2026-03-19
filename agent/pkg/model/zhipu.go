@@ -55,15 +55,16 @@ func (g *zhipuGateway) InferRaw(ctx context.Context, payload []byte) (*RawRespon
 		return nil, fmt.Errorf("reading zhipu response: %w", err)
 	}
 
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("zhipu http %d: %s", resp.StatusCode, string(data))
+	}
+
 	var zr zhipuResponse
 	if err := json.Unmarshal(data, &zr); err != nil {
 		return nil, fmt.Errorf("decoding zhipu response: %w", err)
 	}
 	if zr.Error != nil {
 		return nil, fmt.Errorf("zhipu api error %s: %s", zr.Error.Code, zr.Error.Message)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("zhipu http %d: %s", resp.StatusCode, string(data))
 	}
 	if len(zr.Choices) == 0 {
 		return nil, fmt.Errorf("zhipu returned no choices")

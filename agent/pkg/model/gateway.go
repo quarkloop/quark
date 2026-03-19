@@ -6,18 +6,22 @@
 //
 // Supported providers:
 //
-//	"anthropic" — claude-* (ANTHROPIC_API_KEY required)
-//	"openai"    — gpt-*    (OPENAI_API_KEY required)
-//	"zhipu"     — glm-*    (ZHIPU_API_KEY required)
-//	"noop"      — echo stub, no key required; activated by QUARK_DRY_RUN=1
+//	"anthropic"  — claude-*  (ANTHROPIC_API_KEY required)
+//	"openai"     — gpt-*    (OPENAI_API_KEY required)
+//	"zhipu"      — glm-*    (ZHIPU_API_KEY required)
+//	"openrouter" — any model via OpenRouter (OPENROUTER_API_KEY required)
+//	"noop"       — echo stub, no key required; activated by QUARK_DRY_RUN=1
 package model
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net/http"
 	"time"
 )
+
+const openRouterBaseURL = "https://openrouter.ai/api/v1/chat/completions"
 
 // RawResponse is the normalised output from a single LLM inference call.
 // All provider-specific shapes are reduced to this before returning to the
@@ -70,12 +74,23 @@ func New(cfg GatewayConfig) (Gateway, error) {
 		if cfg.APIKey == "" {
 			return nil, fmt.Errorf("openai api key not provided")
 		}
-		return &openAIGateway{model: cfg.Model, apiKey: cfg.APIKey, http: newHTTPClient()}, nil
+		return &openAIGateway{provider: "openai", model: cfg.Model, apiKey: cfg.APIKey, http: newHTTPClient()}, nil
 	case "zhipu":
 		if cfg.APIKey == "" {
 			return nil, fmt.Errorf("zhipu api key not provided")
 		}
-		return &zhipuGateway{model: cfg.Model, apiKey: cfg.APIKey, http: newHTTPClient()}, nil
+		return &zhipuGateway{model: cfg.Model, apiKey: cfg.APIKey, http: newHTTPClientNoHTTP2()}, nil
+	case "openrouter":
+		if cfg.APIKey == "" {
+			return nil, fmt.Errorf("openrouter api key not provided")
+		}
+		return &openAIGateway{
+			provider: "openrouter",
+			baseURL:  openRouterBaseURL,
+			model:    cfg.Model,
+			apiKey:   cfg.APIKey,
+			http:     newHTTPClient(),
+		}, nil
 	case "noop":
 		// Dry-run stub: no API key required. Also activated when QUARK_DRY_RUN=1
 		// regardless of provider, so any Quarkfile can be tested without credentials.
@@ -85,10 +100,22 @@ func New(cfg GatewayConfig) (Gateway, error) {
 		}
 		return &noopGateway{model: modelName}, nil
 	default:
-		return nil, fmt.Errorf("unsupported model provider %q (supported: anthropic, openai, zhipu)", cfg.Provider)
+		return nil, fmt.Errorf("unsupported model provider %q (supported: anthropic, openai, zhipu, openrouter)", cfg.Provider)
 	}
 }
 
 func newHTTPClient() *http.Client {
 	return &http.Client{Timeout: 120 * time.Second}
+}
+
+// newHTTPClientNoHTTP2 returns an HTTP client with HTTP/2 disabled.
+// Zhipu's API stalls HTTP/2 connections on rate-limit instead of returning 429.
+func newHTTPClientNoHTTP2() *http.Client {
+	return &http.Client{
+		Timeout: 120 * time.Second,
+		Transport: &http.Transport{
+			ForceAttemptHTTP2: false,
+			TLSNextProto:     make(map[string]func(string, *tls.Conn) http.RoundTripper),
+		},
+	}
 }

@@ -177,6 +177,11 @@ type ZhipuAdapter struct{ OpenAIAdapter }
 
 func (ZhipuAdapter) Provider() string { return "zhipu" }
 
+// OpenRouterAdapter uses the identical OpenAI wire format but identifies as "openrouter".
+type OpenRouterAdapter struct{ OpenAIAdapter }
+
+func (OpenRouterAdapter) Provider() string { return "openrouter" }
+
 func (OpenAIAdapter) RoleFor(author MessageAuthor, msgType MessageType) LLMRole {
 	return defaultRoleFor(author, msgType)
 }
@@ -466,6 +471,7 @@ func NewAdapterRegistry() *AdapterRegistry {
 	r.Register(OpenAIAdapter{})
 	r.Register(AnthropicAdapter{})
 	r.Register(ZhipuAdapter{})
+	r.Register(OpenRouterAdapter{})
 	r.Register(NoopAdapter{})
 	return r
 }
