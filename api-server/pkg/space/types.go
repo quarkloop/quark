@@ -74,10 +74,10 @@ type StopRequest struct {
 	Force bool `json:"force"`
 }
 
-// HealthReport is periodically POSTed by space-runtime to the api-server
-// at POST /api/v1/spaces/{id}/health to confirm liveness.
+// HealthReport is periodically POSTed by the agent runtime to the api-server
+// at POST /api/v1/agents/{id}/health to confirm liveness.
 type HealthReport struct {
-	SpaceID    string `json:"space_id"`
+	AgentID    string `json:"agent_id"`
 	PID        int    `json:"pid"`
 	Port       int    `json:"port"`
 	AgentCount int    `json:"agent_count"`

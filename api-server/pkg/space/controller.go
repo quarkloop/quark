@@ -295,17 +295,15 @@ func (c *Controller) GetLogBuf(id string) *ringBuf {
 	return nil
 }
 
-// startProcess launches the agent binary in supervisor mode and waits for it to exit.
+// startProcess launches the agent binary and waits for it to exit.
 func (c *Controller) startProcess(sp *Space, req *RunRequest, restartCount int) {
 	buf := newRingBuf(512)
-	ipcSocket := ipcSocketPath(sp.ID)
 	cmd := exec.Command(c.runtimeBin,
-		"supervisor",
+		"run",
 		"--id", sp.ID,
 		"--dir", req.Dir,
 		"--port", fmt.Sprintf("%d", sp.Port),
 		"--api-server", c.apiAddr,
-		"--ipc-socket", ipcSocket,
 	)
 	// Tee stdout/stderr to both the ring buffer and the parent process output.
 	cmd.Stdout = newTeeWriter(os.Stdout, buf)
@@ -326,6 +324,7 @@ func (c *Controller) startProcess(sp *Space, req *RunRequest, restartCount int) 
 	sp.PID = cmd.Process.Pid
 	sp.Status = StatusRunning
 	c.store.Save(sp)
+	log.Printf("controller: launched agent process for space %s pid=%d port=%d dir=%s", sp.ID, sp.PID, sp.Port, req.Dir)
 
 	c.mu.Lock()
 	c.processes[sp.ID] = &processRecord{
@@ -383,7 +382,3 @@ func (c *Controller) releasePort(port int) {
 }
 
 // ipcSocketPath returns the Unix domain socket path for a supervisor's IPC server.
-func ipcSocketPath(spaceID string) string {
-	home, _ := os.UserHomeDir()
-	return fmt.Sprintf("%s/.quark/agents/%s/ipc.sock", home, spaceID)
-}

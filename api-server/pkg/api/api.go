@@ -10,7 +10,10 @@
 //	sp, _ := c.RunSpace(ctx, name, dir, env, "on-failure")
 package api
 
-import "github.com/quarkloop/api-server/pkg/api/client"
+import (
+	agentclient "github.com/quarkloop/agent-client"
+	"github.com/quarkloop/api-server/pkg/api/client"
+)
 
 // ClientApi is a typed HTTP client for the quark api-server.
 // The zero value is not usable; construct with NewClientApi.
@@ -28,4 +31,8 @@ func NewClientApi(serverURL string) *ClientApi {
 	return &ClientApi{
 		client: client.NewClient(serverURL),
 	}
+}
+
+func (c *ClientApi) Agent(agentID string) *agentclient.Client {
+	return agentclient.NewForAgent(c.client.BaseURL(), agentID, agentclient.WithTransport(c.client))
 }

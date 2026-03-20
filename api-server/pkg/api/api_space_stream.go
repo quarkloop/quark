@@ -11,8 +11,8 @@ func (c *ClientApi) StreamLogs(ctx context.Context, id string, fn func(string)) 
 	return c.client.StreamSSE(ctx, path, fn)
 }
 
-// StreamEvents streams events for a specific space ID.
-func (c *ClientApi) StreamEvents(ctx context.Context, id string, fn func(string)) error {
-	path := fmt.Sprintf("/api/v1/spaces/%s/events", id)
+// StreamActivity streams activity for a specific agent ID.
+func (c *ClientApi) StreamActivity(ctx context.Context, id string, fn func(string)) error {
+	path := fmt.Sprintf("/api/v1/agents/%s/activity/stream", id)
 	return c.client.StreamSSE(ctx, path, fn)
 }

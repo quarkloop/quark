@@ -10,6 +10,7 @@ import (
 
 	stderrors "errors"
 
+	agentapi "github.com/quarkloop/agent-api"
 	"github.com/quarkloop/agent/pkg/errors"
 	"github.com/quarkloop/agent/pkg/infra/httpserver"
 	"github.com/quarkloop/tools/space/pkg/quarkfile"
@@ -28,10 +29,8 @@ const serverVersion = "0.1.0-dev"
 //	POST   /api/v1/spaces/{id}/stop        Stop     — SIGINT or SIGKILL
 //	DELETE /api/v1/spaces/{id}             Delete   — stopped/failed only
 //	GET    /api/v1/spaces/{id}/logs        Logs     — SSE: ring buffer + LastLogs
-//	GET    /api/v1/spaces/{id}/events      Events   — SSE proxy to space-runtime
-//	GET    /api/v1/spaces/{id}/stats       Stats    — JSON proxy to space-runtime
-//	POST   /api/v1/spaces/{id}/health      Health   — heartbeat from space-runtime
 //	POST   /api/v1/spaces/prune            Prune    — bulk-delete stopped+failed
+//	POST   /api/v1/agents/{id}/health      AgentHealth — heartbeat from agent runtime
 //	GET    /api/v1/system/info             SystemInfo
 //
 // Handler implements the HTTP API for space lifecycle management.
@@ -39,8 +38,7 @@ const serverVersion = "0.1.0-dev"
 //
 //	POST/GET /api/v1/spaces, /api/v1/spaces/{id} — CRUD + stop + prune
 //	GET      /api/v1/spaces/{id}/logs    — SSE log stream
-//	GET      /api/v1/spaces/{id}/events  — SSE proxy to space-runtime
-//	POST     /api/v1/spaces/{id}/health  — health report from space-runtime
+//	POST     /api/v1/agents/{id}/health  — health report from agent runtime
 //	GET      /api/v1/system/info         — version and space counts
 type Handler struct {
 	store      Store
@@ -60,12 +58,11 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/spaces/{id}/stop", h.Stop)
 	mux.HandleFunc("DELETE /api/v1/spaces/{id}", h.Delete)
 	mux.HandleFunc("GET /api/v1/spaces/{id}/logs", h.Logs)
-	mux.HandleFunc("GET /api/v1/spaces/{id}/events", h.Events)
-	mux.HandleFunc("GET /api/v1/spaces/{id}/stats", h.Stats)
-	mux.HandleFunc("POST /api/v1/spaces/{id}/chat", h.Chat)
-	mux.HandleFunc("POST /api/v1/spaces/{id}/health", h.Health)
 	mux.HandleFunc("POST /api/v1/spaces/prune", h.Prune)
+	mux.HandleFunc("POST /api/v1/agents/{id}/health", h.AgentHealth)
 	mux.HandleFunc("GET /api/v1/system/info", h.SystemInfo)
+
+	agentapi.NewHandler(newAgentProxyService(h.store), agentapi.WithBasePath(agentapi.AgentProxyBasePattern())).RegisterRoutes(mux)
 }
 
 func (h *Handler) Run(w http.ResponseWriter, r *http.Request) {
@@ -220,48 +217,18 @@ func (h *Handler) Logs(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Events proxies to the space-runtime's /events SSE stream.
-func (h *Handler) Events(w http.ResponseWriter, r *http.Request) {
-	sp, err := h.store.Get(r.PathValue("id"))
-	if err != nil {
-		httpserver.WriteError(w, http.StatusNotFound, err.Error())
-		return
-	}
-	httpserver.ProxySSE(w, r, fmt.Sprintf("http://127.0.0.1:%d/events", sp.Port))
-}
-
-func (h *Handler) Stats(w http.ResponseWriter, r *http.Request) {
-	sp, err := h.store.Get(r.PathValue("id"))
-	if err != nil {
-		httpserver.WriteError(w, http.StatusNotFound, err.Error())
-		return
-	}
-	httpserver.ProxyJSON(w, fmt.Sprintf("http://127.0.0.1:%d/stats", sp.Port))
-}
-
-// Chat proxies POST /api/v1/spaces/{id}/chat to the space-runtime's /chat
-// endpoint, forwarding the request body and returning the supervisor reply.
-func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
-	sp, err := h.store.Get(r.PathValue("id"))
-	if err != nil {
-		httpserver.WriteError(w, http.StatusNotFound, err.Error())
-		return
-	}
-	if sp.Status != StatusRunning {
-		httpserver.WriteError(w, http.StatusConflict,
-			fmt.Sprintf("space is %s, not running", sp.Status))
-		return
-	}
-	httpserver.ProxyPost(w, r, fmt.Sprintf("http://127.0.0.1:%d/chat", sp.Port))
-}
-
-func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) AgentHealth(w http.ResponseWriter, r *http.Request) {
 	var report HealthReport
 	if err := json.NewDecoder(r.Body).Decode(&report); err != nil {
 		httpserver.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	sp, err := h.store.Get(r.PathValue("id"))
+	agentID := r.PathValue("id")
+	if report.AgentID != "" && report.AgentID != agentID {
+		httpserver.WriteError(w, http.StatusBadRequest, "agent id mismatch")
+		return
+	}
+	sp, err := h.store.Get(agentID)
 	if err != nil {
 		httpserver.WriteError(w, http.StatusNotFound, err.Error())
 		return
