@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	llmctx "github.com/quarkloop/agent/pkg/context"
 	"github.com/quarkloop/agent/pkg/model"
@@ -44,7 +45,10 @@ func (a *Agent) inferWithContext(ctx context.Context, ac *llmctx.AgentContext, u
 
 	resp, err := a.gateway.InferRaw(ctx, payload)
 	if err != nil {
-		return nil, fmt.Errorf("gateway: %w", err)
+		resp, err = a.inferWithRetry(ctx, payload, err)
+		if err != nil {
+			return nil, fmt.Errorf("gateway: %w", err)
+		}
 	}
 
 	agtMsg, err := a.newAgentMsg(AuthorAgent, resp.Content)
@@ -60,6 +64,50 @@ func (a *Agent) inferWithContext(ctx context.Context, ac *llmctx.AgentContext, u
 	}
 
 	return resp, nil
+}
+
+func (a *Agent) inferWithRetry(ctx context.Context, payload []byte, firstErr error) (*model.RawResponse, error) {
+	err := firstErr
+	backoff := 2 * time.Second
+	for attempt := 1; attempt <= 2; attempt++ {
+		if !isRetryableGatewayError(err) {
+			return nil, err
+		}
+		log.Printf("agent: retrying transient gateway error (attempt %d/2): %v", attempt, err)
+		if sleepErr := sleepWithContext(ctx, backoff); sleepErr != nil {
+			return nil, err
+		}
+
+		resp, retryErr := a.gateway.InferRaw(ctx, payload)
+		if retryErr == nil {
+			return resp, nil
+		}
+		err = retryErr
+		backoff *= 2
+	}
+	return nil, err
+}
+
+func isRetryableGatewayError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, " 429") ||
+		strings.Contains(msg, "rate-limit") ||
+		strings.Contains(msg, "rate limit") ||
+		strings.Contains(msg, "temporarily rate-limited")
+}
+
+func sleepWithContext(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 // ─── Message factories ───────────────────────────────────────────────────────

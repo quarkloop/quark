@@ -136,7 +136,13 @@ func (a *Agent) executeStep(ctx context.Context, step plan.Step) (string, error)
 	}
 
 	if finalResult == "" {
-		finalResult = "Task completed with tool interactions."
+		if requiresToolFirst && !initialToolSatisfied {
+			return "", fmt.Errorf("required initial tool %q was not executed", requiredToolName)
+		}
+		if missing := missingRequiredToolCalls(requiredToolsBeforeSummary, successfulToolCalls); len(missing) > 0 {
+			return "", fmt.Errorf("required tool calls not completed before summary: %s", strings.Join(missing, ", "))
+		}
+		finalResult = "Task completed with required tool interactions."
 	}
 
 	if err := a.kb.Set(NSArtifacts, step.ID, []byte(finalResult)); err != nil {

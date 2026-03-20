@@ -59,10 +59,10 @@ func (a *Agent) chatPlan(ctx context.Context, req ChatRequest) (*ChatResponse, e
 	planData, err := extractJSON(cr.Reply)
 	if err != nil {
 		cr.Warning = fmt.Sprintf("plan was not stored: %v", err)
-		log.Printf("agent: plan JSON extraction failed: %v", err)
+		log.Printf("agent: plan JSON extraction failed: %v reply=%q", err, truncate(cr.Reply, 512))
 	} else if err := a.storePlanFromResponse(planData); err != nil {
 		cr.Warning = fmt.Sprintf("plan was not stored: %v", err)
-		log.Printf("agent: failed to store plan: %v", err)
+		log.Printf("agent: failed to store plan: %v raw=%q", err, truncate(string(planData), 512))
 	} else {
 		a.emit(activity.PlanCreated, map[string]string{"mode": "plan"})
 	}
