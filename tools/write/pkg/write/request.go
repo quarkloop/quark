@@ -99,6 +99,9 @@ func normalizeEdit(edit Edit) (Edit, error) {
 	if edit.StartLine < 1 {
 		return Edit{}, fmt.Errorf("start_line must be >= 1")
 	}
+	if edit.StartColumn == 0 {
+		edit.StartColumn = 1
+	}
 	if edit.StartColumn < 1 {
 		return Edit{}, fmt.Errorf("start_column must be >= 1")
 	}
@@ -110,6 +113,9 @@ func normalizeEdit(edit Edit) (Edit, error) {
 	}
 	if edit.EndLine < 1 {
 		return Edit{}, fmt.Errorf("end_line must be >= 1")
+	}
+	if edit.EndColumn == 0 {
+		edit.EndColumn = 1
 	}
 	if edit.EndColumn < 1 {
 		return Edit{}, fmt.Errorf("end_column must be >= 1")

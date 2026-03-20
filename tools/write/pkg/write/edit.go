@@ -120,8 +120,9 @@ func positionToRuneOffset(index lineIndex, line, column int) (int, error) {
 
 	if line <= len(index.lines) {
 		info := index.lines[line-1]
-		if column > len(info.text)+1 {
-			return 0, fmt.Errorf("column %d out of range for line %d", column, line)
+		maxColumn := len(info.text) + 1
+		if column > maxColumn {
+			column = maxColumn
 		}
 		return info.start + column - 1, nil
 	}

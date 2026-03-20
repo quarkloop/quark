@@ -133,6 +133,43 @@ func TestApplyRejectsOverlappingEdits(t *testing.T) {
 	}
 }
 
+func TestApplyEditAcceptsZeroAndOvershotColumns(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "script.py")
+	original := "print('Hello, World!')\n"
+
+	if err := os.WriteFile(target, []byte(original), 0644); err != nil {
+		t.Fatalf("seed file: %v", err)
+	}
+
+	res, err := Apply(Request{
+		Path:      target,
+		Operation: "edit",
+		Edits: []Edit{
+			{
+				StartLine:   1,
+				StartColumn: 0,
+				EndLine:     1,
+				EndColumn:   999,
+				NewText:     "print('Hello, Quark!')",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("edit with forgiving columns: %v", err)
+	}
+	if res.EditsApplied != 1 {
+		t.Fatalf("expected a single edit, got %+v", res)
+	}
+
+	data, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("read edited file: %v", err)
+	}
+	if got := string(data); got != "print('Hello, Quark!')\n" {
+		t.Fatalf("unexpected edited content %q", got)
+	}
+}
+
 func TestApplyRejectsNonRegularFile(t *testing.T) {
 	target := t.TempDir()
 
