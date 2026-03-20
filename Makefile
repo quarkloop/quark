@@ -3,11 +3,15 @@ BINARY_DIR := bin
 MODULES := \
 	core \
 	agent \
+	agent-api \
+	agent-client \
 	api-server \
 	cli \
 	tools/bash \
 	tools/kb \
+	tools/read \
 	tools/space \
+	tools/write \
 	tools/web-search
 
 BINARIES := \
@@ -16,17 +20,19 @@ BINARIES := \
 	cli/cmd/quark \
 	tools/bash/cmd/bash \
 	tools/kb/cmd/kb \
+	tools/read/cmd/read \
 	tools/space/cmd/space \
+	tools/write/cmd/write \
 	tools/web-search/cmd/web-search
 
 .PHONY: all build clean test test-e2e vet fmt tidy \
 	build-agent build-api-server build-cli \
-	build-tools-bash build-tools-kb build-tools-space build-tools-web-search
+	build-tools-bash build-tools-kb build-tools-read build-tools-space build-tools-write build-tools-web-search
 
 all: build
 
 ## Build all binaries
-build: build-agent build-api-server build-cli build-tools-bash build-tools-kb build-tools-space build-tools-web-search
+build: build-agent build-api-server build-cli build-tools-bash build-tools-kb build-tools-read build-tools-space build-tools-write build-tools-web-search
 
 build-agent:
 	go build -o $(BINARY_DIR)/agent ./agent/cmd/agent
@@ -43,8 +49,14 @@ build-tools-bash:
 build-tools-kb:
 	go build -o $(BINARY_DIR)/kb ./tools/kb/cmd/kb
 
+build-tools-read:
+	go build -o $(BINARY_DIR)/read ./tools/read/cmd/read
+
 build-tools-space:
 	go build -o $(BINARY_DIR)/space ./tools/space/cmd/space
+
+build-tools-write:
+	go build -o $(BINARY_DIR)/write ./tools/write/cmd/write
 
 build-tools-web-search:
 	go build -o $(BINARY_DIR)/web-search ./tools/web-search/cmd/web-search
@@ -56,9 +68,9 @@ test:
 		(cd $$mod && go test ./...); \
 	done
 
-## Run E2E tests (requires API keys: OPENROUTER_API_KEY or ZHIPU_API_KEY)
+## Run E2E tests (requires OPENROUTER_API_KEY or ZHIPU_API_KEY; loads quark/.env when present)
 test-e2e:
-	cd agent && go test -tags e2e -v -timeout 120s ./e2e/
+	go test -tags e2e -v -timeout 10m ./agent/e2e
 
 ## Run vet across all modules
 vet:
@@ -88,7 +100,7 @@ clean:
 $(BINARY_DIR):
 	mkdir -p $(BINARY_DIR)
 
-build-agent build-api-server build-cli build-tools-bash build-tools-kb build-tools-space build-tools-web-search: | $(BINARY_DIR)
+build-agent build-api-server build-cli build-tools-bash build-tools-kb build-tools-read build-tools-space build-tools-write build-tools-web-search: | $(BINARY_DIR)
 
 ## Show available targets
 help:
@@ -96,4 +108,5 @@ help:
 	@echo ""
 	@echo "Individual build targets:"
 	@echo "  build-agent, build-api-server, build-cli,"
-	@echo "  build-tools-bash, build-tools-kb, build-tools-space, build-tools-web-search"
+	@echo "  build-tools-bash, build-tools-kb, build-tools-read,"
+	@echo "  build-tools-space, build-tools-write, build-tools-web-search"
