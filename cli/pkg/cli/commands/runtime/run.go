@@ -34,7 +34,7 @@ func RunCLI() *cobra.Command {
 		Long: `Start a space from a directory that contains a Quarkfile.
 
 By default quark waits for the space to reach 'running' status and then
-streams its events to the terminal (attached mode). Press Ctrl+C to detach
+streams its activity to the terminal (attached mode). Press Ctrl+C to detach
 without stopping the space.
 
 Use --detach (-d) to return immediately after the space is confirmed running.
@@ -123,10 +123,10 @@ Use --dry-run to start with the noop model gateway (no API key needed).`,
 				return nil
 			}
 
-			// Attached mode: stream events until Ctrl+C.
-			term.Infof("Streaming events (Ctrl+C to detach) ...")
+			// Attached mode: stream activity until Ctrl+C.
+			term.Infof("Streaming activity (Ctrl+C to detach) ...")
 			fmt.Println()
-			return client.StreamEvents(cmd.Context(), sp.ID, func(line string) {
+			return streamAgentActivity(cmd.Context(), client.Agent(sp.ID), func(line string) {
 				fmt.Println(line)
 			})
 		},
@@ -137,7 +137,7 @@ Use --dry-run to start with the noop model gateway (no API key needed).`,
 	cmd.Flags().StringVar(&flags.restart, "restart", "",
 		"Restart policy: on-failure (default), always, never")
 	cmd.Flags().BoolVarP(&flags.detach, "detach", "d", false,
-		"Return immediately after space is running (do not stream events)")
+		"Return immediately after space is running (do not stream activity)")
 	cmd.Flags().BoolVar(&flags.dryRun, "dry-run", false,
 		"Use noop model gateway — no API key required, useful for testing the pipeline")
 	cmd.Flags().DurationVar(&flags.timeout, "timeout", 30*time.Second,

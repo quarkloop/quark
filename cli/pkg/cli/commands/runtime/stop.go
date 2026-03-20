@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	agentclient "github.com/quarkloop/agent-client"
 	"github.com/quarkloop/agent/pkg/infra/term"
 	"github.com/quarkloop/api-server/pkg/api"
 	"github.com/quarkloop/api-server/pkg/space"
@@ -19,33 +20,53 @@ const (
 // StopCLI returns the "stop" command.
 func StopCLI() *cobra.Command {
 	var flags struct {
-		force   bool
-		timeout time.Duration
-		noWait  bool
+		agentURL string
+		force    bool
+		timeout  time.Duration
+		noWait   bool
 	}
 
 	cmd := &cobra.Command{
-		Use:   "stop <id>",
-		Short: "Gracefully stop a running space",
-		Long: `Send SIGINT to the space-runtime process and wait for it to exit.
+		Use:   "stop [id]",
+		Short: "Gracefully stop a running agent or direct agent URL",
+		Long: `Request a graceful stop from the running agent and wait for it to exit.
 
-If the space does not stop within --timeout, the command exits with an error
-and suggests using --force (SIGKILL). Use --no-wait to return immediately
-after sending the signal without polling.`,
-		Args: cobra.ExactArgs(1),
+If the agent does not stop within --timeout, the command exits with an error
+and suggests using --force (SIGKILL via the space controller). Use --no-wait
+to return immediately after sending the stop request without polling.`,
+		Args: func(cmd *cobra.Command, args []string) error {
+			if flags.agentURL != "" {
+				return cobra.MaximumNArgs(0)(cmd, args)
+			}
+			return cobra.ExactArgs(1)(cmd, args)
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if flags.agentURL != "" {
+				if err := agentclient.New(flags.agentURL).Stop(cmd.Context()); err != nil {
+					return err
+				}
+				term.Successf("Direct agent stop requested")
+				return nil
+			}
+
 			id := args[0]
 			client := api.NewClientApi(apiServerURL())
 
-			if err := client.StopSpace(cmd.Context(), id, flags.force); err != nil {
-				return err
+			if flags.force {
+				if err := client.StopSpace(cmd.Context(), id, true); err != nil {
+					return err
+				}
+			} else {
+				if err := client.Agent(id).Stop(cmd.Context()); err != nil {
+					return err
+				}
 			}
 
-			signal := "SIGINT"
+			signal := "stop request"
 			if flags.force {
 				signal = "SIGKILL"
 			}
-			term.Infof("Signal %s sent to space %s", signal, id)
+			term.Infof("%s sent to agent %s", signal, id)
 
 			if flags.noWait {
 				return nil
@@ -60,16 +81,17 @@ after sending the signal without polling.`,
 		},
 	}
 
+	cmd.Flags().StringVar(&flags.agentURL, "agent-url", "", "Direct agent base URL")
 	cmd.Flags().BoolVarP(&flags.force, "force", "f", false,
 		"Send SIGKILL instead of SIGINT (immediate kill)")
 	cmd.Flags().DurationVar(&flags.timeout, "timeout", stopTimeout,
-		"Maximum time to wait for the space to stop")
+		"Maximum time to wait for the agent to stop")
 	cmd.Flags().BoolVar(&flags.noWait, "no-wait", false,
-		"Return immediately after sending the signal (do not poll for completion)")
+		"Return immediately after sending the stop request (do not poll for completion)")
 	return cmd
 }
 
-// waitForStopped polls until the space reaches stopped or failed, or timeout.
+// waitForStopped polls until the agent process reaches stopped or failed, or timeout.
 func waitForStopped(cmd *cobra.Command, client *api.ClientApi, id string, timeout time.Duration, alreadyForced bool) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
@@ -79,10 +101,10 @@ func waitForStopped(cmd *cobra.Command, client *api.ClientApi, id string, timeou
 		}
 		switch sp.Status {
 		case space.StatusStopped:
-			term.Successf("Space %s stopped", id)
+			term.Successf("Agent %s stopped", id)
 			return nil
 		case space.StatusFailed:
-			term.Successf("Space %s exited (failed)", id)
+			term.Successf("Agent %s exited (failed)", id)
 			return nil
 		}
 		time.Sleep(stopPollInterval)
@@ -90,10 +112,10 @@ func waitForStopped(cmd *cobra.Command, client *api.ClientApi, id string, timeou
 
 	if !alreadyForced {
 		return fmt.Errorf(
-			"space %s did not stop within %s.\n"+
+			"agent %s did not stop within %s.\n"+
 				"Use 'quark stop --force %s' to send SIGKILL.",
 			id, timeout, id,
 		)
 	}
-	return fmt.Errorf("space %s did not exit within %s after SIGKILL — process may be stuck", id, timeout)
+	return fmt.Errorf("agent %s did not exit within %s after SIGKILL — process may be stuck", id, timeout)
 }

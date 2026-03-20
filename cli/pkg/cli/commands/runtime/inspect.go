@@ -1,11 +1,6 @@
 package runtime
 
 import (
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"time"
-
 	"github.com/spf13/cobra"
 
 	"github.com/quarkloop/agent/pkg/infra/term"
@@ -14,18 +9,32 @@ import (
 
 // InspectCLI returns the "inspect" command.
 func InspectCLI() *cobra.Command {
-	return &cobra.Command{
-		Use:   "inspect <id>",
-		Short: "Show full details of a space",
-		Args:  cobra.ExactArgs(1),
+	var agentURL string
+
+	cmd := &cobra.Command{
+		Use:   "inspect [id]",
+		Short: "Show full details of an agent by ID or direct agent URL",
+		Args: func(cmd *cobra.Command, args []string) error {
+			if agentURL != "" {
+				return cobra.MaximumNArgs(0)(cmd, args)
+			}
+			return cobra.ExactArgs(1)(cmd, args)
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if agentURL != "" {
+				return inspectDirectAgent(cmd.Context(), agentURL)
+			}
+
+			client := api.NewClientApi(apiServerURL())
 			s, err := api.NewClientApi(apiServerURL()).GetSpace(cmd.Context(), args[0])
 			if err != nil {
 				return err
 			}
 			mode := ""
 			if s.Port > 0 && s.Status == "running" {
-				mode = fetchMode(s.Port)
+				if resp, err := client.Agent(s.ID).Mode(cmd.Context()); err == nil {
+					mode = resp.Mode
+				}
 			}
 			term.PrintSpaceDetail(term.SpaceRow{
 				ID: s.ID, Name: s.Name, Status: string(s.Status),
@@ -35,21 +44,6 @@ func InspectCLI() *cobra.Command {
 			return nil
 		},
 	}
-}
-
-// fetchMode queries the runtime's /mode endpoint to get the current agent mode.
-func fetchMode(port int) string {
-	client := &http.Client{Timeout: 2 * time.Second}
-	resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/mode", port))
-	if err != nil {
-		return ""
-	}
-	defer resp.Body.Close()
-	var result struct {
-		Mode string `json:"mode"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return ""
-	}
-	return result.Mode
+	cmd.Flags().StringVar(&agentURL, "agent-url", "", "Direct agent base URL")
+	return cmd
 }

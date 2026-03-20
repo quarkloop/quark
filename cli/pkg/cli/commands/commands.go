@@ -21,7 +21,7 @@ func RegisterCommands(root *cobra.Command) {
 		runtime.KillCLI(),
 		runtime.InspectCLI(),
 		runtime.LogsCLI(),
-		runtime.EventsCLI(),
+		runtime.ActivityCLI(),
 		initCmd.InitCLI(),
 		lock.LockCLI(),
 		validate.ValidateCLI(),

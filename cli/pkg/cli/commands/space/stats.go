@@ -10,15 +10,14 @@ import (
 	"github.com/quarkloop/cli/pkg/cli/config"
 )
 
-// spaceStatsCmd shows runtime stats for a running space: agent count, token
-// usage, and context window metrics sourced from the space-runtime /stats endpoint.
+// spaceStatsCmd shows runtime stats for the agent attached to a running space.
 func spaceStatsCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "stats <id>",
-		Short: "Show runtime stats for a running space",
+		Short: "Show runtime stats for a running agent",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			stats, err := api.NewClientApi(config.APIServerURL()).GetSpaceStats(cmd.Context(), args[0])
+			stats, err := api.NewClientApi(config.APIServerURL()).GetAgentStats(cmd.Context(), args[0])
 			if err != nil {
 				return err
 			}

@@ -4,6 +4,8 @@ go 1.22
 
 require (
 	github.com/quarkloop/agent v0.0.0
+	github.com/quarkloop/agent-api v0.0.0
+	github.com/quarkloop/agent-client v0.0.0
 	github.com/quarkloop/api-server v0.0.0
 	github.com/quarkloop/tools/space v0.0.0
 	github.com/spf13/cobra v1.8.0
@@ -19,6 +21,8 @@ require (
 
 replace (
 	github.com/quarkloop/agent v0.0.0 => ../agent
+	github.com/quarkloop/agent-api v0.0.0 => ../agent-api
+	github.com/quarkloop/agent-client v0.0.0 => ../agent-client
 	github.com/quarkloop/api-server v0.0.0 => ../api-server
 	github.com/quarkloop/core v0.0.0 => ../core
 	github.com/quarkloop/tools/space v0.0.0 => ../tools/space
