@@ -15,6 +15,9 @@ func ScaffoldRegistry() error {
 		"agents/quark/supervisor/latest.yaml": supervisorAgentYAML,
 		"agents/quark/researcher/latest.yaml": researcherAgentYAML,
 		"agents/quark/writer/latest.yaml":     writerAgentYAML,
+		"skills/quark/bash/latest.yaml":       bashSkillYAML,
+		"skills/quark/read/latest.yaml":       readSkillYAML,
+		"skills/quark/write/latest.yaml":      writeSkillYAML,
 		"skills/quark/web-search/latest.yaml": webSearchSkillYAML,
 	}
 
@@ -145,6 +148,105 @@ output_schema:
           title: {type: string}
           url: {type: string}
           snippet: {type: string}
+
+config: {}
+`
+
+const bashSkillYAML = `# Bash tool — executes a single shell command per request.
+ref: quark/bash
+name: bash
+version: "1.0.0"
+digest: ""
+
+endpoint: http://127.0.0.1:8091/run
+
+input_schema:
+  type: object
+  properties:
+    cmd:
+      type: string
+      description: Shell command to execute
+  required: [cmd]
+
+output_schema:
+  type: object
+  properties:
+    output:
+      type: string
+    exit_code:
+      type: integer
+
+config: {}
+`
+
+const readSkillYAML = `# Read tool — reads regular text files.
+ref: quark/read
+name: read
+version: "1.0.0"
+digest: ""
+
+endpoint: http://127.0.0.1:8093/read
+
+input_schema:
+  type: object
+  properties:
+    path:
+      type: string
+    start_line:
+      type: integer
+    end_line:
+      type: integer
+  required: [path]
+
+output_schema:
+  type: object
+  properties:
+    path:
+      type: string
+    content:
+      type: string
+    bytes_read:
+      type: integer
+    total_lines:
+      type: integer
+
+config: {}
+`
+
+const writeSkillYAML = `# Write tool — writes and edits regular text files.
+ref: quark/write
+name: write
+version: "1.0.0"
+digest: ""
+
+endpoint: http://127.0.0.1:8092/apply
+
+input_schema:
+  type: object
+  properties:
+    path:
+      type: string
+    operation:
+      type: string
+    content:
+      type: string
+    edits:
+      type: array
+  required: [path]
+
+output_schema:
+  type: object
+  properties:
+    path:
+      type: string
+    operation:
+      type: string
+    bytes_written:
+      type: integer
+    edits_applied:
+      type: integer
+    content_preview:
+      type: string
 
 config: {}
 `
