@@ -2,64 +2,75 @@
 
 > Pack your agents. Ship your intelligence.
 
-**quark** is a local runtime for autonomous multi-agent AI spaces. Define a goal, declare your agents and model, and quark handles the rest — launching isolated processes, managing the supervisor→worker execution loop, persisting context across restarts, and streaming logs in real time.
+**quark** is a local runtime for autonomous multi-agent AI spaces. Define a goal, declare your agents and model, and quark handles the rest — launching agent runtimes for isolated workspaces, managing the supervisor→worker execution loop, persisting context across restarts, and streaming activity and logs in real time.
 
 ```
 quark init my-research    # scaffold a project
 quark lock  my-research   # pin all agent refs to exact digests
 quark run   my-research   # launch the space
-quark logs  <id>          # watch it work
+quark activity <id>       # stream agent activity
 ```
 
 ---
 
 ## How it works
 
-A **space** is a long-running supervisor process that owns an agent execution loop, a knowledge base, and a model gateway. The supervisor runs a continuous planning cycle:
+A **space** is the persisted workspace record: directory, env, restart policy, logs, and the runtime identity for a project. When you run a space, the api-server launches one long-lived **agent runtime** for it. That agent owns the execution loop, knowledge base, and model gateway.
+
+The agent runs a continuous planning cycle:
 
 ```
 ORIENT → PLAN → DISPATCH → MONITOR → ASSESS → (repeat)
 ```
 
-It reads the goal from the KB, produces a structured execution plan, fans out each step to a short-lived **worker process**, collects results back over a Unix domain socket, and iterates until the goal is complete.
+It reads the goal from the KB, produces a structured execution plan, fans out ready steps to worker goroutines, invokes tools like `bash`, `read`, `write`, or `web-search`, and iterates until the goal is complete.
+
+Public HTTP APIs are split by entity:
+
+- `/api/v1/spaces` and `/api/v1/spaces/{id}` are for space lifecycle and workspace operations.
+- `/api/v1/agents/{id}` is the proxied agent API exposed through the api-server.
+- `/api/v1/agent` is the direct API served by a standalone agent runtime.
 
 ### Multi-module workspace
 
-quark is structured as a Go workspace with eight independent modules:
+quark is structured as a Go workspace with twelve independent modules:
 
+| Module | Role |
+| ------ | ---- |
+| `core` | Shared foundation: JSONL store, KB abstraction, CLI toolkit. |
+| `agent` | Agent runtime, planning loop, activity feed, worker dispatch, model gateway integration. |
+| `agent-api` | Shared HTTP API contracts and route helpers for agent runtimes. |
+| `agent-client` | Shared HTTP/SSE client for direct and proxied agent access. |
+| `api-server` | Space lifecycle controller and HTTP API server. |
+| `cli` | `quark` CLI binary. |
+| `tools/bash` | Tool: execute shell commands. |
+| `tools/kb` | Tool: KB get/set/delete/list CLI. |
+| `tools/read` | Tool: read regular text files. |
+| `tools/space` | Quarkfile parsing, registry, scaffold/lock/validate flows. |
+| `tools/write` | Tool: write and edit regular text files. |
+| `tools/web-search` | Tool: web search via Brave/SerpAPI. |
+
+**Key layering**:
+
+```text
+core -> agent -> tools/space
+agent-api -> agent-client -> api-server -> cli
+agent-api -> agent
+core -> tools/bash, tools/kb, tools/read, tools/write, tools/web-search
 ```
-quark/
-  go.work
 
-  store/          github.com/quarkloop/store              — JSONL collection store
-  kb/             github.com/quarkloop/kb                 — knowledge base + kb CLI
-  agent/          github.com/quarkloop/agent              — executor, IPC, supervisor, worker, model, context
-  space/          github.com/quarkloop/space              — Quarkfile, registry, repo ops + space CLI
-  api-server/     github.com/quarkloop/api-server         — HTTP API and process controller
-  cli/            github.com/quarkloop/cli                — quark CLI (all commands)
-  tools/bash/     github.com/quarkloop/tools/bash         — bash executor tool
-  tools/web-search/ github.com/quarkloop/tools/web-search — web search tool
-```
-
-**Dependency graph** (no cycles):
-
-```
-store ← kb ← agent ← api-server ← cli
-store ← agent
-space ← api-server ← cli
-```
-
-### Seven binaries
+### Nine binaries
 
 | Binary       | Module       | Role |
 | ------------ | ------------ | ---- |
-| `agent supervisor` | `agent` | Long-lived process per space — HTTP server + IPC + agent loop |
-| `agent worker`     | `agent` | Short-lived step executor — connects via IPC, runs one step, exits |
+| `agent`      | `agent`      | Long-lived agent runtime process — HTTP server + agent loop |
 | `api-server` | `api-server` | Manages space lifecycle, port allocation, restart policy |
-| `quark`      | `cli`        | CLI: run/stop/ps/logs/inspect/init/lock/validate |
-| `space`      | `space`      | CLI: init/lock/validate/scaffold-registry (filesystem ops) |
-| `kb`         | `kb`         | CLI: get/set/delete/list on the space knowledge base |
-| `bash`       | `tools/bash` | Tool: `run` (one-shot) + `serve` (HTTP skill server) |
+| `quark`      | `cli`        | CLI: run/stop/ps/logs/activity/inspect/init/lock/validate |
+| `bash`       | `tools/bash` | Tool: `run` + `serve` for shell execution |
+| `kb`         | `tools/kb`   | CLI: get/set/delete/list on the knowledge base |
+| `read`       | `tools/read` | Tool: `run` + `serve` for reading text files |
+| `space`      | `tools/space` | CLI: init/lock/validate/scaffold-registry |
+| `write`      | `tools/write` | Tool: `run` + `serve` for writing and editing text files |
 | `web-search` | `tools/web-search` | Tool: `run` + `serve` with Brave/SerpAPI/stub |
 
 ---
@@ -76,23 +87,7 @@ space ← api-server ← cli
 ```bash
 git clone https://github.com/quarkloop/quark
 cd quark
-
-# api-server
-GOWORK=off go build -mod=vendor -o bin/api-server  ./api-server/cmd/api-server
-
-# quark CLI
-GOWORK=off go build -mod=vendor -o bin/quark       ./cli/cmd/quark
-
-# agent binary (supervisor and worker modes)
-GOWORK=off go build -mod=vendor -o bin/agent       ./agent/cmd/agent
-
-# space and kb CLI tools
-GOWORK=off go build -mod=vendor -o bin/space       ./space/cmd/space
-GOWORK=off go build -mod=vendor -o bin/kb          ./kb/cmd/kb
-
-# tool binaries
-GOWORK=off go build -mod=vendor -o bin/bash        ./tools/bash/cmd/bash
-GOWORK=off go build -mod=vendor -o bin/web-search  ./tools/web-search/cmd/web-search
+make build
 ```
 
 Add `bin/` to your `PATH`:
@@ -102,6 +97,8 @@ export PATH="$PWD/bin:$PATH"
 ```
 
 The `api-server` discovers the `agent` binary automatically from the same directory as its own executable.
+
+Individual builds are also available, for example `make build-agent`, `make build-tools-read`, and `make build-tools-write`.
 
 ---
 
@@ -142,17 +139,19 @@ quark run . --dry-run --detach
 #   Port: 7100
 ```
 
-**5. Stream logs:**
+**5. Stream activity:**
 
 ```bash
-quark logs space-abc123
+quark activity space-abc123
 ```
+
+Use `quark logs space-abc123` if you want the raw process logs instead of structured activity.
 
 **6. Stop:**
 
 ```bash
 quark stop space-abc123
-# ✓ Space space-abc123 stopped
+# ✓ Agent space-abc123 stopped
 ```
 
 ---
@@ -182,8 +181,9 @@ Supported providers:
 | Provider    | Model examples                         | Environment variable |
 | ----------- | -------------------------------------- | -------------------- |
 | `anthropic` | `claude-opus-4-6`, `claude-sonnet-4-6` | `ANTHROPIC_API_KEY`  |
-| `openai`    | `gpt-4o`, `gpt-4o-mini`               | `OPENAI_API_KEY`     |
-| `zhipu`     | `glm-4-flash`, `glm-4`               | `ZHIPU_API_KEY`      |
+| `openai`    | `gpt-4o`, `gpt-4o-mini`                | `OPENAI_API_KEY`     |
+| `openrouter` | `openai/gpt-4o-mini`, `anthropic/claude-3.7-sonnet` | `OPENROUTER_API_KEY` |
+| `zhipu`     | `glm-4-flash`, `glm-4`                 | `ZHIPU_API_KEY`      |
 
 ---
 
@@ -193,13 +193,13 @@ Supported providers:
 
 ```
 my-space/
-├── Quarkfile               # space definition — model, agents, skills, env, restart
+├── Quarkfile               # space definition — model, agents, tools, env, restart
 ├── .quark/
 │   └── lock.yaml           # pinned dependency digests — commit this
 ├── prompts/
 │   └── supervisor.txt      # supervisor system prompt
 ├── agents/                 # optional per-agent config overrides
-├── skills/                 # optional per-skill config overrides
+├── skills/                 # optional per-tool config overrides
 └── kb/                     # knowledge base — JSONL files
     ├── config/             # goal and space config
     ├── plans/              # execution plan history
@@ -235,7 +235,7 @@ env:
 restart: on-failure
 ```
 
-Adding worker agents and skills:
+Adding worker agents and tools:
 
 ```yaml
 agents:
@@ -270,26 +270,26 @@ Max 5 restarts with a 10-second cooldown. Restart counter survives api-server re
 ```bash
 # Project commands
 quark init [dir]           Scaffold a new space project
-quark lock [dir]           Pin agent/skill refs to exact SHA-256 digests
+quark lock [dir]           Pin agent/tool refs to exact SHA-256 digests
 quark validate [dir]       Validate Quarkfile and lock file
 
 # Runtime commands (require api-server)
-quark run [dir]            Launch a space — streams events (Ctrl+C to detach)
+quark run [dir]            Launch a space — streams activity (Ctrl+C to detach)
   --dry-run                  Use noop gateway, no API key needed
   -d, --detach               Return immediately after space reaches running
   --timeout <duration>       Wait timeout (default 30s)
 
-quark stop <id>            Send SIGINT and wait for clean exit
-  -f, --force                Send SIGKILL instead
-quark kill <id>            Force-stop (SIGKILL)
+quark stop <id>            Request graceful agent stop and wait for exit
+  -f, --force                Send SIGKILL through the space controller
+quark kill <id>            Force-stop a running agent (SIGKILL)
 quark logs <id>            Stream live logs from ring buffer
-quark events <id>          Stream lifecycle events (SSE)
+quark activity <id>        Stream agent activity (SSE)
 quark ps                   List running spaces (-a for all)
-quark inspect <id>         Print full space record as JSON
+quark inspect <id>         Print details for a space and its attached agent
 
 # Space management
 quark space ls             List all spaces
-quark space stats <id>     Show context and KB stats for a running space
+quark space stats <id>     Show runtime stats for the agent attached to a running space
 quark space rm <id>        Delete a stopped/failed space record
 quark space prune          Remove all stopped and failed records
 
@@ -320,15 +320,32 @@ kb [--dir <dir>] list <namespace>            List keys in a namespace
 ### `bash` — bash executor tool
 
 ```bash
-bash run --cmd "ls -la"              One-shot execution
-bash serve --addr 127.0.0.1:8091    HTTP skill server mode
+bash run --cmd "ls -la"             One-shot execution
+bash serve --addr 127.0.0.1:8091   HTTP server mode
+```
+
+### `read` — text file reader
+
+```bash
+read run --path ./notes.txt
+read run --path ./app.py --start-line 10 --end-line 20
+read serve --addr 127.0.0.1:8093
+```
+
+### `write` — text file writer/editor
+
+```bash
+write run --path ./notes.txt --content "hello"
+write run --path ./notes.txt --operation replace --find hello --replace-with world
+write run --path ./app.py --operation edit --start-line 2 --start-column 1 --end-line 2 --end-column 14 --new-text "print('hi')"
+write serve --addr 127.0.0.1:8092
 ```
 
 ### `web-search` — web search tool
 
 ```bash
-web-search run --query "..."                        One-shot search
-web-search serve --addr 127.0.0.1:8090             HTTP skill server mode
+web-search run --query "..."                    One-shot search
+web-search serve --addr 127.0.0.1:8090         HTTP server mode
 ```
 
 Set `BRAVE_API_KEY` or `SERPAPI_KEY` for real results; stub used otherwise.
@@ -337,7 +354,7 @@ Set `BRAVE_API_KEY` or `SERPAPI_KEY` for real results; stub used otherwise.
 
 ## Registry
 
-Agents and skills are resolved from `~/.quark/registry/`. Built-in definitions are seeded on api-server startup.
+Agents and tools are resolved from `~/.quark/registry/`. Built-in definitions are seeded on api-server startup.
 
 **Built-in agents:**
 
@@ -347,11 +364,14 @@ Agents and skills are resolved from `~/.quark/registry/`. Built-in definitions a
 | `quark/researcher@latest` | Gathers information using web-search           |
 | `quark/writer@latest`     | Drafts and edits written content               |
 
-**Built-in skills:**
+**Built-in tools:**
 
-| Ref                        | Description                          |
-| -------------------------- | ------------------------------------ |
-| `quark/web-search@latest`  | HTTP skill — POST query, get results |
+| Ref                       | Description |
+| ------------------------- | ----------- |
+| `quark/bash@latest`       | Execute a shell command |
+| `quark/read@latest`       | Read a regular text file |
+| `quark/write@latest`      | Write or edit a regular text file |
+| `quark/web-search@latest` | Search the web through the configured provider |
 
 `quark lock` resolves each `ref` to a version and SHA-256 digest. Commit `.quark/lock.yaml`.
 
@@ -361,23 +381,12 @@ Agents and skills are resolved from `~/.quark/registry/`. Built-in definitions a
 
 | Variable           | Default                 | Description                                      |
 | ------------------ | ----------------------- | ------------------------------------------------ |
-| `QUARK_API_SERVER` | `http://127.0.0.1:7070` | Override api-server address for all CLI commands |
-| `QUARK_DRY_RUN`    | —                       | Set to `1` to activate the noop gateway          |
-| `ANTHROPIC_API_KEY`| —                       | Forwarded to spaces that declare it in `env`     |
-| `OPENAI_API_KEY`   | —                       | Forwarded to spaces that declare it in `env`     |
-| `ZHIPU_API_KEY`    | —                       | Forwarded to spaces that declare it in `env`     |
-
----
-
-## IPC protocol
-
-Workers communicate with their supervisor over a Unix domain socket at `~/.quark/agents/<space-id>/ipc.sock` using newline-delimited JSON frames:
-
-| Direction           | Frame    | Purpose                              |
-| ------------------- | -------- | ------------------------------------ |
-| supervisor → worker | `task`   | Step assignment on connect           |
-| worker → supervisor | `event`  | Progress update during execution     |
-| worker → supervisor | `result` | Final step outcome — worker exits    |
+| `QUARK_API_SERVER`  | `http://127.0.0.1:7070` | Override api-server address for all CLI commands |
+| `QUARK_DRY_RUN`     | —                       | Set to `1` to activate the noop gateway          |
+| `ANTHROPIC_API_KEY` | —                       | Forwarded to spaces that declare it in `env`     |
+| `OPENAI_API_KEY`    | —                       | Forwarded to spaces that declare it in `env`     |
+| `OPENROUTER_API_KEY`| —                       | Forwarded to spaces that declare it in `env`     |
+| `ZHIPU_API_KEY`     | —                       | Forwarded to spaces that declare it in `env`     |
 
 ---
 
