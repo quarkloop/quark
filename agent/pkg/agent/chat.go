@@ -8,6 +8,14 @@ import (
 	"github.com/quarkloop/agent/pkg/model"
 )
 
+// FileAttachment describes a file uploaded alongside a chat message.
+type FileAttachment struct {
+	Name     string `json:"name"`
+	MimeType string `json:"mime_type"`
+	Size     int64  `json:"size"`
+	Path     string `json:"path,omitempty"`
+}
+
 // ChatRequest is the input to Agent.Chat.
 type ChatRequest struct {
 	// Message is the user message to send to the agent.
@@ -19,6 +27,10 @@ type ChatRequest struct {
 	// Valid values: "ask", "plan", "masterplan", "auto".
 	// When empty, the agent uses its current mode (default: auto).
 	Mode string `json:"mode,omitempty"`
+	// Files contains metadata for files uploaded with this message.
+	// File content is saved to disk before reaching the agent; only
+	// metadata and paths are passed here.
+	Files []FileAttachment `json:"files,omitempty"`
 }
 
 // ChatResponse is the output of a non-streaming Agent.Chat call.
@@ -54,18 +66,36 @@ func (a *Agent) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error
 	}
 
 	mode := a.resolveMode(req.Mode)
+
+	// Update the system prompt for the resolved mode so the LLM sees
+	// the correct instructions (ask vs plan vs masterplan vs supervisor).
+	a.updateSystemPrompt(mode)
+
+	// Emit user message activity event.
+	a.emitMessage(AuthorUser, req.Message, string(mode))
+
+	var resp *ChatResponse
+	var err error
+
 	switch mode {
 	case ModeAsk:
-		return a.chatAsk(ctx, req)
+		resp, err = a.chatAsk(ctx, req)
 	case ModePlan:
-		return a.chatPlan(ctx, req)
+		resp, err = a.chatPlan(ctx, req)
 	case ModeMasterPlan:
-		return a.chatMasterPlan(ctx, req)
+		resp, err = a.chatMasterPlan(ctx, req)
 	case ModeAuto:
-		return a.chatAuto(ctx, req)
+		resp, err = a.chatAuto(ctx, req)
 	default:
-		return a.chatAsk(ctx, req)
+		resp, err = a.chatAsk(ctx, req)
 	}
+
+	// Emit agent reply activity event.
+	if err == nil && resp != nil && resp.Reply != "" {
+		a.emitMessage(AuthorAgent, resp.Reply, resp.Mode)
+	}
+
+	return resp, err
 }
 
 // resolveMode returns the mode to use for this request. When the request
