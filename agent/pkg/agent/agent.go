@@ -4,7 +4,7 @@
 //
 //   - The supervisor LLM call produces or updates the master Plan.
 //   - Worker goroutines (one per ready step) call worker agents via the KB.
-//   - Tool calls are dispatched through the skill.Invoker.
+//   - Tool calls are dispatched through the tool.Invoker.
 //   - The llmctx AgentContext manages the token window and compaction.
 //
 // Typical usage:
@@ -26,7 +26,7 @@ import (
 	"github.com/quarkloop/agent/pkg/model"
 	planpkg "github.com/quarkloop/agent/pkg/plan"
 	"github.com/quarkloop/agent/pkg/session"
-	"github.com/quarkloop/agent/pkg/skill"
+	"github.com/quarkloop/agent/pkg/tool"
 	"github.com/quarkloop/core/pkg/kb"
 )
 
@@ -40,7 +40,7 @@ type Agent struct {
 	def             *Definition
 	kb              kb.Store
 	gateway         model.Gateway
-	dispatcher      skill.Invoker
+	dispatcher      tool.Invoker
 	subAgents       map[string]*Definition
 	planStore       *planpkg.Store
 	masterPlanStore *planpkg.MasterPlanStore
@@ -99,7 +99,7 @@ func NewAgent(
 	def *Definition,
 	k kb.Store,
 	gw model.Gateway,
-	disp skill.Invoker,
+	disp tool.Invoker,
 	opts ...Option,
 ) *Agent {
 	a := &Agent{
@@ -151,13 +151,19 @@ func (a *Agent) InitContext(windowSize int) error {
 	if snap, err := a.snapRepo.LoadLatestSnapshot(); err == nil {
 		log.Printf("agent: restoring context from snapshot (%d messages)",
 			len(snap.Messages))
-		ac, err := llmctx.ContextFromSnapshot(snap, tc,
-			llmctx.WithRestoreIDGenerator(a.idGen))
-		if err == nil {
-			a.ctx = ac
-			return nil
+		compactor, cErr := a.buildCompactor()
+		if cErr == nil {
+			ac, err := llmctx.ContextFromSnapshot(snap, tc,
+				llmctx.WithRestoreIDGenerator(a.idGen),
+				llmctx.WithRestoreCompactor(compactor))
+			if err == nil {
+				a.ctx = ac
+				return nil
+			}
+			log.Printf("agent: failed to restore snapshot, creating fresh: %v", err)
+		} else {
+			log.Printf("agent: failed to build compactor for snapshot, creating fresh: %v", cErr)
 		}
-		log.Printf("agent: failed to restore snapshot, creating fresh: %v", err)
 	}
 
 	return a.buildFreshContext(windowSize)
@@ -181,20 +187,25 @@ func (a *Agent) restoreMode() {
 	}
 }
 
-// buildFreshContext creates a new AgentContext.
-func (a *Agent) buildFreshContext(windowSize int) error {
-	window, _ := llmctx.NewContextWindow(int32(windowSize))
-
+// buildCompactor creates the standard compaction pipeline.
+func (a *Agent) buildCompactor() (llmctx.Compactor, error) {
 	pipeline, err := llmctx.NewPipelineCompactor(
 		llmctx.NewWeightBasedCompactor(),
 		llmctx.NewFIFOCompactor(),
 	)
 	if err != nil {
-		return fmt.Errorf("pipeline compactor: %w", err)
+		return nil, fmt.Errorf("pipeline compactor: %w", err)
 	}
-	compactor, err := llmctx.NewThresholdCompactor(pipeline, DefaultCompactionThreshold)
+	return llmctx.NewThresholdCompactor(pipeline, DefaultCompactionThreshold)
+}
+
+// buildFreshContext creates a new AgentContext.
+func (a *Agent) buildFreshContext(windowSize int) error {
+	window, _ := llmctx.NewContextWindow(int32(windowSize))
+
+	compactor, err := a.buildCompactor()
 	if err != nil {
-		return fmt.Errorf("threshold compactor: %w", err)
+		return err
 	}
 
 	sysPromptText := a.systemPromptForMode(a.mode)
@@ -217,6 +228,38 @@ func (a *Agent) buildFreshContext(windowSize int) error {
 	}
 	a.ctx = ac
 	return nil
+}
+
+// emitMessage emits a message.added activity event for chat messages.
+// The content is truncated to 4096 characters in the activity data;
+// the full content is always available in the ChatResponse.
+// updateSystemPrompt replaces the system prompt in the agent context to match
+// the given mode. This ensures the LLM receives the correct instructions
+// regardless of which mode was active when the context was initialised.
+func (a *Agent) updateSystemPrompt(mode Mode) {
+	text := a.systemPromptForMode(mode)
+	id, _ := a.idGen.Next()
+	agentAuthor, _ := llmctx.NewAuthorID(a.def.Name)
+	msg, err := llmctx.NewSystemPromptMessage(id, agentAuthor, text, a.tc)
+	if err != nil {
+		return
+	}
+	a.ctx.SetSystemPrompt(msg)
+}
+
+func (a *Agent) emitMessage(author, content, mode string) {
+	truncated := content
+	if len(truncated) > 4096 {
+		truncated = truncated[:4096]
+	}
+	data := map[string]string{
+		"author":  author,
+		"content": truncated,
+	}
+	if mode != "" {
+		data["mode"] = mode
+	}
+	a.emit(activity.MessageAdded, data)
 }
 
 // emit sends an activity event if a sink is configured.
@@ -409,6 +452,15 @@ func (a *Agent) ExecuteTask(ctx context.Context, task string) (string, error) {
 	}
 	return resp.Content, nil
 }
+
+// Provider returns the configured LLM provider identifier (e.g. "openrouter").
+func (a *Agent) Provider() string { return a.gateway.Provider() }
+
+// ModelName returns the configured model identifier (e.g. "stepfun/step-3.5-flash:free").
+func (a *Agent) ModelName() string { return a.gateway.ModelName() }
+
+// Tools returns the names of all registered tools.
+func (a *Agent) Tools() []string { return a.dispatcher.List() }
 
 // ContextStats returns an immutable snapshot of the AgentContext metrics
 // (token counts, pressure level, compaction history).
