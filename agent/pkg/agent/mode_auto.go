@@ -23,6 +23,7 @@ func (a *Agent) chatAuto(ctx context.Context, req ChatRequest) (*ChatResponse, e
 	log.Printf("agent: auto classified as %s", resolved)
 	a.emit(activity.ModeClassified, map[string]string{"resolved": string(resolved)})
 	a.SetMode(resolved)
+	a.updateSystemPrompt(resolved)
 
 	switch resolved {
 	case ModeAsk:
