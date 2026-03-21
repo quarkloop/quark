@@ -14,10 +14,9 @@ import (
 	"github.com/quarkloop/agent/pkg/activity"
 	"github.com/quarkloop/agent/pkg/agent"
 	"github.com/quarkloop/agent/pkg/plan"
-	"github.com/quarkloop/agent/pkg/skill"
+	"github.com/quarkloop/agent/pkg/tool"
 	"github.com/quarkloop/core/pkg/kb"
 	"github.com/quarkloop/tools/space/pkg/quarkfile"
-	"github.com/quarkloop/tools/space/pkg/registry"
 )
 
 type spaceConfig struct {
@@ -25,7 +24,7 @@ type spaceConfig struct {
 	modelName  string
 	supervisor *agent.Definition
 	subAgents  map[string]*agent.Definition
-	dispatcher *skill.HTTPDispatcher
+	dispatcher *tool.HTTPDispatcher
 }
 
 func loadSpaceConfig(dir string, store kb.Store) (*spaceConfig, error) {
@@ -33,16 +32,8 @@ func loadSpaceConfig(dir string, store kb.Store) (*spaceConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load Quarkfile: %w", err)
 	}
-	lf, err := quarkfile.LoadLock(dir)
-	if err != nil {
-		return nil, fmt.Errorf("load lock file: %w", err)
-	}
 
-	resolver := registry.NewLocalClient()
-	supervisor, err := resolveSupervisor(dir, qf, lf, resolver)
-	if err != nil {
-		return nil, err
-	}
+	supervisor := buildSupervisorDef(dir, qf)
 	if supervisor.Config.ContextWindow == 0 {
 		supervisor.Config.ContextWindow = agent.DefaultContextWindow
 	}
@@ -50,12 +41,9 @@ func loadSpaceConfig(dir string, store kb.Store) (*spaceConfig, error) {
 		supervisor.Config.ApprovalPolicy = agent.ApprovalPolicy(policy)
 	}
 
-	subAgents, err := resolveSubAgents(dir, qf, lf, resolver)
-	if err != nil {
-		return nil, err
-	}
+	subAgents := buildSubAgentDefs(dir, qf)
 
-	dispatcher, err := resolveSkills(qf, lf, resolver)
+	dispatcher, err := buildToolDispatcher(qf)
 	if err != nil {
 		return nil, err
 	}
@@ -76,86 +64,73 @@ func loadSpaceConfig(dir string, store kb.Store) (*spaceConfig, error) {
 	}, nil
 }
 
-func resolveSupervisor(dir string, qf *quarkfile.Quarkfile, lf *quarkfile.LockFile, resolver registry.Resolver) (*agent.Definition, error) {
-	locked, err := lockedAgentForRef(lf, qf.Supervisor.Agent)
-	if err != nil {
-		return nil, err
+// buildSupervisorDef creates the supervisor agent definition from the
+// Quarkfile. The system prompt is loaded from the prompt file if specified.
+func buildSupervisorDef(dir string, qf *quarkfile.Quarkfile) *agent.Definition {
+	def := &agent.Definition{
+		Name: "supervisor",
+		Config: agent.Config{
+			ContextWindow: agent.DefaultContextWindow,
+		},
+		Capabilities: agent.Capabilities{
+			SpawnAgents: true,
+			MaxWorkers:  10,
+			CreatePlans: true,
+		},
 	}
-	def, err := resolver.ResolveAgent(qf.Supervisor.Agent, locked.Digest)
-	if err != nil {
-		return nil, fmt.Errorf("resolve supervisor %s: %w", qf.Supervisor.Agent, err)
-	}
-	clone := *def
 	if qf.Supervisor.Prompt != "" {
-		prompt, err := loadPromptText(dir, qf.Supervisor.Prompt)
-		if err != nil {
-			return nil, err
+		if prompt, err := loadPromptText(dir, qf.Supervisor.Prompt); err == nil {
+			def.SystemPrompt = prompt
+		} else {
+			log.Printf("runtime: failed to load supervisor prompt %s: %v", qf.Supervisor.Prompt, err)
 		}
-		clone.SystemPrompt = prompt
 	}
-	return &clone, nil
+	return def
 }
 
-func resolveSubAgents(dir string, qf *quarkfile.Quarkfile, lf *quarkfile.LockFile, resolver registry.Resolver) (map[string]*agent.Definition, error) {
+// buildSubAgentDefs creates worker agent definitions from the Quarkfile.
+func buildSubAgentDefs(dir string, qf *quarkfile.Quarkfile) map[string]*agent.Definition {
 	subAgents := map[string]*agent.Definition{}
 	for _, entry := range qf.Agents {
-		locked, err := lockedAgentForRef(lf, entry.Ref)
-		if err != nil {
-			return nil, err
-		}
-		def, err := resolver.ResolveAgent(entry.Ref, locked.Digest)
-		if err != nil {
-			return nil, fmt.Errorf("resolve agent %s: %w", entry.Name, err)
-		}
-
-		clone := *def
-		if entry.Name != "" {
-			clone.Name = entry.Name
+		def := &agent.Definition{
+			Name: entry.Name,
+			Config: agent.Config{
+				ContextWindow: agent.DefaultContextWindow,
+			},
 		}
 		if entry.Prompt != "" {
-			prompt, err := loadPromptText(dir, entry.Prompt)
-			if err != nil {
-				return nil, err
+			if prompt, err := loadPromptText(dir, entry.Prompt); err == nil {
+				def.SystemPrompt = prompt
+			} else {
+				log.Printf("runtime: failed to load agent prompt %s: %v", entry.Prompt, err)
 			}
-			clone.SystemPrompt = prompt
 		}
-
-		key := clone.Name
-		if key == "" {
-			key = entry.Name
-		}
-		subAgents[key] = &clone
+		subAgents[entry.Name] = def
 	}
-	return subAgents, nil
+	return subAgents
 }
 
-func resolveSkills(qf *quarkfile.Quarkfile, lf *quarkfile.LockFile, resolver registry.Resolver) (*skill.HTTPDispatcher, error) {
-	dispatcher := skill.NewHTTPDispatcher()
-	for _, entry := range qf.Skills {
-		locked, err := lockedSkillForRef(lf, entry.Ref)
-		if err != nil {
-			return nil, err
+// buildToolDispatcher creates the HTTP tool dispatcher from Quarkfile tool entries.
+// Each tool must have a name and an endpoint (via config or direct field).
+func buildToolDispatcher(qf *quarkfile.Quarkfile) (*tool.HTTPDispatcher, error) {
+	dispatcher := tool.NewHTTPDispatcher()
+	for _, entry := range qf.Tools {
+		def := &tool.Definition{
+			Name:   entry.Name,
+			Config: make(map[string]string),
 		}
-		def, err := resolver.ResolveSkill(entry.Ref, locked.Digest)
-		if err != nil {
-			return nil, fmt.Errorf("resolve tool %s: %w", entry.Name, err)
-		}
-
-		clone := *def
-		clone.Name = entry.Name
-		clone.Config = cloneStringMap(def.Config)
 		for key, value := range entry.Config {
-			clone.Config[key] = value
+			def.Config[key] = value
 		}
-		if endpoint := clone.Config["endpoint"]; endpoint != "" {
-			clone.Endpoint = endpoint
+		if endpoint := def.Config["endpoint"]; endpoint != "" {
+			def.Endpoint = endpoint
 		}
-		if clone.Endpoint == "" {
+		if def.Endpoint == "" {
 			return nil, fmt.Errorf("tool %s has no endpoint", entry.Name)
 		}
 
-		dispatcher.Register(entry.Name, &clone)
-		log.Printf("runtime: registered tool %s endpoint=%s ref=%s", entry.Name, clone.Endpoint, entry.Ref)
+		dispatcher.Register(entry.Name, def)
+		log.Printf("runtime: registered tool %s endpoint=%s", entry.Name, def.Endpoint)
 	}
 	return dispatcher, nil
 }
@@ -183,50 +158,30 @@ func loadPromptText(dir, promptPath string) (string, error) {
 	return string(data), nil
 }
 
-func lockedAgentForRef(lf *quarkfile.LockFile, ref string) (*quarkfile.LockedAgent, error) {
-	for _, entry := range lf.Agents {
-		if entry.Ref == ref || entry.Resolved == ref {
-			entryCopy := entry
-			return &entryCopy, nil
-		}
-	}
-	return nil, fmt.Errorf("agent %s not found in lock file", ref)
-}
-
-func lockedSkillForRef(lf *quarkfile.LockFile, ref string) (*quarkfile.LockedSkill, error) {
-	for _, entry := range lf.Skills {
-		if entry.Ref == ref || entry.Resolved == ref {
-			entryCopy := entry
-			return &entryCopy, nil
-		}
-	}
-	return nil, fmt.Errorf("tool %s not found in lock file", ref)
-}
-
-func cloneStringMap(in map[string]string) map[string]string {
-	if len(in) == 0 {
-		return map[string]string{}
-	}
-	out := make(map[string]string, len(in))
-	for key, value := range in {
-		out[key] = value
-	}
-	return out
-}
-
 type agentService struct {
 	agentID string
+	dir     string
 	kb      kb.Store
 	agent   *agent.Agent
 	feed    *activity.Feed
 }
 
-func newAgentService(agentID string, store kb.Store, a *agent.Agent, feed *activity.Feed) *agentService {
-	return &agentService{agentID: agentID, kb: store, agent: a, feed: feed}
+func newAgentService(agentID, dir string, store kb.Store, a *agent.Agent, feed *activity.Feed) *agentService {
+	return &agentService{agentID: agentID, dir: dir, kb: store, agent: a, feed: feed}
 }
 
 func (s *agentService) Health(ctx context.Context, r *http.Request) (*agentapi.HealthResponse, error) {
 	return &agentapi.HealthResponse{AgentID: s.agentID, Status: "running"}, nil
+}
+
+func (s *agentService) Info(ctx context.Context, r *http.Request) (*agentapi.InfoResponse, error) {
+	return &agentapi.InfoResponse{
+		AgentID:  s.agentID,
+		Provider: s.agent.Provider(),
+		Model:    s.agent.ModelName(),
+		Mode:     string(s.agent.Mode()),
+		Tools:    s.agent.Tools(),
+	}, nil
 }
 
 func (s *agentService) Mode(ctx context.Context, r *http.Request) (*agentapi.ModeResponse, error) {
@@ -250,11 +205,31 @@ func (s *agentService) Stats(ctx context.Context, r *http.Request) (agentapi.Sta
 }
 
 func (s *agentService) Chat(ctx context.Context, r *http.Request, req agentapi.ChatRequest) (*agentapi.ChatResponse, error) {
-	resp, err := s.agent.Chat(ctx, agent.ChatRequest{
+	agentReq := agent.ChatRequest{
 		Message: req.Message,
 		Stream:  req.Stream,
 		Mode:    req.Mode,
-	})
+	}
+
+	// Save uploaded files to the workspace and pass metadata.
+	if len(req.Files) > 0 {
+		for i, f := range req.Files {
+			saved, err := s.saveUploadedFile(f)
+			if err != nil {
+				return nil, agentapi.Error(http.StatusBadRequest,
+					fmt.Sprintf("save file %s: %v", f.Name, err), err)
+			}
+			agentReq.Files = append(agentReq.Files, agent.FileAttachment{
+				Name:     saved.Name,
+				MimeType: saved.MimeType,
+				Size:     saved.Size,
+				Path:     saved.Path,
+			})
+			req.Files[i].Path = saved.Path
+		}
+	}
+
+	resp, err := s.agent.Chat(ctx, agentReq)
 	if err != nil {
 		return nil, err
 	}
@@ -265,6 +240,24 @@ func (s *agentService) Chat(ctx context.Context, r *http.Request, req agentapi.C
 		InputTokens:  resp.InputTokens,
 		OutputTokens: resp.OutputTokens,
 	}, nil
+}
+
+// saveUploadedFile writes a file attachment to the uploads directory in the
+// agent workspace and returns the attachment with its Path set.
+func (s *agentService) saveUploadedFile(f agentapi.FileAttachment) (agentapi.FileAttachment, error) {
+	if len(f.Content) == 0 {
+		return f, nil
+	}
+	uploadsDir := filepath.Join(s.dir, "uploads")
+	if err := os.MkdirAll(uploadsDir, 0o755); err != nil {
+		return f, fmt.Errorf("create uploads dir: %w", err)
+	}
+	dest := filepath.Join(uploadsDir, f.Name)
+	if err := os.WriteFile(dest, f.Content, 0o644); err != nil {
+		return f, fmt.Errorf("write file: %w", err)
+	}
+	f.Path = dest
+	return f, nil
 }
 
 func (s *agentService) Stop(ctx context.Context, r *http.Request) error {
