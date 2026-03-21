@@ -4,7 +4,7 @@
 //
 //	bash run --cmd "ls -la"
 //
-// Usage as an HTTP skill server:
+// Usage as an HTTP tool server:
 //
 //	bash serve --addr 127.0.0.1:8091
 //

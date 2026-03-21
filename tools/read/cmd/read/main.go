@@ -5,7 +5,7 @@
 //	read run --path ./notes.txt
 //	read run --path ./app.py --start-line 10 --end-line 20
 //
-// Usage as an HTTP skill server:
+// Usage as an HTTP tool server:
 //
 //	read serve --addr 127.0.0.1:8093
 //

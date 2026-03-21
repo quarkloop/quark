@@ -6,7 +6,7 @@
 //	write run --path ./notes.txt --operation replace --find hello --replace-with world
 //	write run --path ./app.py --operation edit --start-line 2 --start-column 1 --end-line 2 --end-column 14 --new-text "print('hi')"
 //
-// Usage as an HTTP skill server:
+// Usage as an HTTP tool server:
 //
 //	write serve --addr 127.0.0.1:8092
 //

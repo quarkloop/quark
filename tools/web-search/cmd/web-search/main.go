@@ -4,7 +4,7 @@
 //
 //	web-search run --query "golang concurrency"
 //
-// Usage as an HTTP skill server (compatible with the skill dispatcher):
+// Usage as an HTTP tool server:
 //
 //	web-search serve --addr 127.0.0.1:8090
 //

@@ -58,7 +58,7 @@ func Apply(req Request) (Result, error) {
 	}, nil
 }
 
-// RunHandler exposes the tool through the skill HTTP protocol.
+// RunHandler exposes the tool through the tool HTTP protocol.
 func RunHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req Request
@@ -83,7 +83,7 @@ func RunHandler() http.HandlerFunc {
 	}
 }
 
-// Serve starts the read tool skill server.
+// Serve starts the read tool server.
 func Serve(addr string) error {
 	http.HandleFunc("POST /read", RunHandler())
 	fmt.Printf("read tool listening on %s\n", addr)
