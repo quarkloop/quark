@@ -1,15 +1,11 @@
 package agent
 
-// Definition is the resolved agent specification fetched from the registry.
+// Definition is the agent specification loaded from the Quarkfile and prompt files.
 type Definition struct {
-	Ref            string       `json:"ref"`
-	Name           string       `json:"name"`
-	Version        string       `json:"version"`
-	Digest         string       `json:"digest"`
-	SystemPrompt   string       `json:"system_prompt"`
-	Config         Config       `json:"config"`
-	RequiredSkills []string     `json:"required_skills"`
-	Capabilities   Capabilities `json:"capabilities"`
+	Name         string       `json:"name"`
+	SystemPrompt string       `json:"system_prompt"`
+	Config       Config       `json:"config"`
+	Capabilities Capabilities `json:"capabilities"`
 }
 
 // ApprovalPolicy controls whether plans require explicit user approval
