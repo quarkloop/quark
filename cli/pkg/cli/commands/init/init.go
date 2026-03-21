@@ -6,8 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/quarkloop/api-server/pkg/api"
-	"github.com/quarkloop/cli/pkg/cli/config"
+	spacerepo "github.com/quarkloop/tools/space/pkg/repo"
 )
 
 // InitCLI returns the "init" command.
@@ -25,7 +24,7 @@ func InitCLI() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := api.NewClientApi(config.APIServerURL()).InitRepo(cmd.Context(), absDir); err != nil {
+			if err := spacerepo.Init(absDir); err != nil {
 				return err
 			}
 			fmt.Println("Done. Next steps:\n  1. Edit Quarkfile\n  2. quark lock\n  3. quark run")

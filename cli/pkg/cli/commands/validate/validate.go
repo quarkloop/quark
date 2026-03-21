@@ -6,8 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/quarkloop/api-server/pkg/api"
-	"github.com/quarkloop/cli/pkg/cli/config"
+	spacerepo "github.com/quarkloop/tools/space/pkg/repo"
 )
 
 // ValidateCLI returns the "validate" command.
@@ -25,7 +24,7 @@ func ValidateCLI() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := api.NewClientApi(config.APIServerURL()).ValidateRepo(cmd.Context(), absDir); err != nil {
+			if err := spacerepo.Validate(absDir); err != nil {
 				return err
 			}
 			fmt.Println("All checks passed.")
