@@ -60,6 +60,14 @@ func (c *Client) Health(ctx context.Context) (*agentapi.HealthResponse, error) {
 	return &resp, nil
 }
 
+func (c *Client) Info(ctx context.Context) (*agentapi.InfoResponse, error) {
+	var resp agentapi.InfoResponse
+	if err := c.transport.Get(ctx, c.path(agentapi.PathInfo), &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 func (c *Client) Mode(ctx context.Context) (*agentapi.ModeResponse, error) {
 	var resp agentapi.ModeResponse
 	if err := c.transport.Get(ctx, c.path(agentapi.PathMode), &resp); err != nil {
