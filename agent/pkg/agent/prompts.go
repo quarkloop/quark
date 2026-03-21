@@ -3,6 +3,8 @@ package agent
 import (
 	"fmt"
 	"strings"
+
+	"github.com/quarkloop/agent/pkg/model"
 )
 
 // systemPromptForMode returns the system prompt appropriate for the given mode.
@@ -20,13 +22,24 @@ func (a *Agent) systemPromptForMode(mode Mode) string {
 }
 
 func (a *Agent) buildAskSystemPrompt() string {
-	return `You are a helpful assistant. Answer the user's question directly and concisely.
+	tools := a.dispatcher.List()
+	if len(tools) == 0 {
+		return `You are a helpful assistant. Answer the user's question directly and concisely.
 
-You are in read-only mode:
+Rules:
 - Do NOT produce execution plans or JSON plan structures.
-- Do NOT invoke tools or suggest executing commands.
-- Do NOT suggest modifications, edits, or mutations.
-- Simply answer the question with the information available to you.`
+- Answer directly with the information available to you.`
+	}
+
+	hint := model.FormatHintForTools(a.gateway.Parser(), tools)
+	return fmt.Sprintf(`You are a helpful assistant. Answer the user's question directly and concisely.
+
+%s
+
+Rules:
+- Do NOT produce execution plans or JSON plan structures.
+- Use tools when needed to answer the question, then give a direct answer.
+- If you can answer without tools, just answer directly.`, hint)
 }
 
 func (a *Agent) buildPlanModeSystemPrompt() string {
@@ -45,7 +58,7 @@ func (a *Agent) buildPlanModeSystemPrompt() string {
 	return fmt.Sprintf(`You are a supervisor agent. Create a focused execution plan for the user's request.
 
 Available worker agents: %s
-Available skills: %s
+Available tools: %s
 
 Respond with a JSON object using this structure:
 {
