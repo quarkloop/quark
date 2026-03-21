@@ -19,7 +19,7 @@ Go 1.22 workspace with 12 modules and 9 binaries. Each module is a standalone Go
 | `tools/bash` | Tool: shell command execution (CLI + HTTP server). |
 | `tools/kb` | Tool: knowledge base get/set/delete/list (CLI). |
 | `tools/read` | Tool: read regular text files (CLI + HTTP server). |
-| `tools/space` | Tool: space init/lock/validate/stats, Quarkfile parsing, registry. |
+| `tools/space` | Tool: space init/lock/validate, Quarkfile parsing. |
 | `tools/write` | Tool: write and edit regular text files (CLI + HTTP server). |
 | `tools/web-search` | Tool: web search via Brave/SerpAPI (CLI + HTTP server). |
 
@@ -76,7 +76,7 @@ The agent supports four dynamic working modes, set per-message via `ChatRequest.
 
 | Mode | Behaviour |
 |------|-----------|
-| `ask` | Read-only: single LLM call, no plans, no tools. |
+| `ask` | Direct answer with optional tool use. No plans created. |
 | `plan` | Creates a single execution plan with steps. Run() loop dispatches approved plans. |
 | `masterplan` | Creates a multi-phase master plan. Each phase becomes its own sub-plan. |
 | `auto` | LLM classifies the request and routes to ask/plan/masterplan. |
@@ -91,6 +91,21 @@ Mode is agent-internal (no CLI flags or api-server changes). Default is `auto`. 
 |--------|----------|-----------|
 | `required` | `ApprovalRequired` | Plans are created as drafts; user must approve before execution. |
 | `auto` | `ApprovalAuto` | Plans are auto-approved for immediate execution. |
+
+## Tools vs Skills
+
+- **Tools** are HTTP-dispatched executables that agents invoke (bash, read, write, web-search). Defined in the Quarkfile with a name and endpoint config.
+- **Skills** are a future concept — informational/advisory, not executable. A skill can advise which tools to use. Not yet implemented.
+
+Tools are NOT registered in a registry. They are declared directly in the Quarkfile:
+
+```yaml
+tools:
+  - ref: quark/bash
+    name: bash
+    config:
+      endpoint: "http://127.0.0.1:8091/run"
+```
 
 ## E2E Tests
 
@@ -115,6 +130,7 @@ Provider resolution order: `OPENROUTER_API_KEY` first, then `ZHIPU_API_KEY`. The
 - KB abstraction (`core/pkg/kb`) wraps the store with namespace/key semantics.
 - Agent plan types live in `agent/pkg/plan`.
 - Agent mode and approval policy types live in `agent/pkg/agent`.
+- Tool dispatch types live in `agent/pkg/tool`.
 - Shared agent HTTP contracts live in `agent-api`; reusable HTTP/SSE access lives in `agent-client`.
 - Tool binaries follow the pattern: `tools/<name>/cmd/<name>/main.go` (thin CLI) + `tools/<name>/pkg/<name>/` (library).
 - Module paths: `github.com/quarkloop/<module>` for top-level, `github.com/quarkloop/tools/<name>` for tools.
