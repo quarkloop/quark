@@ -25,6 +25,14 @@ func (s *agentProxyService) Health(ctx context.Context, r *http.Request) (*agent
 	return client.Health(ctx)
 }
 
+func (s *agentProxyService) Info(ctx context.Context, r *http.Request) (*agentapi.InfoResponse, error) {
+	client, err := s.clientForRequest(r)
+	if err != nil {
+		return nil, err
+	}
+	return client.Info(ctx)
+}
+
 func (s *agentProxyService) Mode(ctx context.Context, r *http.Request) (*agentapi.ModeResponse, error) {
 	client, err := s.clientForRequest(r)
 	if err != nil {

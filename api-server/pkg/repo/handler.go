@@ -25,14 +25,13 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/repo/agents", h.AddAgent)
 	mux.HandleFunc("DELETE /api/v1/repo/agents/{name}", h.RemoveAgent)
 	mux.HandleFunc("GET /api/v1/repo/agents", h.ListAgents)
-	mux.HandleFunc("POST /api/v1/repo/skills", h.AddSkill)
-	mux.HandleFunc("DELETE /api/v1/repo/skills/{name}", h.RemoveSkill)
-	mux.HandleFunc("GET /api/v1/repo/skills", h.ListSkills)
+	mux.HandleFunc("POST /api/v1/repo/tools", h.AddTool)
+	mux.HandleFunc("DELETE /api/v1/repo/tools/{name}", h.RemoveTool)
+	mux.HandleFunc("GET /api/v1/repo/tools", h.ListTools)
 	mux.HandleFunc("POST /api/v1/repo/kb", h.AddKB)
 	mux.HandleFunc("DELETE /api/v1/repo/kb", h.RemoveKB)
 	mux.HandleFunc("GET /api/v1/repo/kb", h.ListKB)
 	mux.HandleFunc("GET /api/v1/repo/kb/show", h.ShowKB)
-	mux.HandleFunc("POST /api/v1/registry/scaffold", h.ScaffoldRegistry)
 }
 
 type dirRequest interface{ GetDir() string }
@@ -63,14 +62,6 @@ func (h *Handler) Lock(w http.ResponseWriter, r *http.Request) {
 }
 func (h *Handler) Validate(w http.ResponseWriter, r *http.Request) {
 	handleDir[*api.ValidateRepoRequest](w, r, http.StatusBadRequest, spacerepo.Validate)
-}
-
-func (h *Handler) ScaffoldRegistry(w http.ResponseWriter, r *http.Request) {
-	if err := spacerepo.ScaffoldRegistry(); err != nil {
-		httpserver.WriteError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) AddAgent(w http.ResponseWriter, r *http.Request) {
@@ -115,46 +106,46 @@ func (h *Handler) ListAgents(w http.ResponseWriter, r *http.Request) {
 	httpserver.WriteJSON(w, http.StatusOK, api.AgentListResponse{Agents: items})
 }
 
-func (h *Handler) AddSkill(w http.ResponseWriter, r *http.Request) {
-	var req api.SkillAddRequest
+func (h *Handler) AddTool(w http.ResponseWriter, r *http.Request) {
+	var req api.ToolAddRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httpserver.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	dir, _ := absDir(req.Dir)
-	if err := spacerepo.AddSkill(dir, req.Ref, req.Name); err != nil {
+	if err := spacerepo.AddTool(dir, req.Ref, req.Name); err != nil {
 		httpserver.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *Handler) RemoveSkill(w http.ResponseWriter, r *http.Request) {
-	var req api.SkillRemoveRequest
+func (h *Handler) RemoveTool(w http.ResponseWriter, r *http.Request) {
+	var req api.ToolRemoveRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httpserver.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	dir, _ := absDir(req.Dir)
-	if err := spacerepo.RemoveSkill(dir, req.Name); err != nil {
+	if err := spacerepo.RemoveTool(dir, req.Name); err != nil {
 		httpserver.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *Handler) ListSkills(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ListTools(w http.ResponseWriter, r *http.Request) {
 	dir, _ := absDir(r.URL.Query().Get("dir"))
-	entries, err := spacerepo.ListSkills(dir)
+	entries, err := spacerepo.ListTools(dir)
 	if err != nil {
 		httpserver.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	items := make([]api.SkillItem, len(entries))
+	items := make([]api.ToolItem, len(entries))
 	for i, e := range entries {
-		items[i] = api.SkillItem{Name: e.Name, Ref: e.Ref}
+		items[i] = api.ToolItem{Name: e.Name, Ref: e.Ref}
 	}
-	httpserver.WriteJSON(w, http.StatusOK, api.SkillListResponse{Skills: items})
+	httpserver.WriteJSON(w, http.StatusOK, api.ToolListResponse{Tools: items})
 }
 
 func (h *Handler) AddKB(w http.ResponseWriter, r *http.Request) {
@@ -221,8 +212,3 @@ func absDir(dir string) (string, error) {
 	return filepath.Abs(dir)
 }
 
-// ScaffoldRegistry seeds the local registry. Re-exported from space module for
-// use by the api-server startup sequence.
-func ScaffoldRegistry() error {
-	return spacerepo.ScaffoldRegistry()
-}

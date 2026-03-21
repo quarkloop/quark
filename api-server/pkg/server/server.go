@@ -3,11 +3,10 @@
 // Startup sequence:
 //  1. Expand and create the data directory.
 //  2. Resolve the space-runtime binary path.
-//  3. Seed the local registry.
-//  4. Open the JSONL space store.
-//  5. Create the Controller.
-//  6. Mount HTTP handlers (space + repo).
-//  7. Start the reconciliation loop and HTTP listener concurrently.
+//  3. Open the JSONL space store.
+//  4. Create the Controller.
+//  5. Mount HTTP handlers (space + repo).
+//  6. Start the reconciliation loop and HTTP listener concurrently.
 package server
 
 import (
@@ -36,8 +35,8 @@ type Server struct {
 // New constructs and configures a Server from cfg but does not start listening.
 // Call Run to begin serving requests.
 // New creates and wires the api-server: creates the data directory,
-// locates the space-runtime binary, seeds the local registry (idempotent),
-// opens the JSONL space store, and registers all HTTP routes.
+// locates the space-runtime binary, opens the JSONL space store, and
+// registers all HTTP routes.
 func New(cfg *Config) (*Server, error) {
 	dataDir := expandHome(cfg.DataDir)
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
@@ -49,12 +48,6 @@ func New(cfg *Config) (*Server, error) {
 		return nil, err
 	}
 	log.Printf("api-server: using agent binary at %s", runtimeBin)
-
-	// Seed the local registry with built-in agent/skill definitions.
-	// Safe to call every start — existing files are never overwritten.
-	if err := repo.ScaffoldRegistry(); err != nil {
-		log.Printf("api-server: warning: registry scaffold failed: %v", err)
-	}
 
 	// Space records are stored as individual JSON files under <dataDir>/spaces/.
 	store, err := space.OpenStore(filepath.Join(dataDir, "spaces"))

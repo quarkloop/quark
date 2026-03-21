@@ -42,24 +42,24 @@ type AgentItem struct {
 	Ref  string `json:"ref"`
 }
 
-// --- Skill Management Payloads ---
+// --- Tool Management Payloads ---
 
-type SkillAddRequest struct {
+type ToolAddRequest struct {
 	Dir  string `json:"dir"`
 	Ref  string `json:"ref"`
 	Name string `json:"name"`
 }
 
-type SkillRemoveRequest struct {
+type ToolRemoveRequest struct {
 	Dir  string `json:"dir"`
 	Name string `json:"name"`
 }
 
-type SkillListResponse struct {
-	Skills []SkillItem `json:"skills"`
+type ToolListResponse struct {
+	Tools []ToolItem `json:"tools"`
 }
 
-type SkillItem struct {
+type ToolItem struct {
 	Name string `json:"name"`
 	Ref  string `json:"ref"`
 }

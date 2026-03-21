@@ -21,10 +21,6 @@ func (a *ClientApi) ValidateRepo(ctx context.Context, dir string) error {
 	return a.client.Post(ctx, "/api/v1/repo/validate", req, nil)
 }
 
-func (a *ClientApi) ScaffoldRegistry(ctx context.Context) error {
-	return a.client.Post(ctx, "/api/v1/registry/scaffold", nil, nil)
-}
-
 // --- Agent Management ---
 
 func (a *ClientApi) AddAgent(ctx context.Context, dir, ref, name string) error {
@@ -46,21 +42,21 @@ func (a *ClientApi) ListAgents(ctx context.Context, dir string) (*AgentListRespo
 	return &res, nil
 }
 
-// --- Skill Management ---
+// --- Tool Management ---
 
-func (a *ClientApi) AddSkill(ctx context.Context, dir, ref, name string) error {
-	req := SkillAddRequest{Dir: dir, Ref: ref, Name: name}
-	return a.client.Post(ctx, "/api/v1/repo/skills", req, nil)
+func (a *ClientApi) AddTool(ctx context.Context, dir, ref, name string) error {
+	req := ToolAddRequest{Dir: dir, Ref: ref, Name: name}
+	return a.client.Post(ctx, "/api/v1/repo/tools", req, nil)
 }
 
-func (a *ClientApi) RemoveSkill(ctx context.Context, dir, name string) error {
-	req := SkillRemoveRequest{Dir: dir, Name: name}
-	return a.client.Delete(ctx, "/api/v1/repo/skills/"+name, req, nil)
+func (a *ClientApi) RemoveTool(ctx context.Context, dir, name string) error {
+	req := ToolRemoveRequest{Dir: dir, Name: name}
+	return a.client.Delete(ctx, "/api/v1/repo/tools/"+name, req, nil)
 }
 
-func (a *ClientApi) ListSkills(ctx context.Context, dir string) (*SkillListResponse, error) {
-	var res SkillListResponse
-	if err := a.client.Get(ctx, "/api/v1/repo/skills?dir="+dir, &res); err != nil {
+func (a *ClientApi) ListTools(ctx context.Context, dir string) (*ToolListResponse, error) {
+	var res ToolListResponse
+	if err := a.client.Get(ctx, "/api/v1/repo/tools?dir="+dir, &res); err != nil {
 		return nil, err
 	}
 	return &res, nil
