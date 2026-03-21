@@ -25,7 +25,7 @@ import (
 	"github.com/quarkloop/agent/pkg/agent"
 	"github.com/quarkloop/agent/pkg/infra/httpserver"
 	"github.com/quarkloop/agent/pkg/model"
-	"github.com/quarkloop/agent/pkg/skill"
+	"github.com/quarkloop/agent/pkg/tool"
 	"github.com/quarkloop/core/pkg/kb"
 )
 
@@ -84,7 +84,7 @@ func New(cfg *Config) (*Runtime, error) {
 
 	mux := http.NewServeMux()
 	agentapi.NewHandler(
-		newAgentService(cfg.AgentID, k, a, feed),
+		newAgentService(cfg.AgentID, cfg.Dir, k, a, feed),
 		agentapi.WithBasePath(agentapi.DefaultBasePath),
 		agentapi.WithAliasBasePath(""),
 	).RegisterRoutes(mux)
@@ -221,4 +221,4 @@ func stringsFirstNonEmpty(values ...string) string {
 	return ""
 }
 
-var _ skill.Invoker = (*skill.HTTPDispatcher)(nil)
+var _ tool.Invoker = (*tool.HTTPDispatcher)(nil)
