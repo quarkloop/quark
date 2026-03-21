@@ -6,7 +6,7 @@
 
 ```
 quark init my-research    # scaffold a project
-quark lock  my-research   # pin all agent refs to exact digests
+quark lock  my-research   # snapshot refs into a lock file
 quark run   my-research   # launch the space
 quark activity <id>       # stream agent activity
 ```
@@ -46,7 +46,7 @@ quark is structured as a Go workspace with twelve independent modules:
 | `tools/bash` | Tool: execute shell commands. |
 | `tools/kb` | Tool: KB get/set/delete/list CLI. |
 | `tools/read` | Tool: read regular text files. |
-| `tools/space` | Quarkfile parsing, registry, scaffold/lock/validate flows. |
+| `tools/space` | Quarkfile parsing, scaffold/lock/validate flows. |
 | `tools/write` | Tool: write and edit regular text files. |
 | `tools/web-search` | Tool: web search via Brave/SerpAPI. |
 
@@ -69,7 +69,7 @@ core -> tools/bash, tools/kb, tools/read, tools/write, tools/web-search
 | `bash`       | `tools/bash` | Tool: `run` + `serve` for shell execution |
 | `kb`         | `tools/kb`   | CLI: get/set/delete/list on the knowledge base |
 | `read`       | `tools/read` | Tool: `run` + `serve` for reading text files |
-| `space`      | `tools/space` | CLI: init/lock/validate/scaffold-registry |
+| `space`      | `tools/space` | CLI: init/lock/validate |
 | `write`      | `tools/write` | Tool: `run` + `serve` for writing and editing text files |
 | `web-search` | `tools/web-search` | Tool: `run` + `serve` with Brave/SerpAPI/stub |
 
@@ -119,7 +119,7 @@ quark init my-space
 cd my-space
 ```
 
-**3. Lock dependencies:**
+**3. Lock:**
 
 ```bash
 quark lock .
@@ -195,11 +195,10 @@ Supported providers:
 my-space/
 ├── Quarkfile               # space definition — model, agents, tools, env, restart
 ├── .quark/
-│   └── lock.yaml           # pinned dependency digests — commit this
+│   └── lock.yaml           # lock file — commit this
 ├── prompts/
 │   └── supervisor.txt      # supervisor system prompt
-├── agents/                 # optional per-agent config overrides
-├── skills/                 # optional per-tool config overrides
+├── agents/                 # optional per-agent prompt overrides
 └── kb/                     # knowledge base — JSONL files
     ├── config/             # goal and space config
     ├── plans/              # execution plan history
@@ -226,7 +225,7 @@ model:
   name: claude-opus-4-6
 
 supervisor:
-  agent: quark/supervisor@latest
+  agent: quark/supervisor
   prompt: ./prompts/supervisor.txt
 
 env:
@@ -239,16 +238,20 @@ Adding worker agents and tools:
 
 ```yaml
 agents:
-  - ref: quark/researcher@latest
+  - ref: quark/researcher
     name: researcher
-  - ref: quark/writer@latest
+  - ref: quark/writer
     name: writer
 
-skills:
-  - ref: quark/web-search@latest
+tools:
+  - ref: quark/bash
+    name: bash
+    config:
+      endpoint: "http://127.0.0.1:8091/run"
+  - ref: quark/web-search
     name: web-search
     config:
-      max_results: "10"
+      endpoint: "http://127.0.0.1:8090/search"
 ```
 
 **Restart policies:**
@@ -270,7 +273,7 @@ Max 5 restarts with a 10-second cooldown. Restart counter survives api-server re
 ```bash
 # Project commands
 quark init [dir]           Scaffold a new space project
-quark lock [dir]           Pin agent/tool refs to exact SHA-256 digests
+quark lock [dir]           Snapshot refs into .quark/lock.yaml
 quark validate [dir]       Validate Quarkfile and lock file
 
 # Runtime commands (require api-server)
@@ -295,7 +298,6 @@ quark space prune          Remove all stopped and failed records
 
 # System
 quark system status        Check api-server connectivity
-quark registry scaffold    Seed ~/.quark/registry/ with built-in definitions
 quark version              Print version
 ```
 
@@ -305,7 +307,6 @@ quark version              Print version
 space init [dir]           Scaffold a new space directory
 space lock [dir]           Resolve refs and write .quark/lock.yaml
 space validate [dir]       Validate Quarkfile and lock file
-space scaffold-registry    Seed ~/.quark/registry/
 ```
 
 ### `kb` — knowledge base
@@ -349,31 +350,6 @@ web-search serve --addr 127.0.0.1:8090         HTTP server mode
 ```
 
 Set `BRAVE_API_KEY` or `SERPAPI_KEY` for real results; stub used otherwise.
-
----
-
-## Registry
-
-Agents and tools are resolved from `~/.quark/registry/`. Built-in definitions are seeded on api-server startup.
-
-**Built-in agents:**
-
-| Ref                       | Role                                           |
-| ------------------------- | ---------------------------------------------- |
-| `quark/supervisor@latest` | Orchestrates workers; drives the planning loop |
-| `quark/researcher@latest` | Gathers information using web-search           |
-| `quark/writer@latest`     | Drafts and edits written content               |
-
-**Built-in tools:**
-
-| Ref                       | Description |
-| ------------------------- | ----------- |
-| `quark/bash@latest`       | Execute a shell command |
-| `quark/read@latest`       | Read a regular text file |
-| `quark/write@latest`      | Write or edit a regular text file |
-| `quark/web-search@latest` | Search the web through the configured provider |
-
-`quark lock` resolves each `ref` to a version and SHA-256 digest. Commit `.quark/lock.yaml`.
 
 ---
 
