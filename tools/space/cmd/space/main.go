@@ -1,7 +1,7 @@
 // space is the quark space CLI tool.
 //
 // It manages space directory filesystem operations: scaffolding, locking,
-// validating, and managing agents/skills/KB entries in a Quarkfile.
+// validating, and managing agents/tools/KB entries in a Quarkfile.
 // The api-server proxies these operations over HTTP; this binary is the
 // single implementation of the filesystem side.
 package main
@@ -21,7 +21,6 @@ func main() {
 	root.AddCommand(initCmd())
 	root.AddCommand(lockCmd())
 	root.AddCommand(validateCmd())
-	root.AddCommand(scaffoldRegistryCmd())
 
 	toolkit.Execute(root)
 }
@@ -52,7 +51,7 @@ func initCmd() *cobra.Command {
 func lockCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "lock [dir]",
-		Short: "Resolve all agent/skill refs and write .quark/lock.yaml",
+		Short: "Resolve refs and write .quark/lock.yaml",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := "."
@@ -75,16 +74,6 @@ func validateCmd() *cobra.Command {
 				dir = args[0]
 			}
 			return repo.Validate(dir)
-		},
-	}
-}
-
-func scaffoldRegistryCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "scaffold-registry",
-		Short: "Seed ~/.quark/registry/ with built-in agent and skill definitions",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return repo.ScaffoldRegistry()
 		},
 	}
 }
