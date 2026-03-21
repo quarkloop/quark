@@ -87,7 +87,7 @@ func (a *Agent) orient(_ context.Context) (map[string]interface{}, error) {
 		agentNames = append(agentNames, name)
 	}
 	state["available_agents"] = agentNames
-	state["available_skills"] = a.dispatcher.List()
+	state["available_tools"] = a.dispatcher.List()
 
 	if a.ctx != nil {
 		s := a.ctx.Stats()

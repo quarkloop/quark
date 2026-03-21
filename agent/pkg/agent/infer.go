@@ -197,7 +197,7 @@ func (a *Agent) buildSupervisorSystemPrompt(state map[string]interface{}) string
 	return fmt.Sprintf(`You are the supervisor agent orchestrating a multi-agent space.
 
 Available worker agents: %s
-Available skills: %s
+Available tools: %s
 
 Your job is to:
 1. Break the goal into concrete, parallelizable steps
