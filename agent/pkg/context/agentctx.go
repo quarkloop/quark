@@ -291,6 +291,20 @@ func (ac *AgentContext) SystemPrompt() *Message {
 	return ac.systemPrompt
 }
 
+// SetSystemPrompt replaces the current system prompt with a new one.
+// Token counts are adjusted accordingly.
+func (ac *AgentContext) SetSystemPrompt(msg *Message) {
+	ac.mu.Lock()
+	defer ac.mu.Unlock()
+	if ac.systemPrompt != nil {
+		ac.cachedTokens = ac.cachedTokens.Sub(ac.systemPrompt.TokenCount())
+	}
+	ac.systemPrompt = msg
+	if msg != nil {
+		ac.cachedTokens = ac.cachedTokens.Add(msg.TokenCount())
+	}
+}
+
 // TokenCount returns the cached aggregate token count in O(1).
 func (ac *AgentContext) TokenCount() TokenCount {
 	ac.mu.RLock()
