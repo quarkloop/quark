@@ -49,18 +49,21 @@ agents: []
 #   - ref: quark/coder@latest
 #     name: coder
 
-# ── Skills (tools) ───────────────────────────────────────────────────────────
-# Skills are tools that agents can invoke (web search, code execution, etc.).
-# Each skill maps to a registry ref and can receive static config values.
-skills: []
-# skills:
-#   - ref: quark/web-search@latest
+# ── Tools ────────────────────────────────────────────────────────────────────
+# Tools are HTTP-dispatched capabilities that agents can invoke (shell
+# execution, file I/O, web search, etc.). Each tool needs a name and an
+# endpoint URL provided via config.
+tools: []
+# tools:
+#   - ref: quark/bash
+#     name: bash
+#     config:
+#       endpoint: "http://127.0.0.1:8091/run"
+#
+#   - ref: quark/web-search
 #     name: web_search
 #     config:
-#       max_results: "10"
-#
-#   - ref: quark/code-exec@latest
-#     name: code_exec
+#       endpoint: "http://127.0.0.1:8090/search"
 
 # ── Environment variables ─────────────────────────────────────────────────────
 # Names of environment variables that will be read from the shell at 'quark run'
@@ -118,7 +121,7 @@ const defaultGitignore = `# Quark runtime artifacts
 
 const defaultLockStub = `quark: "1.0"
 agents: []
-skills: []
+tools: []
 `
 
 func runInit(dir string) error {
@@ -127,7 +130,7 @@ func runInit(dir string) error {
 		return err
 	}
 	for _, d := range []string{
-		"prompts", "agents", "skills",
+		"prompts", "agents",
 		"kb/plans", "kb/memory", "kb/documents",
 		"kb/config", "kb/notes", "kb/artifacts",
 		".quark",

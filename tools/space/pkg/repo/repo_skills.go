@@ -6,43 +6,43 @@ import (
 	"github.com/quarkloop/tools/space/pkg/quarkfile"
 )
 
-func runAddSkill(dir, ref, name string) error {
+func runAddTool(dir, ref, name string) error {
 	qf, err := quarkfile.Load(dir)
 	if err != nil {
 		return err
 	}
-	for _, s := range qf.Skills {
-		if s.Name == name {
-			return fmt.Errorf("skill %q already exists", name)
+	for _, t := range qf.Tools {
+		if t.Name == name {
+			return fmt.Errorf("tool %q already exists", name)
 		}
 	}
-	qf.Skills = append(qf.Skills, quarkfile.Skill{Ref: ref, Name: name})
+	qf.Tools = append(qf.Tools, quarkfile.Tool{Ref: ref, Name: name})
 	return quarkfile.Save(dir, qf)
 }
 
-func runRemoveSkill(dir, name string) error {
+func runRemoveTool(dir, name string) error {
 	qf, err := quarkfile.Load(dir)
 	if err != nil {
 		return err
 	}
-	filtered := qf.Skills[:0]
-	for _, s := range qf.Skills {
-		if s.Name != name {
-			filtered = append(filtered, s)
+	filtered := qf.Tools[:0]
+	for _, t := range qf.Tools {
+		if t.Name != name {
+			filtered = append(filtered, t)
 		}
 	}
-	qf.Skills = filtered
+	qf.Tools = filtered
 	return quarkfile.Save(dir, qf)
 }
 
-func runListSkills(dir string) ([]SkillEntry, error) {
+func runListTools(dir string) ([]ToolEntry, error) {
 	qf, err := quarkfile.Load(dir)
 	if err != nil {
 		return nil, err
 	}
-	entries := make([]SkillEntry, len(qf.Skills))
-	for i, s := range qf.Skills {
-		entries[i] = SkillEntry{Name: s.Name, Ref: s.Ref}
+	entries := make([]ToolEntry, len(qf.Tools))
+	for i, t := range qf.Tools {
+		entries[i] = ToolEntry{Name: t.Name, Ref: t.Ref}
 	}
 	return entries, nil
 }

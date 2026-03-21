@@ -42,14 +42,14 @@ func runValidate(dir string) error {
 		}
 	}
 
-	// Check that all skills in Quarkfile are present in lock file
-	lockedSkills := map[string]bool{}
-	for _, s := range lf.Skills {
-		lockedSkills[s.Ref] = true
+	// Check that all tools in Quarkfile are present in lock file
+	lockedTools := map[string]bool{}
+	for _, t := range lf.Tools {
+		lockedTools[t.Ref] = true
 	}
-	for _, s := range qf.Skills {
-		if !lockedSkills[s.Ref] {
-			return fmt.Errorf("skill %q not in lock file — run 'quark lock'", s.Ref)
+	for _, t := range qf.Tools {
+		if !lockedTools[t.Ref] {
+			return fmt.Errorf("tool %q not in lock file — run 'quark lock'", t.Ref)
 		}
 	}
 

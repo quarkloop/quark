@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/quarkloop/tools/space/pkg/quarkfile"
-	"github.com/quarkloop/tools/space/pkg/registry"
 )
 
 func runLock(dir string) error {
@@ -25,30 +24,32 @@ func runLock(dir string) error {
 		ResolvedAt: &now,
 	}
 
-	// Resolve supervisor agent
-	sup, err := registry.LockAgent(qf.Supervisor.Agent)
-	if err != nil {
-		return fmt.Errorf("resolving supervisor: %w", err)
-	}
-	lf.Agents = append(lf.Agents, *sup)
+	// Record supervisor agent.
+	lf.Agents = append(lf.Agents, quarkfile.LockedAgent{
+		Ref:      qf.Supervisor.Agent,
+		Resolved: qf.Supervisor.Agent,
+	})
 
-	// Resolve worker agents
+	// Record worker agents.
 	for _, a := range qf.Agents {
-		locked, err := registry.LockAgent(a.Ref)
-		if err != nil {
-			return fmt.Errorf("resolving agent %s: %w", a.Name, err)
-		}
-		lf.Agents = append(lf.Agents, *locked)
+		lf.Agents = append(lf.Agents, quarkfile.LockedAgent{
+			Ref:      a.Ref,
+			Resolved: a.Ref,
+		})
 	}
 
-	// Resolve skills
-	for _, s := range qf.Skills {
-		locked, err := registry.LockSkill(s.Ref)
-		if err != nil {
-			return fmt.Errorf("resolving skill %s: %w", s.Name, err)
-		}
-		lf.Skills = append(lf.Skills, *locked)
+	// Record tools.
+	for _, t := range qf.Tools {
+		lf.Tools = append(lf.Tools, quarkfile.LockedTool{
+			Ref:      t.Ref,
+			Resolved: t.Ref,
+		})
 	}
 
-	return quarkfile.SaveLock(absDir, lf)
+	if err := quarkfile.SaveLock(absDir, lf); err != nil {
+		return fmt.Errorf("writing lock file: %w", err)
+	}
+
+	fmt.Println("Lock file written \u2192 .quark/lock.yaml")
+	return nil
 }

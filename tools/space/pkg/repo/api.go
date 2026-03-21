@@ -6,8 +6,8 @@ type AgentEntry struct {
 	Ref  string
 }
 
-// SkillEntry is a simple skill record returned by ListSkills.
-type SkillEntry struct {
+// ToolEntry is a simple tool record returned by ListTools.
+type ToolEntry struct {
 	Name string
 	Ref  string
 }
@@ -36,14 +36,14 @@ func RemoveAgent(dir, name string) error { return runRemoveAgent(dir, name) }
 // ListAgents returns the agent list from the Quarkfile.
 func ListAgents(dir string) ([]AgentEntry, error) { return runListAgents(dir) }
 
-// AddSkill adds a skill ref to the Quarkfile.
-func AddSkill(dir, ref, name string) error { return runAddSkill(dir, ref, name) }
+// AddTool adds a tool ref to the Quarkfile.
+func AddTool(dir, ref, name string) error { return runAddTool(dir, ref, name) }
 
-// RemoveSkill removes a skill from the Quarkfile by name.
-func RemoveSkill(dir, name string) error { return runRemoveSkill(dir, name) }
+// RemoveTool removes a tool from the Quarkfile by name.
+func RemoveTool(dir, name string) error { return runRemoveTool(dir, name) }
 
-// ListSkills returns the skill list from the Quarkfile.
-func ListSkills(dir string) ([]SkillEntry, error) { return runListSkills(dir) }
+// ListTools returns the tool list from the Quarkfile.
+func ListTools(dir string) ([]ToolEntry, error) { return runListTools(dir) }
 
 // AddKBEntry writes a file to the kb/ directory.
 func AddKBEntry(dir, path string, value []byte) error { return runAddKB(dir, path, value) }
