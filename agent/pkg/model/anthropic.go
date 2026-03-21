@@ -15,9 +15,10 @@ type anthropicGateway struct {
 	http   *http.Client
 }
 
-func (g *anthropicGateway) Provider() string  { return "anthropic" }
-func (g *anthropicGateway) ModelName() string { return g.model }
-func (g *anthropicGateway) MaxTokens() int    { return 8192 }
+func (g *anthropicGateway) Provider() string         { return "anthropic" }
+func (g *anthropicGateway) ModelName() string        { return g.model }
+func (g *anthropicGateway) MaxTokens() int           { return 8192 }
+func (g *anthropicGateway) Parser() ToolCallParser   { return ParserFor("anthropic") }
 
 // anthropicResponse is the minimal response shape we parse.
 type anthropicResponse struct {

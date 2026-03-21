@@ -50,6 +50,11 @@ type Gateway interface {
 
 	// MaxTokens returns the maximum output tokens for this gateway.
 	MaxTokens() int
+
+	// Parser returns the ToolCallParser appropriate for this provider/model.
+	// The parser extracts tool calls from raw LLM output and provides
+	// format hints for system prompts.
+	Parser() ToolCallParser
 }
 
 // GatewayConfig carries the constructor arguments for New.

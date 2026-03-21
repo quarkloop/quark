@@ -15,9 +15,10 @@ type zhipuGateway struct {
 	http   *http.Client
 }
 
-func (g *zhipuGateway) Provider() string  { return "zhipu" }
-func (g *zhipuGateway) ModelName() string { return g.model }
-func (g *zhipuGateway) MaxTokens() int    { return 8192 } // GLM-4 supports up to 128k context, default 8192
+func (g *zhipuGateway) Provider() string         { return "zhipu" }
+func (g *zhipuGateway) ModelName() string        { return g.model }
+func (g *zhipuGateway) MaxTokens() int           { return 8192 } // GLM-4 supports up to 128k context, default 8192
+func (g *zhipuGateway) Parser() ToolCallParser   { return ParserFor("zhipu") }
 
 type zhipuResponse struct {
 	Choices []struct {

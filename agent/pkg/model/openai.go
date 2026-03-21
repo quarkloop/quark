@@ -19,9 +19,10 @@ type openAIGateway struct {
 	http     *http.Client
 }
 
-func (g *openAIGateway) Provider() string { return g.provider }
-func (g *openAIGateway) ModelName() string { return g.model }
-func (g *openAIGateway) MaxTokens() int    { return 4096 }
+func (g *openAIGateway) Provider() string         { return g.provider }
+func (g *openAIGateway) ModelName() string        { return g.model }
+func (g *openAIGateway) MaxTokens() int           { return 4096 }
+func (g *openAIGateway) Parser() ToolCallParser   { return ParserFor(g.provider) }
 
 type openAIResponse struct {
 	Choices []struct {
