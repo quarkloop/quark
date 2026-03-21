@@ -21,7 +21,7 @@ import (
 	"github.com/quarkloop/agent/pkg/agent"
 	"github.com/quarkloop/agent/pkg/model"
 	"github.com/quarkloop/agent/pkg/plan"
-	"github.com/quarkloop/agent/pkg/skill"
+	"github.com/quarkloop/agent/pkg/tool"
 	"github.com/quarkloop/core/pkg/kb"
 	bashtool "github.com/quarkloop/tools/bash/pkg/bash"
 	readtool "github.com/quarkloop/tools/read/pkg/read"
@@ -124,7 +124,7 @@ type testAgentOpts struct {
 	apiKey         string
 	name           string
 	systemPrompt   string
-	configureDisp  func(*skill.HTTPDispatcher)
+	configureDisp  func(*tool.HTTPDispatcher)
 }
 
 type liveToolHarness struct {
@@ -185,7 +185,7 @@ func buildTestAgent(t *testing.T, opts testAgentOpts) (*agent.Agent, kb.Store, *
 	}
 
 	feed := activity.NewFeed(256, k)
-	disp := skill.NewHTTPDispatcher()
+	disp := tool.NewHTTPDispatcher()
 	if opts.configureDisp != nil {
 		opts.configureDisp(disp)
 	}
@@ -251,8 +251,8 @@ func newLiveBashHarness(t *testing.T, ap agent.ApprovalPolicy) *liveToolHarness 
 			"- Do not invent command results.\n" +
 			"- Do not say the task is complete until after you have made the required bash tool calls and seen their tool results.\n" +
 			"- After the required bash calls are done, return a short final summary.",
-		configureDisp: func(disp *skill.HTTPDispatcher) {
-			disp.Register("bash", &skill.Definition{
+		configureDisp: func(disp *tool.HTTPDispatcher) {
+			disp.Register("bash", &tool.Definition{
 				Ref:      "quark/bash@test",
 				Name:     "bash",
 				Version:  "1.0.0",
@@ -315,14 +315,14 @@ func newLiveFileToolsHarness(t *testing.T, ap agent.ApprovalPolicy) *liveToolHar
 			"- Never claim a file was inspected unless you have received a successful read tool result for that file.\n" +
 			"- Do not say the task is complete until after you have made the required read and write calls and seen their tool results.\n" +
 			"- After the required tool calls are done, return a short final summary.",
-		configureDisp: func(disp *skill.HTTPDispatcher) {
-			disp.Register("read", &skill.Definition{
+		configureDisp: func(disp *tool.HTTPDispatcher) {
+			disp.Register("read", &tool.Definition{
 				Ref:      "quark/read@test",
 				Name:     "read",
 				Version:  "1.0.0",
 				Endpoint: readServer.URL + "/read",
 			})
-			disp.Register("write", &skill.Definition{
+			disp.Register("write", &tool.Definition{
 				Ref:      "quark/write@test",
 				Name:     "write",
 				Version:  "1.0.0",

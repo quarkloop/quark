@@ -17,7 +17,6 @@ import (
 	agentapi "github.com/quarkloop/agent-api"
 	agentclient "github.com/quarkloop/agent-client"
 	"github.com/quarkloop/tools/space/pkg/quarkfile"
-	"github.com/quarkloop/tools/space/pkg/registry"
 	"github.com/quarkloop/tools/space/pkg/repo"
 )
 
@@ -243,23 +242,23 @@ Rules:
 			Agent:  "quark/supervisor@latest",
 			Prompt: "./prompts/supervisor.txt",
 		},
-		Skills: []quarkfile.Skill{
+		Tools: []quarkfile.Tool{
 			{
-				Ref:  "quark/bash@latest",
+				Ref:  "quark/bash",
 				Name: "bash",
 				Config: map[string]string{
 					"endpoint": bashURL,
 				},
 			},
 			{
-				Ref:  "quark/read@latest",
+				Ref:  "quark/read",
 				Name: "read",
 				Config: map[string]string{
 					"endpoint": readURL,
 				},
 			},
 			{
-				Ref:  "quark/write@latest",
+				Ref:  "quark/write",
 				Name: "write",
 				Config: map[string]string{
 					"endpoint": writeURL,
@@ -272,29 +271,18 @@ Rules:
 		t.Fatalf("save Quarkfile: %v", err)
 	}
 
-	supervisorLock, err := registry.LockAgent(qf.Supervisor.Agent)
-	if err != nil {
-		t.Fatalf("lock supervisor: %v", err)
-	}
-	readLock, err := registry.LockSkill("quark/read@latest")
-	if err != nil {
-		t.Fatalf("lock read tool: %v", err)
-	}
-	bashLock, err := registry.LockSkill("quark/bash@latest")
-	if err != nil {
-		t.Fatalf("lock bash tool: %v", err)
-	}
-	writeLock, err := registry.LockSkill("quark/write@latest")
-	if err != nil {
-		t.Fatalf("lock write tool: %v", err)
-	}
-
 	now := time.Now()
 	lock := &quarkfile.LockFile{
 		Quark:      qf.Quark,
 		ResolvedAt: &now,
-		Agents:     []quarkfile.LockedAgent{*supervisorLock},
-		Skills:     []quarkfile.LockedSkill{*bashLock, *readLock, *writeLock},
+		Agents: []quarkfile.LockedAgent{
+			{Ref: qf.Supervisor.Agent, Resolved: qf.Supervisor.Agent},
+		},
+		Tools: []quarkfile.LockedTool{
+			{Ref: "quark/bash", Resolved: "quark/bash"},
+			{Ref: "quark/read", Resolved: "quark/read"},
+			{Ref: "quark/write", Resolved: "quark/write"},
+		},
 	}
 	if err := quarkfile.SaveLock(projectDir, lock); err != nil {
 		t.Fatalf("save lock file: %v", err)
