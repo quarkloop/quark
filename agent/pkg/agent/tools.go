@@ -8,11 +8,11 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/quarkloop/agent/pkg/activity"
 	llmctx "github.com/quarkloop/agent/pkg/context"
 	msg "github.com/quarkloop/agent/pkg/context/message"
+	mdl "github.com/quarkloop/agent/pkg/model"
 	"github.com/quarkloop/agent/pkg/plan"
 )
 
@@ -81,8 +81,8 @@ func (a *Agent) executeStep(ctx context.Context, step plan.Step) (string, error)
 		}
 		log.Printf("worker[%s]: iter %d, %d tokens", step.ID, iter, resp.TotalTokens())
 
-		toolCall := parseToolCall(resp.Content)
-		if toolCall == nil {
+		parsed := a.gateway.Parser().Parse(resp.Content)
+		if parsed.ToolCall == nil {
 			if requiresToolFirst && !initialToolSatisfied && iter < MaxToolIterations-1 {
 				log.Printf("worker[%s]: prose response before required initial tool %q; retrying", step.ID, requiredToolName)
 				userMsg = buildRequiredToolReminder(requiredToolName)
@@ -94,12 +94,13 @@ func (a *Agent) executeStep(ctx context.Context, step plan.Step) (string, error)
 				continue
 			}
 			log.Printf("worker[%s]: accepting prose response; successful_tools=%v", step.ID, successfulToolCalls)
-			finalResult = resp.Content
+			finalResult = parsed.Content
 			break
 		}
 
-		a.emit(activity.ToolCalled, buildToolCalledActivityData(step.ID, *toolCall))
-		result := a.executeTool(ctx, step.ID, *toolCall)
+		toolCall := modelToolCallToPayload(parsed.ToolCall)
+		a.emit(activity.ToolCalled, buildToolCalledActivityData(step.ID, toolCall))
+		result := a.executeTool(ctx, step.ID, toolCall)
 		a.emit(activity.ToolCompleted, buildToolCompletedActivityData(step.ID, result))
 		if !result.IsError {
 			successfulToolCalls[strings.ToLower(toolCall.ToolName)] = true
@@ -117,7 +118,7 @@ func (a *Agent) executeStep(ctx context.Context, step plan.Step) (string, error)
 		toolAuthor, _ := llmctx.NewAuthorID(AuthorToolExecutor)
 
 		tc, tr, err := llmctx.NewLinkedToolExchange(
-			callID, agentAuthor, *toolCall,
+			callID, agentAuthor, toolCall,
 			resultID, toolAuthor, result,
 			a.tc,
 		)
@@ -240,47 +241,10 @@ func (a *Agent) buildWorkerContext(systemPrompt string, windowSize int) (*llmctx
 
 // ─── Tool call helpers ───────────────────────────────────────────────────────
 
-// parseToolCall extracts a tool call from the LLM response.
-// Prefers ```tool JSON fences and accepts a legacy alternate fence.
-func parseToolCall(content string) *msg.ToolCallPayload {
-	block := extractFencedToolBlock(content, "tool")
-	if block == "" {
-		block = extractFencedToolBlock(content, "skill")
-	}
-	if block == "" {
-		return nil
-	}
-	var call struct {
-		Name  string          `json:"name"`
-		Input json.RawMessage `json:"input"`
-	}
-	if err := json.Unmarshal([]byte(block), &call); err != nil {
-		return nil
-	}
-	return &msg.ToolCallPayload{
-		ToolCallID: fmt.Sprintf("tc-%d", time.Now().UnixNano()),
-		ToolName:   call.Name,
-		Arguments:  call.Input,
-	}
-}
-
-func extractFencedToolBlock(content, fence string) string {
-	marker := "```" + fence
-	start := strings.Index(content, marker)
-	if start < 0 {
-		return ""
-	}
-	end := strings.Index(content[start+len(marker):], "```")
-	if end < 0 {
-		return ""
-	}
-	return strings.TrimSpace(content[start+len(marker) : start+len(marker)+end])
-}
-
 // executeTool dispatches a tool call through the dispatcher and returns
 // a structured result payload.
 func (a *Agent) executeTool(ctx context.Context, stepID string, call msg.ToolCallPayload) msg.ToolResultPayload {
-	var input map[string]interface{}
+	var input map[string]any
 	if err := json.Unmarshal(call.Arguments, &input); err != nil {
 		log.Printf("worker[%s]: failed to parse tool args: %v", stepID, err)
 		return msg.ToolResultPayload{
@@ -290,6 +254,9 @@ func (a *Agent) executeTool(ctx context.Context, stepID string, call msg.ToolCal
 			ErrorMessage: fmt.Sprintf("invalid arguments: %v", err),
 		}
 	}
+
+	// Normalise parameter aliases (e.g. "command" → "cmd" for bash).
+	input = mdl.NormalizeArgs(call.ToolName, input)
 
 	out, err := a.dispatcher.Invoke(ctx, call.ToolName, input)
 	if err != nil {
@@ -302,7 +269,7 @@ func (a *Agent) executeTool(ctx context.Context, stepID string, call msg.ToolCal
 	}
 
 	outData, _ := json.Marshal(out)
-	a.kb.Set(NSArtifacts, stepID+"-skill-"+call.ToolName, outData)
+	a.kb.Set(NSArtifacts, stepID+"-tool-"+call.ToolName, outData)
 
 	result := msg.ToolResultPayload{
 		ToolCallID: call.ToolCallID,
