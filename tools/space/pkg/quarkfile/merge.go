@@ -1,7 +1,7 @@
 package quarkfile
 
 // Merge deep-merges a parent Quarkfile into a child.
-// Child fields take precedence. Agents and skills are additive.
+// Child fields take precedence. Agents and tools are additive.
 func Merge(parent, child *Quarkfile) *Quarkfile {
 	result := *parent
 
@@ -27,15 +27,15 @@ func Merge(parent, child *Quarkfile) *Quarkfile {
 		}
 	}
 
-	// Skills are additive — child entries with new names are appended
-	seenSkills := map[string]bool{}
-	for _, s := range parent.Skills {
-		seenSkills[s.Name] = true
+	// Tools are additive — child entries with new names are appended
+	seenTools := map[string]bool{}
+	for _, t := range parent.Tools {
+		seenTools[t.Name] = true
 	}
-	result.Skills = append([]Skill{}, parent.Skills...)
-	for _, s := range child.Skills {
-		if !seenSkills[s.Name] {
-			result.Skills = append(result.Skills, s)
+	result.Tools = append([]Tool{}, parent.Tools...)
+	for _, t := range child.Tools {
+		if !seenTools[t.Name] {
+			result.Tools = append(result.Tools, t)
 		}
 	}
 

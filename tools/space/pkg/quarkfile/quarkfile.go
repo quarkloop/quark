@@ -1,7 +1,7 @@
 // Package quarkfile loads, validates, and saves the two project manifest files
 // that every quark space needs:
 //
-//   - Quarkfile       — human-authored project definition (meta, model, agents, skills).
+//   - Quarkfile       — human-authored project definition (meta, model, agents, tools).
 //   - .quark/lock.yaml — machine-generated pin file produced by `quark lock`.
 //
 // Typical call sequence:
@@ -24,17 +24,17 @@ import (
 const QuarkfileFilename = "Quarkfile"
 
 // LockfileFilename is the path of the dependency lock file, relative to the
-// project root. The lock file pins every agent and skill ref to an exact
+// project root. The lock file pins every agent and tool ref to an exact
 // SHA-256 digest so builds are reproducible.
 const LockfileFilename = ".quark/lock.yaml"
 
 // Quarkfile is the parsed representation of the "Quarkfile" YAML.
 // It defines space identity, model provider, supervisor + worker agents,
-// skills, environment forwarding, KB configuration, and restart policy.
+// tools, environment forwarding, KB configuration, and restart policy.
 // Quarkfile is the parsed, in-memory representation of the Quarkfile on disk.
 //
 // It declares the space name, LLM model/provider, supervisor agent, optional
-// worker agents, skills, environment variable forwarding, restart policy, and
+// worker agents, tools, environment variable forwarding, restart policy, and
 // network port exposure. Obtain one via Load; validate it with Validate.
 type Quarkfile struct {
 	Quark        string       `yaml:"quark"`
@@ -43,7 +43,7 @@ type Quarkfile struct {
 	Model        Model        `yaml:"model"`
 	Supervisor   Supervisor   `yaml:"supervisor"`
 	Agents       []Agent      `yaml:"agents,omitempty"`
-	Skills       []Skill      `yaml:"skills,omitempty"`
+	Tools        []Tool       `yaml:"tools,omitempty"`
 	Env          []string     `yaml:"env,omitempty"`
 	KB           KBConfig     `yaml:"kb,omitempty"`
 	ModelGateway ModelGateway `yaml:"model_gateway,omitempty"`
@@ -91,11 +91,11 @@ type Agent struct {
 	Prompt string `yaml:"prompt,omitempty"`
 }
 
-// Skill declares an HTTP-dispatched capability (e.g. web-search, code-exec)
+// Tool declares an HTTP-dispatched capability (e.g. web-search, code-exec)
 // that agents may invoke as a tool call.
-// Skill is a single entry in the skills list. It binds a registry ref to a
+// Tool is a single entry in the tools list. It binds a registry ref to a
 // local name and provides static config values passed to the HTTP dispatcher.
-type Skill struct {
+type Tool struct {
 	Ref    string            `yaml:"ref"`
 	Name   string            `yaml:"name"`
 	Config map[string]string `yaml:"config,omitempty"`

@@ -110,15 +110,15 @@ func TestValidate_AgentPromptMissing(t *testing.T) {
 	assertInvalidDir(t, t.TempDir(), qf, "not found")
 }
 
-func TestValidate_SkillMissingRef(t *testing.T) {
+func TestValidate_ToolMissingRef(t *testing.T) {
 	qf := base()
-	qf.Skills = []quarkfile.Skill{{Name: "search", Ref: ""}}
+	qf.Tools = []quarkfile.Tool{{Name: "search", Ref: ""}}
 	assertInvalid(t, qf, "missing ref")
 }
 
-func TestValidate_SkillMissingName(t *testing.T) {
+func TestValidate_ToolMissingName(t *testing.T) {
 	qf := base()
-	qf.Skills = []quarkfile.Skill{{Name: "", Ref: "quark/web-search@latest"}}
+	qf.Tools = []quarkfile.Tool{{Name: "", Ref: "quark/web-search@latest"}}
 	assertInvalid(t, qf, "missing name")
 }
 

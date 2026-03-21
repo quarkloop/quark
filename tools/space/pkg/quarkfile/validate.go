@@ -12,7 +12,7 @@ import (
 //   - model.provider allowlist: anthropic, openai, zhipu, noop.
 //   - restart policy allowlist: on-failure, always, never (empty = default).
 //   - Prompt file references must exist on disk relative to dir.
-//   - Every agent/skill entry must have both ref and name populated.
+//   - Every agent/tool entry must have both ref and name populated.
 //
 // Validate performs semantic validation of qf:
 //   - required fields: quark, meta.name, model.provider, model.name, supervisor.agent
@@ -20,7 +20,7 @@ import (
 //   - restart policy must be one of: on-failure, always, never (or empty string)
 //   - every declared prompt file must exist on disk relative to dir
 //   - every agent entry must have both a ref and a name
-//   - every skill entry must have both a ref and a name
+//   - every tool entry must have both a ref and a name
 //
 // Returns the first error encountered; nil when qf is fully valid.
 func Validate(dir string, qf *Quarkfile) error {
@@ -64,12 +64,12 @@ func Validate(dir string, qf *Quarkfile) error {
 			}
 		}
 	}
-	for _, s := range qf.Skills {
-		if s.Ref == "" {
-			return fmt.Errorf("skill %q missing ref", s.Name)
+	for _, t := range qf.Tools {
+		if t.Ref == "" {
+			return fmt.Errorf("tool %q missing ref", t.Name)
 		}
-		if s.Name == "" {
-			return fmt.Errorf("skill missing name (ref: %s)", s.Ref)
+		if t.Name == "" {
+			return fmt.Errorf("tool missing name (ref: %s)", t.Ref)
 		}
 	}
 	return nil

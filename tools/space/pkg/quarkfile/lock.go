@@ -15,7 +15,7 @@ type LockFile struct {
 	Quark      string        `yaml:"quark"`
 	ResolvedAt *time.Time    `yaml:"resolved_at,omitempty"`
 	Agents     []LockedAgent `yaml:"agents"`
-	Skills     []LockedSkill `yaml:"skills"`
+	Tools      []LockedTool  `yaml:"tools"`
 }
 
 type LockedAgent struct {
@@ -24,7 +24,7 @@ type LockedAgent struct {
 	Digest   string `yaml:"digest"`
 }
 
-type LockedSkill struct {
+type LockedTool struct {
 	Ref      string `yaml:"ref"`
 	Resolved string `yaml:"resolved"`
 	Digest   string `yaml:"digest"`
