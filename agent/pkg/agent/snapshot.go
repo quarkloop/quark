@@ -1,99 +1,83 @@
-// Package agent / snapshot.go provides KB-backed persistence for llmctx
-// context snapshots, enabling session resumption across space-runtime restarts.
 package agent
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 
+	"github.com/quarkloop/agent/pkg/agentcore"
 	llmctx "github.com/quarkloop/agent/pkg/context"
 	"github.com/quarkloop/core/pkg/kb"
 )
 
-// KBSnapshotRepository implements context snapshot persistence backed by the
-// space KB (Badger). Snapshots are stored in the "snapshots" namespace.
-//
-// The well-known key "supervisor-latest" is used for quick session resumption
-// without listing all snapshots.
-type KBSnapshotRepository struct {
-	kb kb.Store
-}
-
-// NewKBSnapshotRepository creates a snapshot repository backed by the given KB store.
-func NewKBSnapshotRepository(k kb.Store) *KBSnapshotRepository {
-	return &KBSnapshotRepository{kb: k}
-}
-
-// SaveSnapshot persists a ContextSnapshot to the KB under its snapshot ID.
-func (r *KBSnapshotRepository) SaveSnapshot(_ context.Context, snapshot *llmctx.ContextSnapshot) error {
-	data, err := json.Marshal(snapshot)
+// SaveSessionSnapshot persists a session's context to KB.
+func SaveSessionSnapshot(k kb.Store, idGen llmctx.IDGenerator, sessionKey string, ac *llmctx.AgentContext) error {
+	if ac == nil {
+		return nil
+	}
+	snapID, err := idGen.Next()
+	if err != nil {
+		return fmt.Errorf("snapshot ID: %w", err)
+	}
+	snap := llmctx.SnapshotFromContext(snapID, ac)
+	data, err := json.Marshal(snap)
 	if err != nil {
 		return fmt.Errorf("marshal snapshot: %w", err)
 	}
-	return r.kb.Set(NSSnapshots, snapshot.SnapshotID.String(), data)
+	key := snapshotKey(sessionKey)
+	return k.Set(agentcore.NSSnapshots, key, data)
 }
 
-// LoadSnapshot retrieves a previously saved snapshot by its message ID.
-// Returns an error if the snapshot does not exist.
-func (r *KBSnapshotRepository) LoadSnapshot(_ context.Context, id llmctx.MessageID) (*llmctx.ContextSnapshot, error) {
-	data, err := r.kb.Get(NSSnapshots, id.String())
+// LoadSessionSnapshot restores a session's context from KB.
+func LoadSessionSnapshot(k kb.Store, tc llmctx.TokenComputer, idGen llmctx.IDGenerator, sessionKey string) (*llmctx.AgentContext, error) {
+	key := snapshotKey(sessionKey)
+	data, err := k.Get(agentcore.NSSnapshots, key)
 	if err != nil {
-		return nil, fmt.Errorf("snapshot %s: not found", id.String())
+		return nil, fmt.Errorf("snapshot %s: not found", key)
 	}
 	var snap llmctx.ContextSnapshot
 	if err := json.Unmarshal(data, &snap); err != nil {
 		return nil, fmt.Errorf("unmarshal snapshot: %w", err)
 	}
-	return &snap, nil
+
+	compactor, err := buildCompactor()
+	if err != nil {
+		return nil, fmt.Errorf("compactor: %w", err)
+	}
+
+	ac, err := llmctx.ContextFromSnapshot(&snap, tc,
+		llmctx.WithRestoreIDGenerator(idGen),
+		llmctx.WithRestoreCompactor(compactor))
+	if err != nil {
+		return nil, fmt.Errorf("restore context: %w", err)
+	}
+	return ac, nil
 }
 
-// ListSnapshots returns all saved snapshots. Malformed entries are silently skipped.
-func (r *KBSnapshotRepository) ListSnapshots(_ context.Context) ([]*llmctx.ContextSnapshot, error) {
-	keys, err := r.kb.List(NSSnapshots)
+func snapshotKey(sessionKey string) string {
+	return sessionKey + "/latest"
+}
+
+func buildCompactor() (llmctx.Compactor, error) {
+	pipeline, err := llmctx.NewPipelineCompactor(
+		llmctx.NewWeightBasedCompactor(),
+		llmctx.NewFIFOCompactor(),
+	)
 	if err != nil {
 		return nil, err
 	}
-	var out []*llmctx.ContextSnapshot
-	for _, k := range keys {
-		data, err := r.kb.Get(NSSnapshots, k)
-		if err != nil {
-			continue
-		}
-		var snap llmctx.ContextSnapshot
-		if err := json.Unmarshal(data, &snap); err != nil {
-			continue
-		}
-		out = append(out, &snap)
-	}
-	return out, nil
+	return llmctx.NewThresholdCompactor(pipeline, agentcore.DefaultCompactionThreshold)
 }
 
-// DeleteSnapshot removes a snapshot by its message ID.
-func (r *KBSnapshotRepository) DeleteSnapshot(_ context.Context, id llmctx.MessageID) error {
-	return r.kb.Delete(NSSnapshots, id.String())
-}
-
-// LoadLatestSnapshot loads the most recently saved supervisor context snapshot
-// stored under the well-known key "supervisor-latest".
-func (r *KBSnapshotRepository) LoadLatestSnapshot() (*llmctx.ContextSnapshot, error) {
-	data, err := r.kb.Get(NSSnapshots, KeyLatestSnapshot)
-	if err != nil {
-		return nil, err
+// saveCheckpoint is a convenience wrapper for the agent.
+func (a *Agent) saveCheckpoint(sessionKey string) {
+	a.mu.RLock()
+	state, ok := a.sessions[sessionKey]
+	a.mu.RUnlock()
+	if !ok || state.Context == nil {
+		return
 	}
-	var snap llmctx.ContextSnapshot
-	if err := json.Unmarshal(data, &snap); err != nil {
-		return nil, fmt.Errorf("unmarshal snapshot: %w", err)
+	if err := SaveSessionSnapshot(a.res.KB, a.res.IDGen, sessionKey, state.Context); err != nil {
+		log.Printf("agent: checkpoint save error for %s: %v", sessionKey, err)
 	}
-	return &snap, nil
-}
-
-// SaveLatestSnapshot saves a snapshot under the well-known key "supervisor-latest"
-// for fast session resumption. This is called at the end of every supervisor cycle.
-func (r *KBSnapshotRepository) SaveLatestSnapshot(snapshot *llmctx.ContextSnapshot) error {
-	data, err := json.Marshal(snapshot)
-	if err != nil {
-		return fmt.Errorf("marshal snapshot: %w", err)
-	}
-	return r.kb.Set(NSSnapshots, KeyLatestSnapshot, data)
 }
