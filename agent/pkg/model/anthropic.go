@@ -20,13 +20,20 @@ func (g *anthropicGateway) ModelName() string        { return g.model }
 func (g *anthropicGateway) MaxTokens() int           { return 8192 }
 func (g *anthropicGateway) Parser() ToolCallParser   { return ParserFor("anthropic") }
 
+// anthropicContentBlock represents one block in the Anthropic response content array.
+// Blocks can be text (type="text") or tool_use (type="tool_use").
+type anthropicContentBlock struct {
+	Type  string          `json:"type"`
+	Text  string          `json:"text,omitempty"`
+	ID    string          `json:"id,omitempty"`
+	Name  string          `json:"name,omitempty"`
+	Input json.RawMessage `json:"input,omitempty"`
+}
+
 // anthropicResponse is the minimal response shape we parse.
 type anthropicResponse struct {
-	Content []struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
-	} `json:"content"`
-	Usage struct {
+	Content []anthropicContentBlock `json:"content"`
+	Usage   struct {
 		InputTokens  int `json:"input_tokens"`
 		OutputTokens int `json:"output_tokens"`
 	} `json:"usage"`
@@ -68,15 +75,21 @@ func (g *anthropicGateway) InferRaw(ctx context.Context, payload []byte) (*RawRe
 		return nil, fmt.Errorf("anthropic http %d: %s", resp.StatusCode, string(data))
 	}
 
-	content := ""
-	for _, block := range ar.Content {
-		if block.Type == "text" {
-			content += block.Text
-		}
-	}
-	return &RawResponse{
-		Content:      content,
+	raw := &RawResponse{
 		InputTokens:  ar.Usage.InputTokens,
 		OutputTokens: ar.Usage.OutputTokens,
-	}, nil
+	}
+	for _, block := range ar.Content {
+		switch block.Type {
+		case "text":
+			raw.Content += block.Text
+		case "tool_use":
+			raw.ToolCalls = append(raw.ToolCalls, NativeToolCall{
+				ID:        block.ID,
+				Name:      block.Name,
+				Arguments: block.Input,
+			})
+		}
+	}
+	return raw, nil
 }

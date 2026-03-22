@@ -16,6 +16,7 @@ package model
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -23,13 +24,22 @@ import (
 
 const openRouterBaseURL = "https://openrouter.ai/api/v1/chat/completions"
 
+// NativeToolCall represents a structured tool call returned by the provider's
+// native function calling API (e.g. OpenAI's tool_calls, Anthropic's tool_use).
+type NativeToolCall struct {
+	ID        string          `json:"id"`
+	Name      string          `json:"name"`
+	Arguments json.RawMessage `json:"arguments"`
+}
+
 // RawResponse is the normalised output from a single LLM inference call.
 // All provider-specific shapes are reduced to this before returning to the
 // Executor.
 type RawResponse struct {
-	Content      string `json:"content"`
-	InputTokens  int    `json:"input_tokens"`
-	OutputTokens int    `json:"output_tokens"`
+	Content      string           `json:"content"`
+	InputTokens  int              `json:"input_tokens"`
+	OutputTokens int              `json:"output_tokens"`
+	ToolCalls    []NativeToolCall `json:"tool_calls,omitempty"`
 }
 
 func (r *RawResponse) TotalTokens() int { return r.InputTokens + r.OutputTokens }

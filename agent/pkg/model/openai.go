@@ -24,10 +24,20 @@ func (g *openAIGateway) ModelName() string        { return g.model }
 func (g *openAIGateway) MaxTokens() int           { return 4096 }
 func (g *openAIGateway) Parser() ToolCallParser   { return ParserFor(g.provider) }
 
+type openAIToolCallEntry struct {
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
+}
+
 type openAIResponse struct {
 	Choices []struct {
 		Message struct {
-			Content string `json:"content"`
+			Content   string               `json:"content"`
+			ToolCalls []openAIToolCallEntry `json:"tool_calls,omitempty"`
 		} `json:"message"`
 	} `json:"choices"`
 	Usage struct {
@@ -77,9 +87,17 @@ func (g *openAIGateway) InferRaw(ctx context.Context, payload []byte) (*RawRespo
 	if len(or.Choices) == 0 {
 		return nil, fmt.Errorf("openai returned no choices")
 	}
-	return &RawResponse{
+	raw := &RawResponse{
 		Content:      or.Choices[0].Message.Content,
 		InputTokens:  or.Usage.PromptTokens,
 		OutputTokens: or.Usage.CompletionTokens,
-	}, nil
+	}
+	for _, tc := range or.Choices[0].Message.ToolCalls {
+		raw.ToolCalls = append(raw.ToolCalls, NativeToolCall{
+			ID:        tc.ID,
+			Name:      tc.Function.Name,
+			Arguments: json.RawMessage(tc.Function.Arguments),
+		})
+	}
+	return raw, nil
 }
