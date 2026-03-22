@@ -13,7 +13,9 @@ import (
 	agentapi "github.com/quarkloop/agent-api"
 	"github.com/quarkloop/agent/pkg/activity"
 	"github.com/quarkloop/agent/pkg/agent"
+	"github.com/quarkloop/agent/pkg/agentcore"
 	"github.com/quarkloop/agent/pkg/plan"
+	"github.com/quarkloop/agent/pkg/session"
 	"github.com/quarkloop/agent/pkg/tool"
 	"github.com/quarkloop/core/pkg/kb"
 	"github.com/quarkloop/tools/space/pkg/quarkfile"
@@ -22,9 +24,10 @@ import (
 type spaceConfig struct {
 	provider   string
 	modelName  string
-	supervisor *agent.Definition
-	subAgents  map[string]*agent.Definition
+	supervisor *agentcore.Definition
+	subAgents  map[string]*agentcore.Definition
 	dispatcher *tool.HTTPDispatcher
+	toolDefs   map[string]*tool.Definition // tool name → definition (for orchestrator)
 }
 
 func loadSpaceConfig(dir string, store kb.Store) (*spaceConfig, error) {
@@ -35,15 +38,15 @@ func loadSpaceConfig(dir string, store kb.Store) (*spaceConfig, error) {
 
 	supervisor := buildSupervisorDef(dir, qf)
 	if supervisor.Config.ContextWindow == 0 {
-		supervisor.Config.ContextWindow = agent.DefaultContextWindow
+		supervisor.Config.ContextWindow = agentcore.DefaultContextWindow
 	}
 	if policy := os.Getenv("QUARK_APPROVAL_POLICY"); policy != "" {
-		supervisor.Config.ApprovalPolicy = agent.ApprovalPolicy(policy)
+		supervisor.Config.ApprovalPolicy = agentcore.ApprovalPolicy(policy)
 	}
 
 	subAgents := buildSubAgentDefs(dir, qf)
 
-	dispatcher, err := buildToolDispatcher(qf)
+	dispatcher, toolDefs, err := buildToolDispatcher(qf)
 	if err != nil {
 		return nil, err
 	}
@@ -61,18 +64,19 @@ func loadSpaceConfig(dir string, store kb.Store) (*spaceConfig, error) {
 		supervisor: supervisor,
 		subAgents:  subAgents,
 		dispatcher: dispatcher,
+		toolDefs:   toolDefs,
 	}, nil
 }
 
 // buildSupervisorDef creates the supervisor agent definition from the
 // Quarkfile. The system prompt is loaded from the prompt file if specified.
-func buildSupervisorDef(dir string, qf *quarkfile.Quarkfile) *agent.Definition {
-	def := &agent.Definition{
+func buildSupervisorDef(dir string, qf *quarkfile.Quarkfile) *agentcore.Definition {
+	def := &agentcore.Definition{
 		Name: "supervisor",
-		Config: agent.Config{
-			ContextWindow: agent.DefaultContextWindow,
+		Config: agentcore.Config{
+			ContextWindow: agentcore.DefaultContextWindow,
 		},
-		Capabilities: agent.Capabilities{
+		Capabilities: agentcore.Capabilities{
 			SpawnAgents: true,
 			MaxWorkers:  10,
 			CreatePlans: true,
@@ -89,13 +93,13 @@ func buildSupervisorDef(dir string, qf *quarkfile.Quarkfile) *agent.Definition {
 }
 
 // buildSubAgentDefs creates worker agent definitions from the Quarkfile.
-func buildSubAgentDefs(dir string, qf *quarkfile.Quarkfile) map[string]*agent.Definition {
-	subAgents := map[string]*agent.Definition{}
+func buildSubAgentDefs(dir string, qf *quarkfile.Quarkfile) map[string]*agentcore.Definition {
+	subAgents := map[string]*agentcore.Definition{}
 	for _, entry := range qf.Agents {
-		def := &agent.Definition{
+		def := &agentcore.Definition{
 			Name: entry.Name,
-			Config: agent.Config{
-				ContextWindow: agent.DefaultContextWindow,
+			Config: agentcore.Config{
+				ContextWindow: agentcore.DefaultContextWindow,
 			},
 		}
 		if entry.Prompt != "" {
@@ -112,10 +116,13 @@ func buildSubAgentDefs(dir string, qf *quarkfile.Quarkfile) map[string]*agent.De
 
 // buildToolDispatcher creates the HTTP tool dispatcher from Quarkfile tool entries.
 // Each tool must have a name and an endpoint (via config or direct field).
-func buildToolDispatcher(qf *quarkfile.Quarkfile) (*tool.HTTPDispatcher, error) {
+// Returns the dispatcher and a map of tool definitions for the orchestrator.
+func buildToolDispatcher(qf *quarkfile.Quarkfile) (*tool.HTTPDispatcher, map[string]*tool.Definition, error) {
 	dispatcher := tool.NewHTTPDispatcher()
+	defs := make(map[string]*tool.Definition)
 	for _, entry := range qf.Tools {
 		def := &tool.Definition{
+			Ref:    entry.Ref,
 			Name:   entry.Name,
 			Config: make(map[string]string),
 		}
@@ -126,13 +133,14 @@ func buildToolDispatcher(qf *quarkfile.Quarkfile) (*tool.HTTPDispatcher, error) 
 			def.Endpoint = endpoint
 		}
 		if def.Endpoint == "" {
-			return nil, fmt.Errorf("tool %s has no endpoint", entry.Name)
+			return nil, nil, fmt.Errorf("tool %s has no endpoint", entry.Name)
 		}
 
 		dispatcher.Register(entry.Name, def)
+		defs[entry.Name] = def
 		log.Printf("runtime: registered tool %s endpoint=%s", entry.Name, def.Endpoint)
 	}
-	return dispatcher, nil
+	return dispatcher, defs, nil
 }
 
 func seedKBConfig(store kb.Store, qf *quarkfile.Quarkfile) error {
@@ -141,7 +149,7 @@ func seedKBConfig(store kb.Store, qf *quarkfile.Quarkfile) error {
 			continue
 		}
 		if value := os.Getenv(entry.From); value != "" {
-			if err := store.Set(agent.NSConfig, entry.Key, []byte(value)); err != nil {
+			if err := store.Set(agentcore.NSConfig, entry.Key, []byte(value)); err != nil {
 				return fmt.Errorf("seed kb config %s: %w", entry.Key, err)
 			}
 		}
@@ -159,15 +167,16 @@ func loadPromptText(dir, promptPath string) (string, error) {
 }
 
 type agentService struct {
-	agentID string
-	dir     string
-	kb      kb.Store
-	agent   *agent.Agent
-	feed    *activity.Feed
+	agentID      string
+	dir          string
+	kb           kb.Store
+	agent        *agent.Agent
+	feed         *activity.Feed
+	sessionStore *session.Store
 }
 
-func newAgentService(agentID, dir string, store kb.Store, a *agent.Agent, feed *activity.Feed) *agentService {
-	return &agentService{agentID: agentID, dir: dir, kb: store, agent: a, feed: feed}
+func newAgentService(agentID, dir string, store kb.Store, a *agent.Agent, feed *activity.Feed, sessStore *session.Store) *agentService {
+	return &agentService{agentID: agentID, dir: dir, kb: store, agent: a, feed: feed, sessionStore: sessStore}
 }
 
 func (s *agentService) Health(ctx context.Context, r *http.Request) (*agentapi.HealthResponse, error) {
@@ -205,10 +214,11 @@ func (s *agentService) Stats(ctx context.Context, r *http.Request) (agentapi.Sta
 }
 
 func (s *agentService) Chat(ctx context.Context, r *http.Request, req agentapi.ChatRequest) (*agentapi.ChatResponse, error) {
-	agentReq := agent.ChatRequest{
-		Message: req.Message,
-		Stream:  req.Stream,
-		Mode:    req.Mode,
+	agentReq := agentcore.ChatRequest{
+		Message:    req.Message,
+		SessionKey: req.SessionKey,
+		Stream:     req.Stream,
+		Mode:       req.Mode,
 	}
 
 	// Save uploaded files to the workspace and pass metadata.
@@ -219,7 +229,7 @@ func (s *agentService) Chat(ctx context.Context, r *http.Request, req agentapi.C
 				return nil, agentapi.Error(http.StatusBadRequest,
 					fmt.Sprintf("save file %s: %v", f.Name, err), err)
 			}
-			agentReq.Files = append(agentReq.Files, agent.FileAttachment{
+			agentReq.Files = append(agentReq.Files, agentcore.FileAttachment{
 				Name:     saved.Name,
 				MimeType: saved.MimeType,
 				Size:     saved.Size,
@@ -229,7 +239,7 @@ func (s *agentService) Chat(ctx context.Context, r *http.Request, req agentapi.C
 		}
 	}
 
-	resp, err := s.agent.Chat(ctx, agentReq)
+	resp, err := s.agent.Chat(ctx, req.SessionKey, agentReq)
 	if err != nil {
 		return nil, err
 	}
@@ -269,7 +279,7 @@ func (s *agentService) Stop(ctx context.Context, r *http.Request) error {
 }
 
 func (s *agentService) Plan(ctx context.Context, r *http.Request) (*agentapi.Plan, error) {
-	currentPlan, err := plan.NewStore(s.kb, agent.NSPlans, agent.KeyMasterPlan).Load()
+	currentPlan, err := plan.NewStore(s.kb, agentcore.NSPlans, agentcore.KeyMasterPlan).Load()
 	if err != nil {
 		return nil, agentapi.Error(http.StatusNotFound, "plan not found", err)
 	}
@@ -336,4 +346,85 @@ func convertActivity(event activity.Event) agentapi.ActivityRecord {
 		Timestamp: event.Timestamp,
 		Data:      raw,
 	}
+}
+
+func (s *agentService) Sessions(ctx context.Context, r *http.Request) ([]agentapi.SessionRecord, error) {
+	sessions, err := s.agent.ListSessions()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]agentapi.SessionRecord, 0, len(sessions))
+	for _, sess := range sessions {
+		out = append(out, convertSession(sess))
+	}
+	return out, nil
+}
+
+func (s *agentService) Session(ctx context.Context, r *http.Request, sessionKey string) (*agentapi.SessionRecord, error) {
+	sess, err := s.agent.GetSession(sessionKey)
+	if err != nil {
+		return nil, agentapi.Error(http.StatusNotFound, "session not found", err)
+	}
+	rec := convertSession(sess)
+	return &rec, nil
+}
+
+func (s *agentService) SessionActivity(ctx context.Context, r *http.Request, sessionKey string, limit int) ([]agentapi.ActivityRecord, error) {
+	events, err := s.feed.History(sessionKey)
+	if err != nil {
+		return nil, err
+	}
+	if len(events) > limit {
+		events = events[len(events)-limit:]
+	}
+	out := make([]agentapi.ActivityRecord, 0, len(events))
+	for _, ev := range events {
+		out = append(out, convertActivity(ev))
+	}
+	return out, nil
+}
+
+func (s *agentService) CreateSession(ctx context.Context, r *http.Request, req agentapi.CreateSessionRequest) (*agentapi.CreateSessionResponse, error) {
+	sess, err := s.agent.CreateSession(session.Type(req.Type), req.Title)
+	if err != nil {
+		return nil, agentapi.Error(http.StatusBadRequest, err.Error(), err)
+	}
+	return &agentapi.CreateSessionResponse{
+		Session: convertSession(sess),
+	}, nil
+}
+
+func (s *agentService) DeleteSession(ctx context.Context, r *http.Request, sessionKey string) error {
+	if err := s.agent.DeleteSession(sessionKey); err != nil {
+		return agentapi.Error(http.StatusBadRequest, err.Error(), err)
+	}
+	return nil
+}
+
+func convertSession(sess *session.Session) agentapi.SessionRecord {
+	return agentapi.SessionRecord{
+		Key:       sess.Key,
+		AgentID:   sess.AgentID,
+		Type:      agentapi.SessionType(sess.Type),
+		Status:    string(sess.Status),
+		Title:     sess.Title,
+		CreatedAt: sess.CreatedAt,
+		UpdatedAt: sess.UpdatedAt,
+		EndedAt:   sess.EndedAt,
+	}
+}
+
+func (s *agentService) ApprovePlan(ctx context.Context, r *http.Request) (*agentapi.Plan, error) {
+	p, err := s.agent.ApprovePlan()
+	if err != nil {
+		return nil, agentapi.Error(http.StatusBadRequest, err.Error(), err)
+	}
+	return convertPlan(p)
+}
+
+func (s *agentService) RejectPlan(ctx context.Context, r *http.Request) error {
+	if err := s.agent.RejectPlan(); err != nil {
+		return agentapi.Error(http.StatusBadRequest, err.Error(), err)
+	}
+	return nil
 }
