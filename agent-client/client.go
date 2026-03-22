@@ -116,6 +116,60 @@ func (c *Client) Activity(ctx context.Context, limit int) ([]agentapi.ActivityRe
 	return resp, nil
 }
 
+func (c *Client) Sessions(ctx context.Context) ([]agentapi.SessionRecord, error) {
+	var resp []agentapi.SessionRecord
+	if err := c.transport.Get(ctx, c.path(agentapi.PathSessions), &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+func (c *Client) Session(ctx context.Context, sessionKey string) (*agentapi.SessionRecord, error) {
+	path := c.path(agentapi.PathSessions) + "/" + sessionKey
+	var resp agentapi.SessionRecord
+	if err := c.transport.Get(ctx, path, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (c *Client) SessionActivity(ctx context.Context, sessionKey string, limit int) ([]agentapi.ActivityRecord, error) {
+	path := c.path(agentapi.PathSessions) + "/" + sessionKey + "/activity"
+	if limit > 0 {
+		path = fmt.Sprintf("%s?limit=%d", path, limit)
+	}
+	var resp []agentapi.ActivityRecord
+	if err := c.transport.Get(ctx, path, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+func (c *Client) CreateSession(ctx context.Context, req agentapi.CreateSessionRequest) (*agentapi.CreateSessionResponse, error) {
+	var resp agentapi.CreateSessionResponse
+	if err := c.transport.Post(ctx, c.path(agentapi.PathSessions), req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (c *Client) DeleteSession(ctx context.Context, sessionKey string) error {
+	path := c.path(agentapi.PathSessions) + "/" + sessionKey
+	return c.transport.Delete(ctx, path, nil, nil)
+}
+
+func (c *Client) ApprovePlan(ctx context.Context) (*agentapi.Plan, error) {
+	var resp agentapi.Plan
+	if err := c.transport.Post(ctx, c.path(agentapi.PathPlanApprove), nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (c *Client) RejectPlan(ctx context.Context) error {
+	return c.transport.Post(ctx, c.path(agentapi.PathPlanReject), nil, nil)
+}
+
 func (c *Client) StreamActivity(ctx context.Context, fn func(agentapi.ActivityRecord)) error {
 	return c.transport.StreamSSE(ctx, c.path(agentapi.PathActivityStream), func(chunk string) {
 		var record agentapi.ActivityRecord
