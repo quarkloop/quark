@@ -52,6 +52,27 @@ type Service interface {
 	// StreamActivity opens a long-lived connection and calls emit for
 	// each new activity record. Blocks until the context is cancelled.
 	StreamActivity(ctx context.Context, r *http.Request, emit func(ActivityRecord) error) error
+
+	// Sessions returns all sessions.
+	Sessions(ctx context.Context, r *http.Request) ([]SessionRecord, error)
+
+	// Session returns a specific session by key.
+	Session(ctx context.Context, r *http.Request, sessionKey string) (*SessionRecord, error)
+
+	// SessionActivity returns activity records for a specific session.
+	SessionActivity(ctx context.Context, r *http.Request, sessionKey string, limit int) ([]ActivityRecord, error)
+
+	// CreateSession creates a new session.
+	CreateSession(ctx context.Context, r *http.Request, req CreateSessionRequest) (*CreateSessionResponse, error)
+
+	// DeleteSession deletes a session by key.
+	DeleteSession(ctx context.Context, r *http.Request, sessionKey string) error
+
+	// ApprovePlan sets the current plan's status to "approved".
+	ApprovePlan(ctx context.Context, r *http.Request) (*Plan, error)
+
+	// RejectPlan removes the current draft plan.
+	RejectPlan(ctx context.Context, r *http.Request) error
 }
 
 // HTTPError is a structured error that carries an HTTP status code.
@@ -150,8 +171,15 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 		mux.HandleFunc("POST "+JoinPath(basePath, PathChat), h.handleChat)
 		mux.HandleFunc("POST "+JoinPath(basePath, PathStop), h.handleStop)
 		mux.HandleFunc("GET "+JoinPath(basePath, PathPlan), h.handlePlan)
+		mux.HandleFunc("POST "+JoinPath(basePath, PathPlanApprove), h.handlePlanApprove)
+		mux.HandleFunc("POST "+JoinPath(basePath, PathPlanReject), h.handlePlanReject)
 		mux.HandleFunc("GET "+JoinPath(basePath, PathActivity), h.handleActivity)
 		mux.HandleFunc("GET "+JoinPath(basePath, PathActivityStream), h.handleActivityStream)
+		mux.HandleFunc("GET "+JoinPath(basePath, PathSessions), h.handleSessions)
+		mux.HandleFunc("POST "+JoinPath(basePath, PathSessions), h.handleCreateSession)
+		mux.HandleFunc("GET "+JoinPath(basePath, PathSession), h.handleSession)
+		mux.HandleFunc("DELETE "+JoinPath(basePath, PathSession), h.handleDeleteSession)
+		mux.HandleFunc("GET "+JoinPath(basePath, PathSessionActivity), h.handleSessionActivity)
 	}
 }
 
@@ -350,6 +378,98 @@ func writeJSON(w http.ResponseWriter, statusCode int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	_ = json.NewEncoder(w).Encode(body)
+}
+
+// handleSessions serves GET /sessions — returns all sessions.
+func (h *Handler) handleSessions(w http.ResponseWriter, r *http.Request) {
+	resp, err := h.service.Sessions(r.Context(), r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// handleCreateSession serves POST /sessions — creates a new session.
+func (h *Handler) handleCreateSession(w http.ResponseWriter, r *http.Request) {
+	var req CreateSessionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, Error(http.StatusBadRequest, "invalid request body", err))
+		return
+	}
+	resp, err := h.service.CreateSession(r.Context(), r, req)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, resp)
+}
+
+// handleSession serves GET /sessions/{sessionKey} — returns a single session.
+func (h *Handler) handleSession(w http.ResponseWriter, r *http.Request) {
+	sessionKey := r.PathValue("sessionKey")
+	resp, err := h.service.Session(r.Context(), r, sessionKey)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// handleDeleteSession serves DELETE /sessions/{sessionKey}.
+func (h *Handler) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
+	sessionKey := r.PathValue("sessionKey")
+	if err := h.service.DeleteSession(r.Context(), r, sessionKey); err != nil {
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleSessionActivity serves GET /sessions/{sessionKey}/activity — returns
+// activity records scoped to a specific session.
+func (h *Handler) handleSessionActivity(w http.ResponseWriter, r *http.Request) {
+	sessionKey := r.PathValue("sessionKey")
+	limit := h.cfg.defaultLimit
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil {
+			writeError(w, Error(http.StatusBadRequest, "invalid limit", err))
+			return
+		}
+		limit = parsed
+	}
+	if limit <= 0 {
+		limit = h.cfg.defaultLimit
+	}
+	if limit > h.cfg.maxLimit {
+		limit = h.cfg.maxLimit
+	}
+	resp, err := h.service.SessionActivity(r.Context(), r, sessionKey, limit)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// handlePlanApprove serves POST /plan/approve — sets the plan status to approved.
+func (h *Handler) handlePlanApprove(w http.ResponseWriter, r *http.Request) {
+	resp, err := h.service.ApprovePlan(r.Context(), r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// handlePlanReject serves POST /plan/reject — removes the current draft plan.
+func (h *Handler) handlePlanReject(w http.ResponseWriter, r *http.Request) {
+	if err := h.service.RejectPlan(r.Context(), r); err != nil {
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func writeError(w http.ResponseWriter, err error) {
