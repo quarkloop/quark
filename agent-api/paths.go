@@ -40,6 +40,21 @@ const (
 	// PathActivityStream opens a Server-Sent Events stream of real-time
 	// activity records (GET). Each SSE frame is a JSON ActivityRecord.
 	PathActivityStream = "/activity/stream"
+
+	// PathSessions lists all sessions (GET), creates a new session (POST).
+	PathSessions = "/sessions"
+
+	// PathSession returns a specific session by key (GET), deletes it (DELETE).
+	PathSession = "/sessions/{sessionKey}"
+
+	// PathSessionActivity returns activity records for a session (GET).
+	PathSessionActivity = "/sessions/{sessionKey}/activity"
+
+	// PathPlanApprove approves the current plan for execution (POST).
+	PathPlanApprove = "/plan/approve"
+
+	// PathPlanReject rejects the current plan (POST).
+	PathPlanReject = "/plan/reject"
 )
 
 // JoinPath concatenates a base path and a suffix, stripping trailing slashes.
