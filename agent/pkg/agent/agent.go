@@ -1,381 +1,293 @@
-// Package agent implements the multi-agent execution engine.
-//
-// Agent coordinates the full ORIENT→PLAN→DISPATCH→MONITOR→ASSESS loop:
-//
-//   - The supervisor LLM call produces or updates the master Plan.
-//   - Worker goroutines (one per ready step) call worker agents via the KB.
-//   - Tool calls are dispatched through the tool.Invoker.
-//   - The llmctx AgentContext manages the token window and compaction.
-//
-// Typical usage:
-//
-//	a := agent.NewAgent(def, kb, gw, disp, agent.WithSubAgents(agents))
-//	a.InitContext(8192)
-//	a.Run(ctx)
+// Package agent is the thin orchestrator that manages sessions and routes
+// requests to per-session contexts. All business logic lives in the
+// chat, cycle, inference, and execution packages.
 package agent
 
 import (
 	"context"
 	"fmt"
 	"log"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/quarkloop/agent/pkg/activity"
+	"github.com/quarkloop/agent/pkg/agentcore"
+	"github.com/quarkloop/agent/pkg/chat"
 	llmctx "github.com/quarkloop/agent/pkg/context"
-	"github.com/quarkloop/agent/pkg/model"
+	"github.com/quarkloop/agent/pkg/cycle"
 	planpkg "github.com/quarkloop/agent/pkg/plan"
 	"github.com/quarkloop/agent/pkg/session"
-	"github.com/quarkloop/agent/pkg/tool"
-	"github.com/quarkloop/core/pkg/kb"
 )
 
 // Agent drives the multi-agent loop inside a single space-runtime process.
-// It owns the llmctx AgentContext and runs the
-// ORIENT → PLAN → DISPATCH → MONITOR → ASSESS cycle, fanning out plan steps
-// to worker goroutines. One Agent exists per running space.
-//
-// Usage: NewAgent → InitContext → Run.
+// It manages sessions (each with its own context) and routes requests.
 type Agent struct {
-	def             *Definition
-	kb              kb.Store
-	gateway         model.Gateway
-	dispatcher      tool.Invoker
-	subAgents       map[string]*Definition
-	planStore       *planpkg.Store
-	masterPlanStore *planpkg.MasterPlanStore
-	mode            Mode
-	mu              sync.Mutex
-	activeSteps     map[string]struct{} // step IDs currently running
-
-	// llmctx integration
-	ctx        *llmctx.AgentContext
-	tc         llmctx.TokenComputer
-	idGen      llmctx.IDGenerator
-	visPolicy  *llmctx.VisibilityPolicy
-	adapterReg *llmctx.AdapterRegistry
-	snapRepo   *KBSnapshotRepository
-
-	// session & activity (optional)
-	session      *session.Session
-	sessionStore *session.Store
-	activity     activity.Sink
+	res       *agentcore.Resources
+	agentID   string
+	def       *agentcore.Definition
+	subAgents map[string]*agentcore.Definition
+	sessions  map[string]*SessionState // session key → state
+	sessStore *session.Store
+	mu        sync.RWMutex
 }
 
-// Option configures an Agent.
-type Option func(*Agent)
-
-// WithSubAgents registers worker agent definitions that the Agent can dispatch to.
-func WithSubAgents(agents map[string]*Definition) Option {
-	return func(a *Agent) {
-		a.subAgents = agents
-	}
-}
-
-// WithSession attaches a session and its store to the agent.
-func WithSession(sess *session.Session, store *session.Store) Option {
-	return func(a *Agent) {
-		a.session = sess
-		a.sessionStore = store
-	}
-}
-
-// WithActivitySink attaches an activity sink for event streaming.
-func WithActivitySink(sink activity.Sink) Option {
-	return func(a *Agent) {
-		a.activity = sink
-	}
-}
-
-// WithMode sets the initial working mode for the agent.
-func WithMode(m Mode) Option {
-	return func(a *Agent) {
-		a.mode = m
-	}
-}
-
-// NewAgent constructs an Agent. InitContext must be called before Run.
-func NewAgent(
-	def *Definition,
-	k kb.Store,
-	gw model.Gateway,
-	disp tool.Invoker,
-	opts ...Option,
+// New constructs an Agent. Call Init before Run or Chat.
+func New(
+	agentID string,
+	def *agentcore.Definition,
+	res *agentcore.Resources,
+	sessStore *session.Store,
+	subAgents map[string]*agentcore.Definition,
 ) *Agent {
-	a := &Agent{
-		def:             def,
-		kb:              k,
-		gateway:         gw,
-		dispatcher:      disp,
-		subAgents:       map[string]*Definition{},
-		planStore:       planpkg.NewStore(k, NSPlans, KeyMasterPlan),
-		masterPlanStore: planpkg.NewMasterPlanStore(k, NSPlans, KeyMasterPlanDoc),
-		mode:            ModeAuto,
-		activeSteps:     map[string]struct{}{},
+	if subAgents == nil {
+		subAgents = map[string]*agentcore.Definition{}
 	}
-	for _, opt := range opts {
-		opt(a)
+	return &Agent{
+		res:       res,
+		agentID:   agentID,
+		def:       def,
+		subAgents: subAgents,
+		sessions:  map[string]*SessionState{},
+		sessStore: sessStore,
 	}
-	return a
 }
 
-// InitContext builds the llmctx AgentContext for the agent.
-// It must be called exactly once before Run. Steps:
-//
-//  1. Create a CachedTokenComputer and IDGenerator.
-//  2. Build the AdapterRegistry (all providers including noop).
-//  3. Configure a VisibilityPolicy.
-//  4. Restore a previous-session snapshot from the KB if available;
-//     otherwise build a fresh context with the system prompt.
-func (a *Agent) InitContext(windowSize int) error {
+// Init loads or creates the main session and restores active chat sessions.
+func (a *Agent) Init() error {
+	// Build shared llmctx infrastructure.
 	tc, err := llmctx.DefaultTokenComputer()
 	if err != nil {
 		return fmt.Errorf("token computer: %w", err)
 	}
-	a.tc = tc
-	a.idGen = llmctx.DefaultIDGenerator()
+	a.res.TC = tc
+	a.res.IDGen = llmctx.DefaultIDGenerator()
+	a.res.AdapterReg = llmctx.NewAdapterRegistry()
+	a.res.VisPolicy = llmctx.DefaultVisibilityPolicy()
+	a.res.VisPolicy.Set(llmctx.ToolCallMessageType, llmctx.VisibleToLLMAndDev)
+	a.res.VisPolicy.Set(llmctx.ToolResultMessageType, llmctx.VisibleToLLMAndDev)
+	a.res.VisPolicy.Set(llmctx.ReasoningMessageType, llmctx.VisibleToDeveloperOnly)
+	a.res.VisPolicy.Set(llmctx.PlanMessageType, llmctx.VisibleToDeveloperOnly)
+	a.res.VisPolicy.Set(llmctx.MemoryMessageType, llmctx.VisibleToLLMAndDev)
 
-	a.adapterReg = llmctx.NewAdapterRegistry()
+	// Load or create main session.
+	mainKey := session.MainKey(a.agentID)
+	if a.sessStore.MainExists(a.agentID) {
+		mainSess, err := a.sessStore.GetMain(a.agentID)
+		if err != nil {
+			return fmt.Errorf("load main session: %w", err)
+		}
 
-	a.visPolicy = llmctx.DefaultVisibilityPolicy()
-	a.visPolicy.Set(llmctx.ToolCallMessageType, llmctx.VisibleToLLMAndDev)
-	a.visPolicy.Set(llmctx.ToolResultMessageType, llmctx.VisibleToLLMAndDev)
-	a.visPolicy.Set(llmctx.ReasoningMessageType, llmctx.VisibleToDeveloperOnly)
-	a.visPolicy.Set(llmctx.PlanMessageType, llmctx.VisibleToDeveloperOnly)
-	a.visPolicy.Set(llmctx.MemoryMessageType, llmctx.VisibleToLLMAndDev)
-
-	a.snapRepo = NewKBSnapshotRepository(a.kb)
-	a.restoreMode()
-
-	// Try to restore context from a previous session.
-	if snap, err := a.snapRepo.LoadLatestSnapshot(); err == nil {
-		log.Printf("agent: restoring context from snapshot (%d messages)",
-			len(snap.Messages))
-		compactor, cErr := a.buildCompactor()
-		if cErr == nil {
-			ac, err := llmctx.ContextFromSnapshot(snap, tc,
-				llmctx.WithRestoreIDGenerator(a.idGen),
-				llmctx.WithRestoreCompactor(compactor))
-			if err == nil {
-				a.ctx = ac
-				return nil
+		// Try to restore context from snapshot.
+		ac, err := LoadSessionSnapshot(a.res.KB, a.res.TC, a.res.IDGen, mainKey)
+		if err != nil {
+			log.Printf("agent: no snapshot for main session, creating fresh context")
+			ac, err = a.buildFreshContext(a.def.Config.ContextWindow, agentcore.ModeAuto)
+			if err != nil {
+				return fmt.Errorf("fresh context: %w", err)
 			}
-			log.Printf("agent: failed to restore snapshot, creating fresh: %v", err)
 		} else {
-			log.Printf("agent: failed to build compactor for snapshot, creating fresh: %v", cErr)
+			log.Printf("agent: restored main session context from snapshot")
 		}
-	}
 
-	return a.buildFreshContext(windowSize)
-}
-
-// Mode returns the agent's current working mode.
-func (a *Agent) Mode() Mode { return a.mode }
-
-// SetMode updates the agent's working mode and persists it to the KB.
-func (a *Agent) SetMode(m Mode) {
-	a.mode = m
-	a.kb.Set(NSConfig, KeyMode, []byte(string(m)))
-}
-
-// restoreMode loads the persisted mode from the KB. Falls back to ModeAuto.
-func (a *Agent) restoreMode() {
-	if data, err := a.kb.Get(NSConfig, KeyMode); err == nil {
-		if m, err := ParseMode(string(data)); err == nil {
-			a.mode = m
+		mode := a.restoreMode()
+		a.mu.Lock()
+		a.sessions[mainKey] = &SessionState{
+			Session:     mainSess,
+			Context:     ac,
+			Mode:        mode,
+			PlanStore:   planpkg.NewStore(a.res.KB, agentcore.NSPlans, agentcore.KeyMasterPlan),
+			MasterStore: planpkg.NewMasterPlanStore(a.res.KB, agentcore.NSPlans, agentcore.KeyMasterPlanDoc),
 		}
-	}
-}
+		a.mu.Unlock()
+	} else {
+		now := time.Now()
+		mainSess := &session.Session{
+			Key:       mainKey,
+			AgentID:   a.agentID,
+			Type:      session.TypeMain,
+			Status:    session.StatusActive,
+			Title:     "Main",
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+		if err := a.sessStore.Create(mainSess); err != nil {
+			return fmt.Errorf("create main session: %w", err)
+		}
 
-// buildCompactor creates the standard compaction pipeline.
-func (a *Agent) buildCompactor() (llmctx.Compactor, error) {
-	pipeline, err := llmctx.NewPipelineCompactor(
-		llmctx.NewWeightBasedCompactor(),
-		llmctx.NewFIFOCompactor(),
-	)
+		ac, err := a.buildFreshContext(a.def.Config.ContextWindow, agentcore.ModeAuto)
+		if err != nil {
+			return fmt.Errorf("fresh context: %w", err)
+		}
+
+		a.mu.Lock()
+		a.sessions[mainKey] = &SessionState{
+			Session:     mainSess,
+			Context:     ac,
+			Mode:        agentcore.ModeAuto,
+			PlanStore:   planpkg.NewStore(a.res.KB, agentcore.NSPlans, agentcore.KeyMasterPlan),
+			MasterStore: planpkg.NewMasterPlanStore(a.res.KB, agentcore.NSPlans, agentcore.KeyMasterPlanDoc),
+		}
+		a.mu.Unlock()
+	}
+
+	// Restore active chat sessions.
+	active, err := a.sessStore.ListActive(a.agentID)
 	if err != nil {
-		return nil, fmt.Errorf("pipeline compactor: %w", err)
+		log.Printf("agent: failed to list active sessions: %v", err)
+		return nil
 	}
-	return llmctx.NewThresholdCompactor(pipeline, DefaultCompactionThreshold)
-}
-
-// buildFreshContext creates a new AgentContext.
-func (a *Agent) buildFreshContext(windowSize int) error {
-	window, _ := llmctx.NewContextWindow(int32(windowSize))
-
-	compactor, err := a.buildCompactor()
-	if err != nil {
-		return err
-	}
-
-	sysPromptText := a.systemPromptForMode(a.mode)
-	sysID, _ := a.idGen.Next()
-	agentAuthor, _ := llmctx.NewAuthorID(a.def.Name)
-	sysMsg, err := llmctx.NewSystemPromptMessage(sysID, agentAuthor, sysPromptText, a.tc)
-	if err != nil {
-		return fmt.Errorf("system prompt: %w", err)
+	for _, sess := range active {
+		if sess.Type == session.TypeMain {
+			continue // already loaded
+		}
+		ac, err := LoadSessionSnapshot(a.res.KB, a.res.TC, a.res.IDGen, sess.Key)
+		if err != nil {
+			ac, _ = a.buildFreshContext(a.def.Config.ContextWindow, agentcore.ModeAuto)
+		}
+		a.mu.Lock()
+		a.sessions[sess.Key] = &SessionState{
+			Session: sess,
+			Context: ac,
+			Mode:    agentcore.ModeAuto,
+		}
+		a.mu.Unlock()
 	}
 
-	ac, err := llmctx.NewAgentContextBuilder().
-		WithSystemPrompt(sysMsg).
-		WithContextWindow(window).
-		WithCompactor(compactor).
-		WithTokenComputer(a.tc).
-		WithIDGenerator(a.idGen).
-		Build()
-	if err != nil {
-		return fmt.Errorf("agent context: %w", err)
-	}
-	a.ctx = ac
 	return nil
 }
 
-// emitMessage emits a message.added activity event for chat messages.
-// The content is truncated to 4096 characters in the activity data;
-// the full content is always available in the ChatResponse.
-// updateSystemPrompt replaces the system prompt in the agent context to match
-// the given mode. This ensures the LLM receives the correct instructions
-// regardless of which mode was active when the context was initialised.
-func (a *Agent) updateSystemPrompt(mode Mode) {
-	text := a.systemPromptForMode(mode)
-	id, _ := a.idGen.Next()
-	agentAuthor, _ := llmctx.NewAuthorID(a.def.Name)
-	msg, err := llmctx.NewSystemPromptMessage(id, agentAuthor, text, a.tc)
-	if err != nil {
-		return
+// Chat routes a message to the session's context and calls chat.Process.
+func (a *Agent) Chat(ctx context.Context, sessionKey string, req agentcore.ChatRequest) (*agentcore.ChatResponse, error) {
+	if sessionKey == "" {
+		sessionKey = session.MainKey(a.agentID)
 	}
-	a.ctx.SetSystemPrompt(msg)
-}
 
-func (a *Agent) emitMessage(author, content, mode string) {
-	truncated := content
-	if len(truncated) > 4096 {
-		truncated = truncated[:4096]
+	a.mu.RLock()
+	state, ok := a.sessions[sessionKey]
+	a.mu.RUnlock()
+	if !ok {
+		return nil, fmt.Errorf("session %s not found", sessionKey)
 	}
-	data := map[string]string{
-		"author":  author,
-		"content": truncated,
-	}
-	if mode != "" {
-		data["mode"] = mode
-	}
-	a.emit(activity.MessageAdded, data)
-}
 
-// emit sends an activity event if a sink is configured.
-func (a *Agent) emit(eventType activity.EventType, data interface{}) {
-	if a.activity == nil {
-		return
+	// Resolve mode.
+	mode := state.Mode
+	if req.Mode != "" {
+		if m, err := agentcore.ParseMode(req.Mode); err == nil {
+			mode = m
+			state.Mode = m
+			a.res.KB.Set(agentcore.NSConfig, agentcore.KeyMode, []byte(string(m)))
+		}
 	}
-	sessionID := ""
-	if a.session != nil {
-		sessionID = a.session.ID
+
+	// Update system prompt for the resolved mode.
+	a.updateSystemPrompt(state, mode)
+
+	// Emit user message activity.
+	a.emitMessage(sessionKey, agentcore.AuthorUser, req.Message, string(mode))
+
+	deps := &chat.Deps{
+		Def:         a.def,
+		SubAgents:   a.subAgents,
+		PlanStore:   state.PlanStore,
+		MasterStore: state.MasterStore,
 	}
-	id := fmt.Sprintf("%s-%d", eventType, time.Now().UnixNano())
-	a.activity.Emit(activity.Event{
-		ID:        id,
-		SessionID: sessionID,
-		Type:      eventType,
-		Timestamp: time.Now().UTC(),
-		Data:      data,
-	})
+	if deps.PlanStore == nil {
+		deps.PlanStore = planpkg.NewStore(a.res.KB, agentcore.NSPlans, agentcore.KeyMasterPlan)
+	}
+	if deps.MasterStore == nil {
+		deps.MasterStore = planpkg.NewMasterPlanStore(a.res.KB, agentcore.NSPlans, agentcore.KeyMasterPlanDoc)
+	}
+
+	req.SessionKey = sessionKey
+	resp, err := chat.Process(ctx, state.Context, a.res, deps, mode, req)
+
+	// Emit agent reply activity.
+	if err == nil && resp != nil && resp.Reply != "" {
+		a.emitMessage(sessionKey, agentcore.AuthorAgent, resp.Reply, resp.Mode)
+	}
+
+	// Save checkpoint.
+	a.saveCheckpoint(sessionKey)
+
+	return resp, err
 }
 
 // Run starts the agent loop, blocking until ctx is cancelled.
-//
-// Behaviour depends on the current working mode:
-//   - Ask / Auto: idle — all interaction happens via Chat().
-//   - Plan: when an approved plan exists, the LLM-driven supervisorCycle
-//     (ORIENT→PLAN→DISPATCH→MONITOR→ASSESS) executes it. Otherwise idle.
-//   - MasterPlan: same as Plan but orchestrates phases — each phase is
-//     executed as a sub-plan via supervisorCycle.
-//
-// Must be called after InitContext.
 func (a *Agent) Run(ctx context.Context) error {
-	log.Printf("agent: starting (name=%s mode=%s model=%s/%s)",
-		a.def.Name, a.mode, a.gateway.Provider(), a.gateway.ModelName())
+	log.Printf("agent: starting (name=%s model=%s/%s)",
+		a.def.Name, a.res.Gateway.Provider(), a.res.Gateway.ModelName())
 
-	a.emit(activity.SessionStarted, map[string]string{
+	mainKey := session.MainKey(a.agentID)
+	a.emit(mainKey, activity.SessionStarted, map[string]string{
 		"agent": a.def.Name,
-		"mode":  string(a.mode),
 	})
 
 	for {
 		select {
 		case <-ctx.Done():
-			a.saveCheckpoint()
-			a.emit(activity.SessionEnded, map[string]string{"reason": "cancelled"})
+			a.saveCheckpoint(mainKey)
+			a.emit(mainKey, activity.SessionEnded, map[string]string{"reason": "cancelled"})
 			return ctx.Err()
 		default:
 		}
 
-		interval := a.runOnce(ctx)
+		interval := a.runOnce(ctx, mainKey)
 
 		select {
 		case <-ctx.Done():
-			a.saveCheckpoint()
-			a.emit(activity.SessionEnded, map[string]string{"reason": "cancelled"})
+			a.saveCheckpoint(mainKey)
+			a.emit(mainKey, activity.SessionEnded, map[string]string{"reason": "cancelled"})
 			return ctx.Err()
 		case <-time.After(interval):
 		}
 	}
 }
 
-// runOnce executes one iteration of the Run loop. Returns the interval to
-// wait before the next iteration.
-func (a *Agent) runOnce(ctx context.Context) time.Duration {
-	switch a.mode {
-	case ModePlan:
-		return a.runPlanCycle(ctx)
-	case ModeMasterPlan:
-		return a.runMasterPlanCycle(ctx)
+func (a *Agent) runOnce(ctx context.Context, mainKey string) time.Duration {
+	a.mu.RLock()
+	state, ok := a.sessions[mainKey]
+	a.mu.RUnlock()
+	if !ok {
+		return 2 * time.Second
+	}
+
+	switch state.Mode {
+	case agentcore.ModePlan:
+		return a.runPlanCycle(ctx, state)
+	case agentcore.ModeMasterPlan:
+		return a.runMasterPlanCycle(ctx, state)
 	default:
-		// Ask / Auto: idle, all work via Chat().
 		return 2 * time.Second
 	}
 }
 
-// runPlanCycle checks for an approved plan and runs one supervisorCycle if found.
-func (a *Agent) runPlanCycle(ctx context.Context) time.Duration {
-	p, err := a.planStore.Load()
-	if err != nil || p == nil {
-		return 2 * time.Second // no plan, idle
-	}
-	if p.Complete {
-		return 2 * time.Second // done, idle
-	}
-	if p.Status != planpkg.PlanApproved {
-		return 2 * time.Second // draft, waiting for approval
+func (a *Agent) runPlanCycle(ctx context.Context, state *SessionState) time.Duration {
+	p, err := state.PlanStore.Load()
+	if err != nil || p == nil || p.Complete || p.Status != planpkg.PlanApproved {
+		return 2 * time.Second
 	}
 
-	done, err := a.supervisorCycle(ctx)
+	done, err := cycle.Supervisor(ctx, state.Context, a.res, state.PlanStore, a, a.subAgents)
 	if err != nil {
 		log.Printf("agent: plan cycle error: %v", err)
 		return 5 * time.Second
 	}
 	if done {
 		log.Printf("agent: plan complete")
-		a.saveCheckpoint()
+		a.saveCheckpoint(state.Session.Key)
 	}
 	return 2 * time.Second
 }
 
-// runMasterPlanCycle checks for an approved masterplan and executes the next
-// ready phase via supervisorCycle. Each phase's sub-plan is a standard Plan
-// managed through a per-phase planStore.
-func (a *Agent) runMasterPlanCycle(ctx context.Context) time.Duration {
-	mp, err := a.masterPlanStore.Load()
-	if err != nil || mp == nil {
-		return 2 * time.Second
-	}
-	if mp.Complete {
-		return 2 * time.Second
-	}
-	if mp.Status != planpkg.PlanApproved {
+func (a *Agent) runMasterPlanCycle(ctx context.Context, state *SessionState) time.Duration {
+	mp, err := state.MasterStore.Load()
+	if err != nil || mp == nil || mp.Complete || mp.Status != planpkg.PlanApproved {
 		return 2 * time.Second
 	}
 
-	// Find next ready phase.
 	var phase *planpkg.Phase
 	for i := range mp.Phases {
 		p := &mp.Phases[i]
@@ -389,7 +301,6 @@ func (a *Agent) runMasterPlanCycle(ctx context.Context) time.Duration {
 		}
 	}
 	if phase == nil {
-		// Check if all done.
 		allDone := true
 		for _, p := range mp.Phases {
 			if p.Status != planpkg.StepComplete {
@@ -400,75 +311,344 @@ func (a *Agent) runMasterPlanCycle(ctx context.Context) time.Duration {
 		if allDone {
 			mp.Complete = true
 			mp.Summary = "All phases completed."
-			a.masterPlanStore.Save(mp)
+			state.MasterStore.Save(mp)
 			log.Printf("agent: masterplan complete")
-			a.saveCheckpoint()
+			a.saveCheckpoint(state.Session.Key)
 		}
 		return 2 * time.Second
 	}
 
-	// Mark phase running if still pending.
 	if phase.Status == planpkg.StepPending {
 		phase.Status = planpkg.StepRunning
-		a.masterPlanStore.Save(mp)
-		a.emit(activity.PhaseStarted, map[string]string{"phase": phase.ID})
+		state.MasterStore.Save(mp)
+		a.emit(state.Session.Key, activity.PhaseStarted, map[string]string{"phase": phase.ID})
 		log.Printf("agent: starting phase %s", phase.ID)
 	}
 
-	// Swap planStore to this phase's sub-plan, run one supervisor cycle.
-	origStore := a.planStore
-	a.planStore = a.masterPlanStore.SubPlanStore(phase.ID)
-
-	done, err := a.supervisorCycle(ctx)
-
-	a.planStore = origStore
+	subPlanStore := state.MasterStore.SubPlanStore(phase.ID)
+	done, err := cycle.Supervisor(ctx, state.Context, a.res, subPlanStore, a, a.subAgents)
 
 	if err != nil {
 		phase.Status = planpkg.StepFailed
-		a.masterPlanStore.Save(mp)
-		a.emit(activity.PhaseFailed, map[string]string{"phase": phase.ID, "error": err.Error()})
+		state.MasterStore.Save(mp)
+		a.emit(state.Session.Key, activity.PhaseFailed, map[string]string{"phase": phase.ID, "error": err.Error()})
 		log.Printf("agent: phase %s failed: %v", phase.ID, err)
 		return 5 * time.Second
 	}
 	if done {
 		phase.Status = planpkg.StepComplete
-		a.masterPlanStore.Save(mp)
-		a.emit(activity.PhaseCompleted, map[string]string{"phase": phase.ID})
+		state.MasterStore.Save(mp)
+		a.emit(state.Session.Key, activity.PhaseCompleted, map[string]string{"phase": phase.ID})
 		log.Printf("agent: phase %s complete", phase.ID)
 	}
 
 	return 2 * time.Second
 }
 
-// ExecuteTask runs a single task through the tool loop without the supervisor
-// cycle. Useful for one-shot operations.
-func (a *Agent) ExecuteTask(ctx context.Context, task string) (string, error) {
-	if a.ctx == nil {
-		return "", fmt.Errorf("agent not initialised: call InitContext first")
+// ─── Session CRUD ───────────────────────────────────────────────────────────
+
+// CreateSession creates a new session and initializes its context.
+func (a *Agent) CreateSession(t session.Type, title string) (*session.Session, error) {
+	id := uuid.New().String()[:8]
+	var key string
+	switch t {
+	case session.TypeChat:
+		key = session.ChatKey(a.agentID, id)
+	case session.TypeSubAgent:
+		key = session.SubAgentKey(a.agentID, id)
+	default:
+		return nil, fmt.Errorf("cannot create session of type %s", t)
 	}
-	resp, err := a.inferWithContext(ctx, a.ctx, task)
+
+	now := time.Now()
+	sess := &session.Session{
+		Key:       key,
+		AgentID:   a.agentID,
+		Type:      t,
+		Status:    session.StatusActive,
+		Title:     title,
+		ParentKey: session.MainKey(a.agentID),
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := a.sessStore.Create(sess); err != nil {
+		return nil, fmt.Errorf("create session: %w", err)
+	}
+
+	ac, err := a.buildFreshContext(a.def.Config.ContextWindow, agentcore.ModeAuto)
 	if err != nil {
-		return "", err
+		return nil, fmt.Errorf("build context: %w", err)
 	}
-	return resp.Content, nil
+
+	a.mu.Lock()
+	a.sessions[key] = &SessionState{
+		Session: sess,
+		Context: ac,
+		Mode:    agentcore.ModeAuto,
+	}
+	a.mu.Unlock()
+
+	a.emit(key, activity.SessionStarted, map[string]string{"type": string(t), "title": title})
+	return sess, nil
 }
 
-// Provider returns the configured LLM provider identifier (e.g. "openrouter").
-func (a *Agent) Provider() string { return a.gateway.Provider() }
+// DeleteSession marks a session as deleted and removes its state.
+func (a *Agent) DeleteSession(sessionKey string) error {
+	// Cannot delete main session.
+	mainKey := session.MainKey(a.agentID)
+	if sessionKey == mainKey {
+		return fmt.Errorf("cannot delete main session")
+	}
 
-// ModelName returns the configured model identifier (e.g. "stepfun/step-3.5-flash:free").
-func (a *Agent) ModelName() string { return a.gateway.ModelName() }
+	a.mu.Lock()
+	state, ok := a.sessions[sessionKey]
+	if ok {
+		// Save snapshot before deleting.
+		if state.Context != nil {
+			SaveSessionSnapshot(a.res.KB, a.res.IDGen, sessionKey, state.Context)
+		}
+		delete(a.sessions, sessionKey)
+	}
+	a.mu.Unlock()
+
+	// Update store.
+	sess, err := a.sessStore.Get(sessionKey)
+	if err != nil {
+		return fmt.Errorf("session not found: %w", err)
+	}
+	now := time.Now()
+	sess.Status = session.StatusDeleted
+	sess.EndedAt = &now
+	sess.UpdatedAt = now
+	if err := a.sessStore.Update(sess); err != nil {
+		return fmt.Errorf("update session: %w", err)
+	}
+
+	a.emit(sessionKey, activity.SessionEnded, map[string]string{"reason": "deleted"})
+	return nil
+}
+
+// ListSessions returns all sessions for this agent.
+func (a *Agent) ListSessions() ([]*session.Session, error) {
+	return a.sessStore.ListByAgent(a.agentID)
+}
+
+// GetSession returns a specific session by key.
+func (a *Agent) GetSession(sessionKey string) (*session.Session, error) {
+	return a.sessStore.Get(sessionKey)
+}
+
+// ─── Accessors ──────────────────────────────────────────────────────────────
+
+// Mode returns the agent's current working mode (from main session).
+func (a *Agent) Mode() agentcore.Mode {
+	mainKey := session.MainKey(a.agentID)
+	a.mu.RLock()
+	state, ok := a.sessions[mainKey]
+	a.mu.RUnlock()
+	if !ok {
+		return agentcore.ModeAuto
+	}
+	return state.Mode
+}
+
+// SetMode updates the main session's working mode.
+func (a *Agent) SetMode(m agentcore.Mode) {
+	mainKey := session.MainKey(a.agentID)
+	a.mu.RLock()
+	state, ok := a.sessions[mainKey]
+	a.mu.RUnlock()
+	if ok {
+		state.Mode = m
+	}
+	a.res.KB.Set(agentcore.NSConfig, agentcore.KeyMode, []byte(string(m)))
+}
+
+// Provider returns the configured LLM provider identifier.
+func (a *Agent) Provider() string { return a.res.Gateway.Provider() }
+
+// ModelName returns the configured model identifier.
+func (a *Agent) ModelName() string { return a.res.Gateway.ModelName() }
 
 // Tools returns the names of all registered tools.
-func (a *Agent) Tools() []string { return a.dispatcher.List() }
+func (a *Agent) Tools() []string { return a.res.Dispatcher.List() }
 
-// ContextStats returns an immutable snapshot of the AgentContext metrics
-// (token counts, pressure level, compaction history).
-// Returns nil before InitContext has been called.
+// ContextStats returns context metrics for the main session.
 func (a *Agent) ContextStats() *llmctx.ContextStats {
-	if a.ctx == nil {
+	mainKey := session.MainKey(a.agentID)
+	a.mu.RLock()
+	state, ok := a.sessions[mainKey]
+	a.mu.RUnlock()
+	if !ok || state.Context == nil {
 		return nil
 	}
-	s := a.ctx.Stats()
+	s := state.Context.Stats()
 	return &s
+}
+
+// ApprovePlan sets the current plan's status to "approved".
+func (a *Agent) ApprovePlan() (*planpkg.Plan, error) {
+	mainKey := session.MainKey(a.agentID)
+	a.mu.RLock()
+	state, ok := a.sessions[mainKey]
+	a.mu.RUnlock()
+	if !ok {
+		return nil, fmt.Errorf("no main session")
+	}
+
+	planStore := state.PlanStore
+	if planStore == nil {
+		planStore = planpkg.NewStore(a.res.KB, agentcore.NSPlans, agentcore.KeyMasterPlan)
+	}
+
+	p, err := planStore.Load()
+	if err != nil || p == nil {
+		return nil, fmt.Errorf("no plan to approve")
+	}
+	if p.Status == planpkg.PlanApproved {
+		return p, nil
+	}
+	p.Status = planpkg.PlanApproved
+	if err := planStore.Save(p); err != nil {
+		return nil, fmt.Errorf("save approved plan: %w", err)
+	}
+	a.emit(mainKey, activity.PlanUpdated, map[string]string{
+		"status": string(planpkg.PlanApproved),
+		"goal":   p.Goal,
+	})
+	return p, nil
+}
+
+// RejectPlan sets the current plan's status to "draft".
+func (a *Agent) RejectPlan() error {
+	mainKey := session.MainKey(a.agentID)
+	a.mu.RLock()
+	state, ok := a.sessions[mainKey]
+	a.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("no main session")
+	}
+
+	planStore := state.PlanStore
+	if planStore == nil {
+		planStore = planpkg.NewStore(a.res.KB, agentcore.NSPlans, agentcore.KeyMasterPlan)
+	}
+
+	p, err := planStore.Load()
+	if err != nil || p == nil {
+		return fmt.Errorf("no plan to reject")
+	}
+	if p.Status == planpkg.PlanDraft {
+		return nil
+	}
+	p.Status = planpkg.PlanDraft
+	if err := planStore.Save(p); err != nil {
+		return fmt.Errorf("save rejected plan: %w", err)
+	}
+	a.emit(mainKey, activity.PlanUpdated, map[string]string{
+		"status": string(planpkg.PlanDraft),
+		"goal":   p.Goal,
+	})
+	return nil
+}
+
+// ─── Internal helpers ───────────────────────────────────────────────────────
+
+func (a *Agent) buildFreshContext(windowSize int, mode agentcore.Mode) (*llmctx.AgentContext, error) {
+	if windowSize <= 0 {
+		windowSize = agentcore.DefaultContextWindow
+	}
+	window, _ := llmctx.NewContextWindow(int32(windowSize))
+
+	compactor, err := buildCompactor()
+	if err != nil {
+		return nil, err
+	}
+
+	sysPromptText := chat.SystemPromptForMode(a.def, a.res, mode)
+	sysID, _ := a.res.IDGen.Next()
+	agentAuthor, _ := llmctx.NewAuthorID(a.def.Name)
+	sysMsg, err := llmctx.NewSystemPromptMessage(sysID, agentAuthor, sysPromptText, a.res.TC)
+	if err != nil {
+		return nil, fmt.Errorf("system prompt: %w", err)
+	}
+
+	return llmctx.NewAgentContextBuilder().
+		WithSystemPrompt(sysMsg).
+		WithContextWindow(window).
+		WithCompactor(compactor).
+		WithTokenComputer(a.res.TC).
+		WithIDGenerator(a.res.IDGen).
+		Build()
+}
+
+func (a *Agent) updateSystemPrompt(state *SessionState, mode agentcore.Mode) {
+	text := chat.SystemPromptForMode(a.def, a.res, mode)
+	id, _ := a.res.IDGen.Next()
+	agentAuthor, _ := llmctx.NewAuthorID(a.def.Name)
+	msg, err := llmctx.NewSystemPromptMessage(id, agentAuthor, text, a.res.TC)
+	if err != nil {
+		return
+	}
+	state.Context.SetSystemPrompt(msg)
+}
+
+func (a *Agent) restoreMode() agentcore.Mode {
+	if data, err := a.res.KB.Get(agentcore.NSConfig, agentcore.KeyMode); err == nil {
+		if m, err := agentcore.ParseMode(string(data)); err == nil {
+			return m
+		}
+	}
+	return agentcore.ModeAuto
+}
+
+func (a *Agent) emitMessage(sessionKey, author, content, mode string) {
+	truncated := content
+	if len(truncated) > 4096 {
+		truncated = truncated[:4096]
+	}
+	data := map[string]string{
+		"author":  author,
+		"content": truncated,
+	}
+	if mode != "" {
+		data["mode"] = mode
+	}
+	a.emit(sessionKey, activity.MessageAdded, data)
+}
+
+func (a *Agent) emit(sessionKey string, eventType activity.EventType, data interface{}) {
+	if a.res.Activity == nil {
+		return
+	}
+	id := fmt.Sprintf("%s-%d", eventType, time.Now().UnixNano())
+	a.res.Activity.Emit(activity.Event{
+		ID:        id,
+		SessionID: sessionKey,
+		Type:      eventType,
+		Timestamp: time.Now().UTC(),
+		Data:      data,
+	})
+}
+
+// buildSupervisorSystemPrompt resolves the supervisor's system prompt from
+// KB config, file path, inline text, or a generated default.
+func (a *Agent) buildSupervisorSystemPrompt() string {
+	if data, err := a.res.KB.Get(agentcore.NSConfig, agentcore.KeySupervisorPrompt); err == nil && len(data) > 0 {
+		return string(data)
+	}
+	if a.def.SystemPrompt != "" {
+		if !strings.Contains(a.def.SystemPrompt, "\n") {
+			if data, err := os.ReadFile(a.def.SystemPrompt); err == nil {
+				return string(data)
+			}
+		}
+		return a.def.SystemPrompt
+	}
+
+	agents := []string{}
+	for name := range a.subAgents {
+		agents = append(agents, name)
+	}
+	return chat.SupervisorPrompt(a.def, a.res.Dispatcher.List(), agents)
 }
