@@ -130,7 +130,7 @@ function pairToolEvents(activities: ActivityRecord[]): PairedItem[] {
         completionQueues.set(key, queue);
       }
       queue.push(a);
-      completedIds.add(a.id);
+      if (a.id) completedIds.add(a.id);
     }
   }
 
@@ -139,7 +139,7 @@ function pairToolEvents(activities: ActivityRecord[]): PairedItem[] {
 
   const result: PairedItem[] = [];
   for (const a of activities) {
-    if (completedIds.has(a.id)) continue;
+    if (a.id && completedIds.has(a.id)) continue;
 
     if (MESSAGE_TYPES.has(a.type)) {
       result.push({ kind: "message", record: a });
