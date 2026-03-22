@@ -23,8 +23,10 @@ import (
 	agentapi "github.com/quarkloop/agent-api"
 	"github.com/quarkloop/agent/pkg/activity"
 	"github.com/quarkloop/agent/pkg/agent"
+	"github.com/quarkloop/agent/pkg/agentcore"
 	"github.com/quarkloop/agent/pkg/infra/httpserver"
 	"github.com/quarkloop/agent/pkg/model"
+	"github.com/quarkloop/agent/pkg/session"
 	"github.com/quarkloop/agent/pkg/tool"
 	"github.com/quarkloop/core/pkg/kb"
 )
@@ -34,14 +36,17 @@ type Config struct {
 	Dir       string
 	Port      int
 	APIServer string
+	BinDir    string // directory containing tool binaries; auto-detected if empty
+	AutoTools bool   // if true, start tool processes automatically
 }
 
 type Runtime struct {
-	cfg     *Config
-	kb      kb.Store
-	agent   *agent.Agent
-	feed    *activity.Feed
-	httpSrv *httpserver.Server
+	cfg          *Config
+	kb           kb.Store
+	agent        *agent.Agent
+	feed         *activity.Feed
+	httpSrv      *httpserver.Server
+	orchestrator *ToolOrchestrator
 }
 
 func New(cfg *Config) (*Runtime, error) {
@@ -62,40 +67,62 @@ func New(cfg *Config) (*Runtime, error) {
 		return nil, err
 	}
 
+	// Auto-start tool processes if configured.
+	var orchestrator *ToolOrchestrator
+	if cfg.AutoTools {
+		binDir := cfg.BinDir
+		if binDir == "" {
+			binDir = detectBinDir()
+		}
+		if binDir != "" {
+			orchestrator = NewToolOrchestrator(binDir, cfg.Dir)
+			startToolProcesses(orchestrator, spaceCfg)
+		}
+	}
+
 	gw, err := buildGateway(spaceCfg)
 	if err != nil {
+		if orchestrator != nil {
+			orchestrator.Shutdown()
+		}
 		k.Close()
 		return nil, fmt.Errorf("build gateway: %w", err)
 	}
 
 	feed := activity.NewFeed(1024, k)
-	a := agent.NewAgent(
-		spaceCfg.supervisor,
-		k,
-		gw,
-		spaceCfg.dispatcher,
-		agent.WithSubAgents(spaceCfg.subAgents),
-		agent.WithActivitySink(feed),
-	)
-	if err := a.InitContext(spaceCfg.supervisor.Config.ContextWindow); err != nil {
+	sessStore := session.NewStore(k)
+
+	res := &agentcore.Resources{
+		KB:         k,
+		Gateway:    gw,
+		Dispatcher: spaceCfg.dispatcher,
+		Activity:   feed,
+	}
+
+	a := agent.New(cfg.AgentID, spaceCfg.supervisor, res, sessStore, spaceCfg.subAgents)
+	if err := a.Init(); err != nil {
+		if orchestrator != nil {
+			orchestrator.Shutdown()
+		}
 		k.Close()
-		return nil, fmt.Errorf("initialise context: %w", err)
+		return nil, fmt.Errorf("initialise agent: %w", err)
 	}
 
 	mux := http.NewServeMux()
 	agentapi.NewHandler(
-		newAgentService(cfg.AgentID, cfg.Dir, k, a, feed),
+		newAgentService(cfg.AgentID, cfg.Dir, k, a, feed, sessStore),
 		agentapi.WithBasePath(agentapi.DefaultBasePath),
 		agentapi.WithAliasBasePath(""),
 	).RegisterRoutes(mux)
 	srv := httpserver.New("127.0.0.1", cfg.Port, mux)
 
 	return &Runtime{
-		cfg:     cfg,
-		kb:      k,
-		agent:   a,
-		feed:    feed,
-		httpSrv: srv,
+		cfg:          cfg,
+		kb:           k,
+		agent:        a,
+		feed:         feed,
+		httpSrv:      srv,
+		orchestrator: orchestrator,
 	}, nil
 }
 
@@ -121,6 +148,9 @@ func (r *Runtime) Run(ctx context.Context) error {
 
 func (r *Runtime) Close() {
 	_ = r.httpSrv.Shutdown(context.Background())
+	if r.orchestrator != nil {
+		r.orchestrator.Shutdown()
+	}
 	_ = r.kb.Close()
 }
 
@@ -219,6 +249,43 @@ func stringsFirstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// detectBinDir finds the directory containing tool binaries by checking:
+// 1. QUARK_BIN_DIR env var
+// 2. The directory containing the current executable
+func detectBinDir() string {
+	if dir := os.Getenv("QUARK_BIN_DIR"); dir != "" {
+		return dir
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	return filepath.Dir(exe)
+}
+
+// startToolProcesses starts tool processes for each tool in the space config.
+// Failures are logged but non-fatal — the tool may already be running externally.
+func startToolProcesses(orch *ToolOrchestrator, spaceCfg *spaceConfig) {
+	for _, name := range spaceCfg.dispatcher.List() {
+		def := spaceCfg.toolDefs[name]
+		if def == nil || def.Endpoint == "" {
+			continue
+		}
+		port, err := portFromEndpoint(def.Endpoint)
+		if err != nil {
+			log.Printf("orchestrator: skipping %s: %v", name, err)
+			continue
+		}
+		ref := def.Ref
+		if ref == "" {
+			ref = name
+		}
+		if _, err := orch.Start(name, ref, port); err != nil {
+			log.Printf("orchestrator: skipping %s (may already be running): %v", name, err)
+		}
+	}
 }
 
 var _ tool.Invoker = (*tool.HTTPDispatcher)(nil)
