@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import type { ActivityRecord, AgentConnection, AgentMode, FileAttachment } from "@/lib/types";
 import {
   sendMessage,
@@ -8,8 +8,8 @@ import {
   createActivityStream,
 } from "@/lib/api-client";
 
-export function useChat(agent: AgentConnection | undefined) {
-  const [activities, setActivities] = useState<ActivityRecord[]>([]);
+export function useChat(agent: AgentConnection | undefined, sessionKey?: string | null) {
+  const [allActivities, setAllActivities] = useState<ActivityRecord[]>([]);
   const [isSending, setIsSending] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -19,7 +19,7 @@ export function useChat(agent: AgentConnection | undefined) {
   // Load history and start SSE stream when agent changes.
   useEffect(() => {
     if (!agent) {
-      setActivities([]);
+      setAllActivities([]);
       setIsConnected(false);
       seenIdsRef.current.clear();
       return;
@@ -33,7 +33,7 @@ export function useChat(agent: AgentConnection | undefined) {
         const history = await getActivity(agent.id, agent.baseUrl);
         if (!cancelled) {
           seenIdsRef.current = new Set(history.map((a) => a.id));
-          setActivities(history);
+          setAllActivities(history);
         }
       } catch {
         // History load failed — not critical, SSE will catch up.
@@ -55,7 +55,7 @@ export function useChat(agent: AgentConnection | undefined) {
           const record: ActivityRecord = JSON.parse(event.data);
           if (seenIdsRef.current.has(record.id)) return;
           seenIdsRef.current.add(record.id);
-          setActivities((prev) => [...prev, record]);
+          setAllActivities((prev) => [...prev, record]);
         } catch {
           // Ignore parse errors.
         }
@@ -77,6 +77,12 @@ export function useChat(agent: AgentConnection | undefined) {
     };
   }, [agent]);
 
+  // Filter activities by session key when one is active.
+  const activities = useMemo(() => {
+    if (!sessionKey) return allActivities;
+    return allActivities.filter((a) => a.session_id === sessionKey);
+  }, [allActivities, sessionKey]);
+
   const send = useCallback(
     async (message: string, mode: AgentMode = "ask", files?: FileAttachment[]) => {
       if (!agent || !message.trim()) return;
@@ -84,15 +90,17 @@ export function useChat(agent: AgentConnection | undefined) {
       setError(null);
 
       try {
-        await sendMessage(agent.id, agent.baseUrl, message, mode, files);
+        await sendMessage(agent.id, agent.baseUrl, message, mode, files, sessionKey ?? undefined);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Send failed");
       } finally {
         setIsSending(false);
       }
     },
-    [agent],
+    [agent, sessionKey],
   );
 
-  return { activities, isSending, isConnected, error, send };
+  const clearError = useCallback(() => setError(null), []);
+
+  return { activities, isSending, isConnected, error, clearError, send };
 }
