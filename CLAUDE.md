@@ -70,9 +70,69 @@ Individual: `make build-agent`, `make build-tools-read`, `make build-tools-write
 - **Standalone build**: `GOWORK=off go build -mod=vendor ./path/to/cmd` (requires vendored deps).
 - Each module's `go.mod` has `replace` directives for standalone builds outside the workspace.
 
+## Agent Package Structure
+
+The `agent` module is split into focused sub-packages with strict single responsibility:
+
+| Package | Role |
+|---------|------|
+| `agent/pkg/agentcore` | Shared types, constants, `Resources` struct. Leaf dependency — no logic. |
+| `agent/pkg/session` | Session types, hierarchical keys, KB-backed CRUD store. |
+| `agent/pkg/inference` | LLM calling: `Infer`, `InferWithRetry`, message factory helpers. |
+| `agent/pkg/execution` | Tool invocation and plan step execution (LLM+tool loop). |
+| `agent/pkg/chat` | Chat mode routing: ask, plan, masterplan, auto. Prompt builders. |
+| `agent/pkg/cycle` | Supervisor loop: orient → plan → dispatch → monitor → assess. |
+| `agent/pkg/agent` | Thin orchestrator: session management, request routing, lifecycle glue. |
+
+**Dependency graph** (no circular imports):
+```
+agentcore (types, constants, resources)
+   ↑
+   ├── inference
+   ├── execution (→ inference)
+   ├── chat (→ inference, execution)
+   ├── cycle (→ inference)
+   └── session (→ core/pkg/kb only)
+
+agent (→ all of the above)
+```
+
+## Session Model
+
+Sessions are communication channels (chat threads), not process lifecycle records. Each session owns its own `AgentContext` (LLM message window) and scoped activity stream.
+
+### Session Types
+
+| Type | Purpose |
+|------|---------|
+| `main` | Persistent autonomous session. Created once per agent, survives restarts. Cannot be deleted. |
+| `chat` | User-created conversation thread. Independent context per chat. |
+| `subagent` | Worker session for plan step execution. Created/destroyed by supervisor. |
+| `cron` | Session for scheduled task runs. |
+
+### Session Keys
+
+Hierarchical key scheme: `agent:<agentID>:<type>[:<id>]`
+
+- Main: `agent:supervisor:main`
+- Chat: `agent:supervisor:chat:a1b2c3d4`
+- SubAgent: `agent:supervisor:subagent:step-1`
+- Cron: `agent:supervisor:cron:daily:run:5`
+
+### Session API
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/sessions` | GET | List all sessions for the agent |
+| `/sessions` | POST | Create a new session (`{"type":"chat","title":"..."}`) |
+| `/sessions/{sessionKey}` | GET | Get a specific session |
+| `/sessions/{sessionKey}` | DELETE | Delete a session (cannot delete main) |
+| `/sessions/{sessionKey}/activity` | GET | Get session-scoped activity |
+| `/chat` | POST | Chat in a session (`session_key` field routes to session) |
+
 ## Agent Working Modes
 
-The agent supports four dynamic working modes, set per-message via `ChatRequest.Mode`:
+The agent supports four dynamic working modes, set per-session via `ChatRequest.Mode`:
 
 | Mode | Behaviour |
 |------|-----------|
@@ -81,11 +141,11 @@ The agent supports four dynamic working modes, set per-message via `ChatRequest.
 | `masterplan` | Creates a multi-phase master plan. Each phase becomes its own sub-plan. |
 | `auto` | LLM classifies the request and routes to ask/plan/masterplan. |
 
-Mode is agent-internal (no CLI flags or api-server changes). Default is `auto`. Mode persists in KB across sessions.
+Mode is per-session. Default is `auto`. Main session mode persists in KB across restarts.
 
 ### Approval Policy
 
-`ApprovalPolicy` on `agent.Config` controls plan approval:
+`ApprovalPolicy` on `agentcore.Config` controls plan approval:
 
 | Policy | Constant | Behaviour |
 |--------|----------|-----------|
@@ -129,7 +189,8 @@ Provider resolution order: `OPENROUTER_API_KEY` first, then `ZHIPU_API_KEY`. The
 - JSONL-backed key-value store (`core/pkg/store`) for persistence.
 - KB abstraction (`core/pkg/kb`) wraps the store with namespace/key semantics.
 - Agent plan types live in `agent/pkg/plan`.
-- Agent mode and approval policy types live in `agent/pkg/agent`.
+- Shared agent types (Definition, Mode, ApprovalPolicy, ChatRequest/Response) live in `agent/pkg/agentcore`.
+- Session types and store live in `agent/pkg/session`.
 - Tool dispatch types live in `agent/pkg/tool`.
 - Shared agent HTTP contracts live in `agent-api`; reusable HTTP/SSE access lives in `agent-client`.
 - Tool binaries follow the pattern: `tools/<name>/cmd/<name>/main.go` (thin CLI) + `tools/<name>/pkg/<name>/` (library).
