@@ -3,6 +3,7 @@
 import { useAgents } from "@/hooks/use-agents";
 import { AgentCard } from "./agent-card";
 import { AddAgentDialog } from "./add-agent-dialog";
+import { SessionSidebar } from "./session-sidebar";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, Radio } from "lucide-react";
 
@@ -58,6 +59,8 @@ export function AgentSidebar() {
           ))}
         </div>
       </div>
+
+      <SessionSidebar />
 
       <div className="border-t border-border/60 p-2">
         <AddAgentDialog onAdd={addAgent} />
