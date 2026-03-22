@@ -31,6 +31,19 @@ Public HTTP APIs are split by entity:
 - `/api/v1/agents/{id}` is the proxied agent API exposed through the api-server.
 - `/api/v1/agent` is the direct API served by a standalone agent runtime.
 
+### Sessions
+
+A **session** is a communication channel between a user (or system) and an agent. Each session owns its own LLM context window and scoped activity stream.
+
+| Type | Purpose |
+|------|---------|
+| `main` | Persistent autonomous session — one per agent, survives restarts |
+| `chat` | User-created conversation thread with independent context |
+| `subagent` | Worker session for plan step execution |
+| `cron` | Session for scheduled task runs |
+
+Sessions use hierarchical keys: `agent:<agentID>:<type>[:<id>]`. The main session is created automatically when an agent starts. Chat sessions are created via `POST /sessions` and deleted via `DELETE /sessions/{key}`. Chat messages include an optional `session_key` field to route to a specific session.
+
 ### Multi-module workspace
 
 quark is structured as a Go workspace with twelve independent modules:
