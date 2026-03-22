@@ -45,20 +45,23 @@ func (p *FencedBlockParser) Parse(content string) ParseResult {
 }
 
 func (p *FencedBlockParser) FormatHint(toolNames []string) string {
-	return fmt.Sprintf(`To use a tool, respond with ONLY a fenced tool block like this:
-`+"```tool"+`
+	return fmt.Sprintf(`When you need to use a tool, wrap the call in a fenced block:
+` + "```tool" + `
 {"name":"<tool-name>","input":{<arguments>}}
-`+"```"+`
+` + "```" + `
 
-After you receive the tool result, use it to answer the user's question.
-Do NOT output XML or <tool_call> tags.`)
+IMPORTANT:
+- Only use the fenced tool block when you want to invoke a tool.
+- When answering the user, respond in plain natural language — NEVER wrap your answer in JSON.
+- After you receive a tool result, summarise it in plain text for the user.
+- Do NOT output XML or <tool_call> tags.`)
 }
 
 // extractFencedBlock finds the first ```tool or ```skill fenced block.
 // Returns the block content, and the start/end byte offsets of the full
 // fence (including markers) within content. Returns ("", 0, 0) if not found.
 func extractFencedBlock(content string) (block string, fenceStart, fenceEnd int) {
-	for _, fence := range []string{"tool", "skill"} {
+	for _, fence := range []string{"tool", "skill", "json", "bash"} {
 		marker := "```" + fence
 		start := strings.Index(content, marker)
 		if start < 0 {
