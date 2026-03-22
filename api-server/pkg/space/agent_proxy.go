@@ -99,6 +99,62 @@ func (s *agentProxyService) StreamActivity(ctx context.Context, r *http.Request,
 	return err
 }
 
+func (s *agentProxyService) Sessions(ctx context.Context, r *http.Request) ([]agentapi.SessionRecord, error) {
+	client, err := s.clientForRequest(r)
+	if err != nil {
+		return nil, err
+	}
+	return client.Sessions(ctx)
+}
+
+func (s *agentProxyService) Session(ctx context.Context, r *http.Request, sessionKey string) (*agentapi.SessionRecord, error) {
+	client, err := s.clientForRequest(r)
+	if err != nil {
+		return nil, err
+	}
+	return client.Session(ctx, sessionKey)
+}
+
+func (s *agentProxyService) SessionActivity(ctx context.Context, r *http.Request, sessionKey string, limit int) ([]agentapi.ActivityRecord, error) {
+	client, err := s.clientForRequest(r)
+	if err != nil {
+		return nil, err
+	}
+	return client.SessionActivity(ctx, sessionKey, limit)
+}
+
+func (s *agentProxyService) CreateSession(ctx context.Context, r *http.Request, req agentapi.CreateSessionRequest) (*agentapi.CreateSessionResponse, error) {
+	client, err := s.clientForRequest(r)
+	if err != nil {
+		return nil, err
+	}
+	return client.CreateSession(ctx, req)
+}
+
+func (s *agentProxyService) DeleteSession(ctx context.Context, r *http.Request, sessionKey string) error {
+	client, err := s.clientForRequest(r)
+	if err != nil {
+		return err
+	}
+	return client.DeleteSession(ctx, sessionKey)
+}
+
+func (s *agentProxyService) ApprovePlan(ctx context.Context, r *http.Request) (*agentapi.Plan, error) {
+	client, err := s.clientForRequest(r)
+	if err != nil {
+		return nil, err
+	}
+	return client.ApprovePlan(ctx)
+}
+
+func (s *agentProxyService) RejectPlan(ctx context.Context, r *http.Request) error {
+	client, err := s.clientForRequest(r)
+	if err != nil {
+		return err
+	}
+	return client.RejectPlan(ctx)
+}
+
 func (s *agentProxyService) clientForRequest(r *http.Request) (*agentclient.Client, error) {
 	agentID := r.PathValue("id")
 	if agentID == "" {
