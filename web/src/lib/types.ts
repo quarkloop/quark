@@ -21,6 +21,7 @@ export type AgentMode = "ask" | "plan" | "masterplan" | "auto";
 
 export interface ChatRequest {
   message: string;
+  session_key?: string;
   stream?: boolean;
   mode?: AgentMode;
 }
@@ -101,6 +102,30 @@ export interface ActivityRecord {
   type: ActivityType | string;
   timestamp: string;
   data?: Record<string, string>;
+}
+
+// ─── Session ─────────────────────────────────────────────────
+
+export type SessionType = "main" | "chat" | "subagent" | "cron";
+
+export interface SessionRecord {
+  key: string;
+  agent_id: string;
+  type: SessionType;
+  status: string;
+  title?: string;
+  created_at: string;
+  updated_at: string;
+  ended_at?: string;
+}
+
+export interface CreateSessionRequest {
+  type: SessionType;
+  title?: string;
+}
+
+export interface CreateSessionResponse {
+  session: SessionRecord;
 }
 
 // ─── Space (api-server) ───────────────────────────────────────
