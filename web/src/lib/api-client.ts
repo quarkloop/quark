@@ -8,6 +8,9 @@ import type {
   Plan,
   ModeResponse,
   FileAttachment,
+  SessionRecord,
+  CreateSessionRequest,
+  CreateSessionResponse,
 } from "./types";
 import { CHAT_TIMEOUT_MS, ACTIVITY_HISTORY_LIMIT } from "./constants";
 
@@ -23,6 +26,7 @@ export async function sendMessage(
   message: string,
   mode: AgentMode = "ask",
   files?: FileAttachment[],
+  sessionKey?: string,
 ): Promise<ChatResponse> {
   const url = `/api/v1/agents/${agentId}/chat?baseUrl=${encodeURIComponent(baseUrl)}`;
 
@@ -30,6 +34,7 @@ export async function sendMessage(
     const form = new FormData();
     form.append("message", message);
     form.append("mode", mode);
+    if (sessionKey) form.append("session_key", sessionKey);
     for (const f of files) {
       form.append("files", f.file, f.name);
     }
@@ -48,7 +53,7 @@ export async function sendMessage(
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, mode }),
+    body: JSON.stringify({ message, mode, session_key: sessionKey }),
     signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),
   });
   if (!res.ok) {
@@ -121,4 +126,92 @@ export async function getPlan(
   );
   if (!res.ok) throw new Error("Plan fetch failed");
   return res.json();
+}
+
+export async function approvePlan(
+  agentId: string,
+  baseUrl: string,
+): Promise<Plan> {
+  const res = await fetch(
+    `/api/v1/agents/${agentId}/plan/approve?baseUrl=${encodeURIComponent(baseUrl)}`,
+    { method: "POST" },
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || res.statusText);
+  }
+  return res.json();
+}
+
+export async function rejectPlan(
+  agentId: string,
+  baseUrl: string,
+): Promise<void> {
+  const res = await fetch(
+    `/api/v1/agents/${agentId}/plan/reject?baseUrl=${encodeURIComponent(baseUrl)}`,
+    { method: "POST" },
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || res.statusText);
+  }
+}
+
+export async function getSessions(
+  agentId: string,
+  baseUrl: string,
+): Promise<SessionRecord[]> {
+  const res = await fetch(
+    `/api/v1/agents/${agentId}/sessions?baseUrl=${encodeURIComponent(baseUrl)}`,
+  );
+  if (!res.ok) throw new Error("Sessions fetch failed");
+  return res.json();
+}
+
+export async function getSessionActivity(
+  agentId: string,
+  baseUrl: string,
+  sessionKey: string,
+  limit = 128,
+): Promise<ActivityRecord[]> {
+  const res = await fetch(
+    `/api/v1/agents/${agentId}/sessions/${encodeURIComponent(sessionKey)}/activity?baseUrl=${encodeURIComponent(baseUrl)}&limit=${limit}`,
+  );
+  if (!res.ok) throw new Error("Session activity fetch failed");
+  return res.json();
+}
+
+export async function createSession(
+  agentId: string,
+  baseUrl: string,
+  req: CreateSessionRequest,
+): Promise<CreateSessionResponse> {
+  const res = await fetch(
+    `/api/v1/agents/${agentId}/sessions?baseUrl=${encodeURIComponent(baseUrl)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req),
+    },
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || res.statusText);
+  }
+  return res.json();
+}
+
+export async function deleteSession(
+  agentId: string,
+  baseUrl: string,
+  sessionKey: string,
+): Promise<void> {
+  const res = await fetch(
+    `/api/v1/agents/${agentId}/sessions/${encodeURIComponent(sessionKey)}?baseUrl=${encodeURIComponent(baseUrl)}`,
+    { method: "DELETE" },
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || res.statusText);
+  }
 }
