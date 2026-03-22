@@ -7,13 +7,15 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
-import type { AgentConnection } from "@/lib/types";
+import type { AgentConnection, SessionRecord } from "@/lib/types";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 
 interface AgentState {
   agents: AgentConnection[];
   activeAgentId: string | null;
   isDiscovering: boolean;
+  sessions: SessionRecord[];
+  activeSessionKey: string | null;
 }
 
 type AgentAction =
@@ -23,7 +25,11 @@ type AgentAction =
   | { type: "ADD_AGENT"; agent: AgentConnection }
   | { type: "REMOVE_AGENT"; id: string }
   | { type: "SET_ACTIVE"; id: string | null }
-  | { type: "UPDATE_STATUS"; id: string; status: AgentConnection["status"] };
+  | { type: "UPDATE_STATUS"; id: string; status: AgentConnection["status"] }
+  | { type: "SET_SESSIONS"; sessions: SessionRecord[] }
+  | { type: "SET_ACTIVE_SESSION"; key: string | null }
+  | { type: "ADD_SESSION"; session: SessionRecord }
+  | { type: "REMOVE_SESSION"; key: string };
 
 function reducer(state: AgentState, action: AgentAction): AgentState {
   switch (action.type) {
@@ -53,13 +59,39 @@ function reducer(state: AgentState, action: AgentAction): AgentState {
           state.activeAgentId === action.id ? null : state.activeAgentId,
       };
     case "SET_ACTIVE":
-      return { ...state, activeAgentId: action.id };
+      return { ...state, activeAgentId: action.id, sessions: [], activeSessionKey: null };
     case "UPDATE_STATUS":
       return {
         ...state,
         agents: state.agents.map((a) =>
           a.id === action.id ? { ...a, status: action.status } : a,
         ),
+      };
+    case "SET_SESSIONS": {
+      // Auto-select main session if none active.
+      let activeKey = state.activeSessionKey;
+      if (!activeKey && action.sessions.length > 0) {
+        const main = action.sessions.find((s) => s.type === "main");
+        activeKey = main?.key ?? action.sessions[0].key;
+      }
+      return { ...state, sessions: action.sessions, activeSessionKey: activeKey };
+    }
+    case "SET_ACTIVE_SESSION":
+      return { ...state, activeSessionKey: action.key };
+    case "ADD_SESSION":
+      return {
+        ...state,
+        sessions: [...state.sessions, action.session],
+        activeSessionKey: action.session.key,
+      };
+    case "REMOVE_SESSION":
+      return {
+        ...state,
+        sessions: state.sessions.filter((s) => s.key !== action.key),
+        activeSessionKey:
+          state.activeSessionKey === action.key
+            ? state.sessions.find((s) => s.type === "main")?.key ?? null
+            : state.activeSessionKey,
       };
     default:
       return state;
@@ -70,6 +102,7 @@ interface AgentContextValue {
   state: AgentState;
   dispatch: React.Dispatch<AgentAction>;
   activeAgent: AgentConnection | undefined;
+  activeSession: SessionRecord | undefined;
 }
 
 const AgentContext = createContext<AgentContextValue | null>(null);
@@ -84,6 +117,8 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     agents: savedAgents,
     activeAgentId: null,
     isDiscovering: false,
+    sessions: [],
+    activeSessionKey: null,
   });
 
   // Sync agents to localStorage on changes.
@@ -123,9 +158,10 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   );
 
   const activeAgent = state.agents.find((a) => a.id === state.activeAgentId);
+  const activeSession = state.sessions.find((s) => s.key === state.activeSessionKey);
 
   return (
-    <AgentContext value={{ state, dispatch: wrappedDispatch, activeAgent }}>
+    <AgentContext value={{ state, dispatch: wrappedDispatch, activeAgent, activeSession }}>
       {children}
     </AgentContext>
   );
