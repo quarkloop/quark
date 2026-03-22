@@ -15,10 +15,11 @@ const DefaultBasePath = "/api/v1/agent"
 // ChatRequest is the wire type for POST /chat. It carries a user message
 // with optional mode override, streaming flag, and file attachments.
 type ChatRequest struct {
-	Message string           `json:"message"`
-	Stream  bool             `json:"stream,omitempty"`
-	Mode    string           `json:"mode,omitempty"`
-	Files   []FileAttachment `json:"files,omitempty"`
+	Message    string           `json:"message"`
+	SessionKey string           `json:"session_key,omitempty"`
+	Stream     bool             `json:"stream,omitempty"`
+	Mode       string           `json:"mode,omitempty"`
+	Files      []FileAttachment `json:"files,omitempty"`
 }
 
 // FileAttachment describes a file uploaded alongside a chat message.
@@ -133,6 +134,39 @@ type ActivityRecord struct {
 	Type      string          `json:"type"`
 	Timestamp time.Time       `json:"timestamp"`
 	Data      json.RawMessage `json:"data,omitempty"`
+}
+
+// SessionType classifies the purpose of a session.
+type SessionType string
+
+const (
+	SessionTypeMain     SessionType = "main"
+	SessionTypeChat     SessionType = "chat"
+	SessionTypeSubAgent SessionType = "subagent"
+	SessionTypeCron     SessionType = "cron"
+)
+
+// SessionRecord is the wire type for session endpoints.
+type SessionRecord struct {
+	Key       string      `json:"key"`
+	AgentID   string      `json:"agent_id"`
+	Type      SessionType `json:"type"`
+	Status    string      `json:"status"`
+	Title     string      `json:"title,omitempty"`
+	CreatedAt time.Time   `json:"created_at"`
+	UpdatedAt time.Time   `json:"updated_at"`
+	EndedAt   *time.Time  `json:"ended_at,omitempty"`
+}
+
+// CreateSessionRequest is the wire type for POST /sessions.
+type CreateSessionRequest struct {
+	Type  SessionType `json:"type"`
+	Title string      `json:"title,omitempty"`
+}
+
+// CreateSessionResponse is returned by POST /sessions.
+type CreateSessionResponse struct {
+	Session SessionRecord `json:"session"`
 }
 
 // ErrorResponse is the standard error envelope returned by all endpoints.
