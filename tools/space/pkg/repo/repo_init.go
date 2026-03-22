@@ -53,13 +53,23 @@ agents: []
 # Tools are HTTP-dispatched capabilities that agents can invoke (shell
 # execution, file I/O, web search, etc.). Each tool needs a name and an
 # endpoint URL provided via config.
-tools: []
-# tools:
-#   - ref: quark/bash
-#     name: bash
-#     config:
-#       endpoint: "http://127.0.0.1:8091/run"
-#
+tools:
+  - ref: quark/bash
+    name: bash
+    config:
+      endpoint: "http://127.0.0.1:8091/run"
+
+  - ref: quark/read
+    name: read
+    config:
+      endpoint: "http://127.0.0.1:8092/read"
+
+  - ref: quark/write
+    name: write
+    config:
+      endpoint: "http://127.0.0.1:8093/write"
+
+# Additional tools:
 #   - ref: quark/web-search
 #     name: web_search
 #     config:
@@ -71,6 +81,7 @@ tools: []
 # Values are never stored in this file; they must exist in your shell or .env file.
 env:
   - ANTHROPIC_API_KEY              # required for the default Anthropic model
+  # - OPENROUTER_API_KEY           # alternative: use OpenRouter for multi-provider access
 
 # ── Knowledge Base ────────────────────────────────────────────────────────────
 # KB entries can be seeded from environment variables at startup.
