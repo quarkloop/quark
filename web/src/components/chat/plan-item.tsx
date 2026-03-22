@@ -1,6 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { ClipboardList, ArrowRight, Check, X, Loader2 } from "lucide-react";
+import { useAgentContext } from "@/context/agent-context";
+import { approvePlan, rejectPlan } from "@/lib/api-client";
 
 interface PlanItemProps {
   eventType: string;
@@ -15,12 +18,81 @@ const stepIcons: Record<string, React.ReactNode> = {
 };
 
 export function PlanItem({ eventType, data, timestamp }: PlanItemProps) {
+  const { activeAgent } = useAgentContext();
+  const [acting, setActing] = useState(false);
+  const [acted, setActed] = useState<"approved" | "rejected" | null>(null);
+
+  const handleApprove = async () => {
+    if (!activeAgent || acting) return;
+    setActing(true);
+    try {
+      await approvePlan(activeAgent.id, activeAgent.baseUrl);
+      setActed("approved");
+    } catch {
+      setActing(false);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!activeAgent || acting) return;
+    setActing(true);
+    try {
+      await rejectPlan(activeAgent.id, activeAgent.baseUrl);
+      setActed("rejected");
+    } catch {
+      setActing(false);
+    }
+  };
+
   if (eventType === "plan.created" || eventType === "masterplan.created") {
+    const isDraft = !data?.status || data.status === "draft";
+    const showActions = isDraft && !acted && activeAgent;
+
     return (
-      <div className="mx-4 my-1 flex items-center gap-2 rounded-md border border-border bg-muted/50 px-3 py-2 text-sm">
+      <div className="mx-4 my-1 rounded-md border border-border bg-muted/50 px-3 py-2 text-sm">
+        <div className="flex items-center gap-2">
+          <ClipboardList className="size-3 text-muted-foreground" />
+          <span className="font-medium">
+            {eventType === "masterplan.created" ? "Master plan" : "Plan"} created
+          </span>
+          {data?.goal && (
+            <span className="text-muted-foreground">— {data.goal}</span>
+          )}
+        </div>
+        {acted && (
+          <div className="mt-1 text-xs text-muted-foreground">
+            Plan {acted}
+          </div>
+        )}
+        {showActions && (
+          <div className="mt-2 flex gap-2">
+            <button
+              onClick={handleApprove}
+              disabled={acting}
+              className="rounded-md bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 dark:bg-emerald-950 dark:text-emerald-300 dark:hover:bg-emerald-900"
+            >
+              Approve
+            </button>
+            <button
+              onClick={handleReject}
+              disabled={acting}
+              className="rounded-md bg-red-50 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-50 dark:bg-red-950 dark:text-red-300 dark:hover:bg-red-900"
+            >
+              Reject
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (eventType === "plan.updated" && data?.status) {
+    return (
+      <div className="mx-4 my-0.5 flex items-center gap-2 px-3 py-1 text-xs text-muted-foreground">
         <ClipboardList className="size-3 text-muted-foreground" />
-        <span className="font-medium">
-          {eventType === "masterplan.created" ? "Master plan" : "Plan"} created
+        <span>
+          Plan {data.status}
+          {data.goal && <span> — {data.goal}</span>}
         </span>
       </div>
     );
