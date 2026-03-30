@@ -2,35 +2,41 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { useAgentContext } from "@/context/agent-context";
-import { discoverAgents } from "@/lib/api-client";
+import { useAgents, useAddAgent, useRemoveAgent } from "@/hooks/use-agents-query";
 import type { AgentConnection } from "@/lib/types";
 
-export function useAgents() {
+export function useAgentsList() {
   const { state, dispatch, activeAgent } = useAgentContext();
   const discoveredOnce = useRef(false);
 
-  const discover = useCallback(async () => {
-    dispatch({ type: "DISCOVER_START" });
-    try {
-      const agents = await discoverAgents();
-      dispatch({ type: "DISCOVER_SUCCESS", agents });
-    } catch {
-      dispatch({ type: "DISCOVER_SUCCESS", agents: [] });
+  const { data: discoveredAgents = [], refetch: queryRefetch } = useAgents();
+  const addMut = useAddAgent();
+  const removeMut = useRemoveAgent();
+
+  const discover = useCallback(() => queryRefetch(), [queryRefetch]);
+
+  // Sync discovered agents to context.
+  useEffect(() => {
+    if (discoveredAgents.length > 0 || discoveredOnce.current) {
+      dispatch({ type: "DISCOVER_SUCCESS", agents: discoveredAgents });
+      discoveredOnce.current = true;
     }
-  }, [dispatch]);
+  }, [discoveredAgents, dispatch]);
 
   const addAgent = useCallback(
     (agent: AgentConnection) => {
+      addMut.mutate(agent);
       dispatch({ type: "ADD_AGENT", agent });
     },
-    [dispatch],
+    [addMut, dispatch],
   );
 
   const removeAgent = useCallback(
     (id: string) => {
+      removeMut.mutate(id);
       dispatch({ type: "REMOVE_AGENT", id });
     },
-    [dispatch],
+    [removeMut, dispatch],
   );
 
   const setActive = useCallback(
@@ -39,14 +45,6 @@ export function useAgents() {
     },
     [dispatch],
   );
-
-  // Discover once on mount.
-  useEffect(() => {
-    if (discoveredOnce.current) return;
-    discoveredOnce.current = true;
-    discover();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   return {
     agents: state.agents,
