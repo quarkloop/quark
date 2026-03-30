@@ -1,6 +1,6 @@
 "use client";
 
-import { useAgents } from "@/hooks/use-agents";
+import { useAgentsList } from "@/hooks/use-agents";
 import { AgentCard } from "./agent-card";
 import { AddAgentDialog } from "./add-agent-dialog";
 import { SessionSidebar } from "./session-sidebar";
@@ -9,7 +9,7 @@ import { RefreshCw, Radio } from "lucide-react";
 
 export function AgentSidebar() {
   const { agents, activeAgent, isDiscovering, discover, addAgent, setActive } =
-    useAgents();
+    useAgentsList();
 
   return (
     <aside className="flex h-full w-60 shrink-0 flex-col border-r border-border/60 bg-muted/30">
