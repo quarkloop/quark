@@ -4,7 +4,7 @@ import { useAgentsList } from "@/hooks/use-agents";
 import { AgentCard } from "./agent-card";
 import { AddAgentDialog } from "./add-agent-dialog";
 import { SessionSidebar } from "./session-sidebar";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/themed/button";
 import { RefreshCw, Radio } from "lucide-react";
 
 export function AgentSidebar() {

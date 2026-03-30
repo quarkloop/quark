@@ -3,7 +3,7 @@
 import { useCallback } from "react";
 import { useAgentContext } from "@/context/agent-context";
 import { useSessions, useCreateSession, useDeleteSession } from "@/hooks/use-sessions-query";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/themed/button";
 import { Plus, Trash2, MessageCircle, Bot } from "lucide-react";
 
 export function SessionSidebar() {

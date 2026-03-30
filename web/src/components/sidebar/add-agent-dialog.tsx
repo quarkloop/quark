@@ -7,9 +7,9 @@ import {
   SheetHeader,
   SheetTitle,
   SheetTrigger,
-} from "@/components/ui/sheet";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+} from "@/components/themed/sheet";
+import { Button } from "@/components/themed/button";
+import { Input } from "@/components/themed/input";
 import { Plus } from "lucide-react";
 import type { AgentConnection } from "@/lib/types";
 
