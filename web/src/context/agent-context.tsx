@@ -4,7 +4,7 @@ import {
   createContext,
   useContext,
   useReducer,
-  useCallback,
+  useEffect,
   type ReactNode,
 } from "react";
 import type { AgentConnection, SessionRecord } from "@/lib/types";
@@ -36,7 +36,6 @@ function reducer(state: AgentState, action: AgentAction): AgentState {
     case "DISCOVER_START":
       return { ...state, isDiscovering: true };
     case "DISCOVER_SUCCESS": {
-      // Merge: keep manually-added agents, update discovered ones.
       const manual = state.agents.filter(
         (a) => !action.agents.some((d) => d.port === a.port),
       );
@@ -68,7 +67,6 @@ function reducer(state: AgentState, action: AgentAction): AgentState {
         ),
       };
     case "SET_SESSIONS": {
-      // Auto-select main session if none active.
       let activeKey = state.activeSessionKey;
       if (!activeKey && action.sessions.length > 0) {
         const main = action.sessions.find((s) => s.type === "main");
@@ -121,47 +119,16 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     activeSessionKey: null,
   });
 
-  // Sync agents to localStorage on changes.
-  const wrappedDispatch = useCallback(
-    (action: AgentAction) => {
-      dispatch(action);
-      // After certain actions, persist to localStorage.
-      if (
-        action.type === "DISCOVER_SUCCESS" ||
-        action.type === "ADD_AGENT" ||
-        action.type === "REMOVE_AGENT" ||
-        action.type === "SET_AGENTS"
-      ) {
-        // We use a microtask to get the updated state after the reducer runs.
-        queueMicrotask(() => {
-          // Re-read from the reducer isn't possible here, so we compute it.
-          // For simplicity, just let the next render persist via effect.
-        });
-      }
-      // Persist on every dispatch for simplicity.
-      if (action.type === "DISCOVER_SUCCESS") {
-        const manual = savedAgents.filter(
-          (a) => !action.agents.some((d) => d.port === a.port),
-        );
-        setSavedAgents([...action.agents, ...manual]);
-      } else if (action.type === "ADD_AGENT") {
-        setSavedAgents((prev) =>
-          prev.some((a) => a.id === action.agent.id)
-            ? prev
-            : [...prev, action.agent],
-        );
-      } else if (action.type === "REMOVE_AGENT") {
-        setSavedAgents((prev) => prev.filter((a) => a.id !== action.id));
-      }
-    },
-    [savedAgents, setSavedAgents],
-  );
+  // Sync agents to localStorage via useEffect — reads state after reducer runs.
+  useEffect(() => {
+    setSavedAgents(state.agents);
+  }, [state.agents, setSavedAgents]);
 
   const activeAgent = state.agents.find((a) => a.id === state.activeAgentId);
   const activeSession = state.sessions.find((s) => s.key === state.activeSessionKey);
 
   return (
-    <AgentContext value={{ state, dispatch: wrappedDispatch, activeAgent, activeSession }}>
+    <AgentContext value={{ state, dispatch, activeAgent, activeSession }}>
       {children}
     </AgentContext>
   );
