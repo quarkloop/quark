@@ -7,7 +7,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ agentId: string }> },
 ) {
-  const { agentId: _ } = await params;
+  await params;
   const baseUrl = request.nextUrl.searchParams.get("baseUrl");
   if (!baseUrl) {
     return NextResponse.json(
