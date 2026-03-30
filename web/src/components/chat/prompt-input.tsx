@@ -25,7 +25,6 @@ export function PromptInput({ onSend, disabled, model, provider }: PromptInputPr
   const [files, setFiles] = useState<FileAttachment[]>([]);
   const [mode, setMode] = useState<AgentMode>("ask");
   const [modeMenuOpen, setModeMenuOpen] = useState(false);
-  const [modelMenuOpen, setModelMenuOpen] = useState(false);
 
   const handleSubmit = useCallback(
     (text: string) => {
@@ -63,9 +62,6 @@ export function PromptInput({ onSend, disabled, model, provider }: PromptInputPr
   }, [handleFilesAdded]);
 
   const currentMode = MODES.find((m) => m.value === mode)!;
-
-  // Show full model name (e.g. "stepfun/step-3.5-flash:free")
-  const displayModel = model || null;
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pb-4 pt-2">
@@ -142,41 +138,11 @@ export function PromptInput({ onSend, disabled, model, provider }: PromptInputPr
             )}
           </div>
 
-          {/* Model selector */}
-          {displayModel && (
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setModelMenuOpen(!modelMenuOpen)}
-                className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                <span>{displayModel}</span>
-                <ChevronDown className="size-3" />
-              </button>
-              {modelMenuOpen && (
-                <>
-                  <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setModelMenuOpen(false)}
-                  />
-                  <div className="absolute bottom-full left-0 z-50 mb-1 w-64 rounded-xl border border-border bg-background p-1 shadow-lg">
-                    <button
-                      type="button"
-                      onClick={() => setModelMenuOpen(false)}
-                      className="flex w-full flex-col rounded-lg bg-muted px-3 py-2 text-left"
-                    >
-                      <span className="text-sm font-medium text-foreground">
-                        {model}
-                      </span>
-                      {provider && (
-                        <span className="text-xs text-muted-foreground">
-                          {provider}
-                        </span>
-                      )}
-                    </button>
-                  </div>
-                </>
-              )}
+          {/* Model badge — static display, not interactive */}
+          {model && (
+            <div className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs text-muted-foreground">
+              {provider && <span className="text-muted-foreground/60">{provider}/</span>}
+              <span className="font-medium">{model}</span>
             </div>
           )}
 
