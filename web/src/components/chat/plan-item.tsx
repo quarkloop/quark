@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ClipboardList, ArrowRight, Check, X, Loader2 } from "lucide-react";
 import { useAgentContext } from "@/context/agent-context";
-import { approvePlan, rejectPlan } from "@/lib/api-client";
+import { useApprovePlan, useRejectPlan, usePlan } from "@/hooks/use-plan-query";
 
 interface PlanItemProps {
   eventType: string;
@@ -17,31 +17,24 @@ const stepIcons: Record<string, React.ReactNode> = {
   "step.failed": <X className="size-3 text-destructive" />,
 };
 
-export function PlanItem({ eventType, data, timestamp }: PlanItemProps) {
+export function PlanItem({ eventType, data }: PlanItemProps) {
   const { activeAgent } = useAgentContext();
-  const [acting, setActing] = useState(false);
   const [acted, setActed] = useState<"approved" | "rejected" | null>(null);
 
-  const handleApprove = async () => {
-    if (!activeAgent || acting) return;
-    setActing(true);
-    try {
-      await approvePlan(activeAgent.id, activeAgent.baseUrl);
-      setActed("approved");
-    } catch {
-      setActing(false);
-    }
+  const agentId = activeAgent?.id;
+  const baseUrl = activeAgent?.baseUrl;
+  const approveMut = useApprovePlan(agentId ?? "", baseUrl ?? "");
+  const rejectMut = useRejectPlan(agentId ?? "", baseUrl ?? "");
+  const { data: plan } = usePlan(agentId, baseUrl);
+
+  const handleApprove = () => {
+    if (!activeAgent || approveMut.isPending) return;
+    approveMut.mutate(undefined, { onSuccess: () => setActed("approved") });
   };
 
-  const handleReject = async () => {
-    if (!activeAgent || acting) return;
-    setActing(true);
-    try {
-      await rejectPlan(activeAgent.id, activeAgent.baseUrl);
-      setActed("rejected");
-    } catch {
-      setActing(false);
-    }
+  const handleReject = () => {
+    if (!activeAgent || rejectMut.isPending) return;
+    rejectMut.mutate(undefined, { onSuccess: () => setActed("rejected") });
   };
 
   if (eventType === "plan.created" || eventType === "masterplan.created") {
@@ -55,31 +48,24 @@ export function PlanItem({ eventType, data, timestamp }: PlanItemProps) {
           <span className="font-medium">
             {eventType === "masterplan.created" ? "Master plan" : "Plan"} created
           </span>
-          {data?.goal && (
-            <span className="text-muted-foreground">— {data.goal}</span>
-          )}
+          {data?.goal && <span className="text-muted-foreground">— {data.goal}</span>}
         </div>
-        {acted && (
-          <div className="mt-1 text-xs text-muted-foreground">
-            Plan {acted}
+        {acted && <div className="mt-1 text-xs text-muted-foreground">Plan {acted}</div>}
+        {plan && plan.steps.length > 0 && (
+          <div className="mt-2 space-y-1">
+            {plan.steps.map((step) => (
+              <div key={step.id} className="flex items-center gap-2 text-xs text-muted-foreground">
+                {stepIcons[`step.${step.status}`] || <Loader2 className="size-3 animate-spin text-muted-foreground" />}
+                <span className="font-mono">{step.id}</span>
+                <span className="truncate">{step.description}</span>
+              </div>
+            ))}
           </div>
         )}
         {showActions && (
           <div className="mt-2 flex gap-2">
-            <button
-              onClick={handleApprove}
-              disabled={acting}
-              className="rounded-md bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 dark:bg-emerald-950 dark:text-emerald-300 dark:hover:bg-emerald-900"
-            >
-              Approve
-            </button>
-            <button
-              onClick={handleReject}
-              disabled={acting}
-              className="rounded-md bg-red-50 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-50 dark:bg-red-950 dark:text-red-300 dark:hover:bg-red-900"
-            >
-              Reject
-            </button>
+            <button onClick={handleApprove} disabled={approveMut.isPending} className="rounded-md bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 dark:bg-emerald-950 dark:text-emerald-300 dark:hover:bg-emerald-900">Approve</button>
+            <button onClick={handleReject} disabled={rejectMut.isPending} className="rounded-md bg-red-50 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-50 dark:bg-red-950 dark:text-red-300 dark:hover:bg-red-900">Reject</button>
           </div>
         )}
       </div>
@@ -90,35 +76,20 @@ export function PlanItem({ eventType, data, timestamp }: PlanItemProps) {
     return (
       <div className="mx-4 my-0.5 flex items-center gap-2 px-3 py-1 text-xs text-muted-foreground">
         <ClipboardList className="size-3 text-muted-foreground" />
-        <span>
-          Plan {data.status}
-          {data.goal && <span> — {data.goal}</span>}
-        </span>
+        <span>Plan {data.status}{data.goal && <span> — {data.goal}</span>}</span>
       </div>
     );
   }
 
-  // step.dispatched, step.completed, step.failed
   const stepId = data?.step || "unknown";
-  const icon = stepIcons[eventType] || (
-    <Loader2 className="size-3 animate-spin text-muted-foreground" />
-  );
-  const label =
-    eventType === "step.dispatched"
-      ? "dispatched"
-      : eventType === "step.completed"
-        ? "completed"
-        : "failed";
+  const icon = stepIcons[eventType] || <Loader2 className="size-3 animate-spin text-muted-foreground" />;
+  const label = eventType === "step.dispatched" ? "dispatched" : eventType === "step.completed" ? "completed" : "failed";
 
   return (
     <div className="mx-4 my-0.5 flex items-center gap-2 px-3 py-1 text-xs text-muted-foreground">
       {icon}
-      <span>
-        Step <span className="font-mono">{stepId}</span> {label}
-      </span>
-      {data?.error && (
-        <span className="text-destructive">{data.error}</span>
-      )}
+      <span>Step <span className="font-mono">{stepId}</span> {label}</span>
+      {data?.error && <span className="text-destructive">{data.error}</span>}
     </div>
   );
 }
