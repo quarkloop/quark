@@ -76,6 +76,9 @@ type GatewayConfig struct {
 }
 
 // New creates a Gateway for cfg.Provider.
+// MaxTokens is resolved from the provider's API (Anthropic, OpenRouter) or
+// a model-aware defaults table (OpenAI, Zhipu). Falls back to 8192 if
+// the model is unknown.
 // Returns an error when an API key is required but empty, or the provider
 // string is not recognised.
 func New(cfg GatewayConfig) (Gateway, error) {
@@ -84,27 +87,39 @@ func New(cfg GatewayConfig) (Gateway, error) {
 		if cfg.APIKey == "" {
 			return nil, fmt.Errorf("anthropic api key not provided")
 		}
-		return &anthropicGateway{model: cfg.Model, apiKey: cfg.APIKey, http: newHTTPClient()}, nil
+		return newAnthropicGateway(cfg.Model, cfg.APIKey)
 	case "openai":
 		if cfg.APIKey == "" {
 			return nil, fmt.Errorf("openai api key not provided")
 		}
-		return &openAIGateway{provider: "openai", model: cfg.Model, apiKey: cfg.APIKey, http: newHTTPClient()}, nil
+		return &openAIGateway{
+			provider:  "openai",
+			model:     cfg.Model,
+			apiKey:    cfg.APIKey,
+			http:      newHTTPClient(),
+			maxTokens: resolveMaxTokens("openai", cfg.Model),
+		}, nil
 	case "zhipu":
 		if cfg.APIKey == "" {
 			return nil, fmt.Errorf("zhipu api key not provided")
 		}
-		return &zhipuGateway{model: cfg.Model, apiKey: cfg.APIKey, http: newHTTPClientNoHTTP2()}, nil
+		return &zhipuGateway{
+			model:     cfg.Model,
+			apiKey:    cfg.APIKey,
+			http:      newHTTPClientNoHTTP2(),
+			maxTokens: 8192, // GLM-4 supports up to 128k context
+		}, nil
 	case "openrouter":
 		if cfg.APIKey == "" {
 			return nil, fmt.Errorf("openrouter api key not provided")
 		}
 		return &openAIGateway{
-			provider: "openrouter",
-			baseURL:  openRouterBaseURL,
-			model:    cfg.Model,
-			apiKey:   cfg.APIKey,
-			http:     newHTTPClient(),
+			provider:  "openrouter",
+			baseURL:   openRouterBaseURL,
+			model:     cfg.Model,
+			apiKey:    cfg.APIKey,
+			http:      newHTTPClient(),
+			maxTokens: resolveMaxTokens("openrouter", cfg.Model),
 		}, nil
 	case "noop":
 		// Dry-run stub: no API key required. Also activated when QUARK_DRY_RUN=1
@@ -113,7 +128,7 @@ func New(cfg GatewayConfig) (Gateway, error) {
 		if modelName == "" {
 			modelName = "noop"
 		}
-		return &noopGateway{model: modelName}, nil
+		return &noopGateway{model: modelName, maxTokens: 8192}, nil
 	default:
 		return nil, fmt.Errorf("unsupported model provider %q (supported: anthropic, openai, zhipu, openrouter)", cfg.Provider)
 	}
@@ -130,7 +145,7 @@ func newHTTPClientNoHTTP2() *http.Client {
 		Timeout: 120 * time.Second,
 		Transport: &http.Transport{
 			ForceAttemptHTTP2: false,
-			TLSNextProto:     make(map[string]func(string, *tls.Conn) http.RoundTripper),
+			TLSNextProto:      make(map[string]func(string, *tls.Conn) http.RoundTripper),
 		},
 	}
 }
