@@ -11,19 +11,33 @@ import (
 )
 
 // zhipuModelDefaults maps GLM model name prefixes to their max output tokens.
+// Values from https://docs.bigmodel.cn/cn/guide/start/model-overview (最大输出 column).
 // Zhipu's API doesn't expose this programmatically, so we maintain this table.
 var zhipuModelDefaults = map[string]int{
-	"GLM-4-Plus":   4096,
-	"GLM-4":        4096,
-	"GLM-4-Flash":  4096,
-	"GLM-4-FlashX": 4096,
-	"GLM-4-Air":    4096,
-	"GLM-4-AirX":   4096,
-	"GLM-4-Long":   4096,
-	"GLM-4V":       4096,
-	"GLM-4V-Flash": 4096,
-	"codegeex-4":   4096,
-	"embedding-3":  4096,
+	// Text models
+	"GLM-5":          131072, // 128K
+	"GLM-5-Turbo":    131072, // 128K
+	"GLM-4.7":        131072, // 128K
+	"GLM-4.7-FlashX": 131072, // 128K
+	"GLM-4.7-Flash":  131072, // 128K
+	"GLM-4.6":        131072, // 128K
+	"GLM-4.5-Air":    98304,  // 96K
+	"GLM-4.5-AirX":   98304,  // 96K
+	"GLM-4.5-Flash":  98304,  // 96K
+	"GLM-4-Long":     4096,   // 4K (1M context, but 4K max output)
+	"GLM-4-FlashX":   16384,  // 16K
+	"GLM-4-Flash":    16384,  // 16K
+	// Vision models
+	"GLM-5V-Turbo":      131072, // 128K
+	"GLM-4.6V":          32768,  // 32K
+	"GLM-4.6V-Flash":    32768,  // 32K
+	"GLM-4.1V-Thinking": 16384,  // 16K
+	"GLM-4V":            4096,   // 4K
+	"GLM-4V-Flash":      1024,   // 1K
+	// Other
+	"CodeGeeX-4": 32768, // 32K
+	"CharGLM-4":  4096,  // 4K
+	"Emohaa":     4096,  // 4K
 }
 
 // resolveZhipuMaxTokens returns the max output tokens for a GLM model name.
