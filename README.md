@@ -1,5 +1,9 @@
 # quark
 
+[![CI](https://github.com/quarkloop/quark/actions/workflows/ci.yml/badge.svg)](https://github.com/quarkloop/quark/actions/workflows/ci.yml)
+[![Go 1.22+](https://img.shields.io/badge/go-1.22+-00ADD8.svg)](https://go.dev/dl/)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+
 > Pack your agents. Ship your intelligence.
 
 **quark** is a local runtime for autonomous multi-agent AI spaces. Define a goal, declare your agents and model, and quark handles the rest — launching agent runtimes for isolated workspaces, managing the supervisor→worker execution loop, persisting context across restarts, and streaming activity and logs in real time.
@@ -35,12 +39,12 @@ Public HTTP APIs are split by entity:
 
 A **session** is a communication channel between a user (or system) and an agent. Each session owns its own LLM context window and scoped activity stream.
 
-| Type | Purpose |
-|------|---------|
-| `main` | Persistent autonomous session — one per agent, survives restarts |
-| `chat` | User-created conversation thread with independent context |
-| `subagent` | Worker session for plan step execution |
-| `cron` | Session for scheduled task runs |
+| Type       | Purpose                                                          |
+| ---------- | ---------------------------------------------------------------- |
+| `main`     | Persistent autonomous session — one per agent, survives restarts |
+| `chat`     | User-created conversation thread with independent context        |
+| `subagent` | Worker session for plan step execution                           |
+| `cron`     | Session for scheduled task runs                                  |
 
 Sessions use hierarchical keys: `agent:<agentID>:<type>[:<id>]`. The main session is created automatically when an agent starts. Chat sessions are created via `POST /sessions` and deleted via `DELETE /sessions/{key}`. Chat messages include an optional `session_key` field to route to a specific session.
 
@@ -48,20 +52,20 @@ Sessions use hierarchical keys: `agent:<agentID>:<type>[:<id>]`. The main sessio
 
 quark is structured as a Go workspace with twelve independent modules:
 
-| Module | Role |
-| ------ | ---- |
-| `core` | Shared foundation: JSONL store, KB abstraction, CLI toolkit. |
-| `agent` | Agent runtime, planning loop, activity feed, worker dispatch, model gateway integration. |
-| `agent-api` | Shared HTTP API contracts and route helpers for agent runtimes. |
-| `agent-client` | Shared HTTP/SSE client for direct and proxied agent access. |
-| `api-server` | Space lifecycle controller and HTTP API server. |
-| `cli` | `quark` CLI binary. |
-| `tools/bash` | Tool: execute shell commands. |
-| `tools/kb` | Tool: KB get/set/delete/list CLI. |
-| `tools/read` | Tool: read regular text files. |
-| `tools/space` | Quarkfile parsing, scaffold/lock/validate flows. |
-| `tools/write` | Tool: write and edit regular text files. |
-| `tools/web-search` | Tool: web search via Brave/SerpAPI. |
+| Module             | Role                                                                                     |
+| ------------------ | ---------------------------------------------------------------------------------------- |
+| `core`             | Shared foundation: JSONL store, KB abstraction, CLI toolkit.                             |
+| `agent`            | Agent runtime, planning loop, activity feed, worker dispatch, model gateway integration. |
+| `agent-api`        | Shared HTTP API contracts and route helpers for agent runtimes.                          |
+| `agent-client`     | Shared HTTP/SSE client for direct and proxied agent access.                              |
+| `api-server`       | Space lifecycle controller and HTTP API server.                                          |
+| `cli`              | `quark` CLI binary.                                                                      |
+| `tools/bash`       | Tool: execute shell commands.                                                            |
+| `tools/kb`         | Tool: KB get/set/delete/list CLI.                                                        |
+| `tools/read`       | Tool: read regular text files.                                                           |
+| `tools/space`      | Quarkfile parsing, scaffold/lock/validate flows.                                         |
+| `tools/write`      | Tool: write and edit regular text files.                                                 |
+| `tools/web-search` | Tool: web search via Brave/SerpAPI.                                                      |
 
 **Key layering**:
 
@@ -74,17 +78,17 @@ core -> tools/bash, tools/kb, tools/read, tools/write, tools/web-search
 
 ### Nine binaries
 
-| Binary       | Module       | Role |
-| ------------ | ------------ | ---- |
-| `agent`      | `agent`      | Long-lived agent runtime process — HTTP server + agent loop |
-| `api-server` | `api-server` | Manages space lifecycle, port allocation, restart policy |
-| `quark`      | `cli`        | CLI: run/stop/ps/logs/activity/inspect/init/lock/validate |
-| `bash`       | `tools/bash` | Tool: `run` + `serve` for shell execution |
-| `kb`         | `tools/kb`   | CLI: get/set/delete/list on the knowledge base |
-| `read`       | `tools/read` | Tool: `run` + `serve` for reading text files |
-| `space`      | `tools/space` | CLI: init/lock/validate |
-| `write`      | `tools/write` | Tool: `run` + `serve` for writing and editing text files |
-| `web-search` | `tools/web-search` | Tool: `run` + `serve` with Brave/SerpAPI/stub |
+| Binary       | Module             | Role                                                        |
+| ------------ | ------------------ | ----------------------------------------------------------- |
+| `agent`      | `agent`            | Long-lived agent runtime process — HTTP server + agent loop |
+| `api-server` | `api-server`       | Manages space lifecycle, port allocation, restart policy    |
+| `quark`      | `cli`              | CLI: run/stop/ps/logs/activity/inspect/init/lock/validate   |
+| `bash`       | `tools/bash`       | Tool: `run` + `serve` for shell execution                   |
+| `kb`         | `tools/kb`         | CLI: get/set/delete/list on the knowledge base              |
+| `read`       | `tools/read`       | Tool: `run` + `serve` for reading text files                |
+| `space`      | `tools/space`      | CLI: init/lock/validate                                     |
+| `write`      | `tools/write`      | Tool: `run` + `serve` for writing and editing text files    |
+| `web-search` | `tools/web-search` | Tool: `run` + `serve` with Brave/SerpAPI/stub               |
 
 ---
 
@@ -191,12 +195,12 @@ quark logs <id>
 
 Supported providers:
 
-| Provider    | Model examples                         | Environment variable |
-| ----------- | -------------------------------------- | -------------------- |
-| `anthropic` | `claude-opus-4-6`, `claude-sonnet-4-6` | `ANTHROPIC_API_KEY`  |
-| `openai`    | `gpt-4o`, `gpt-4o-mini`                | `OPENAI_API_KEY`     |
+| Provider     | Model examples                                      | Environment variable |
+| ------------ | --------------------------------------------------- | -------------------- |
+| `anthropic`  | `claude-opus-4-6`, `claude-sonnet-4-6`              | `ANTHROPIC_API_KEY`  |
+| `openai`     | `gpt-4o`, `gpt-4o-mini`                             | `OPENAI_API_KEY`     |
 | `openrouter` | `openai/gpt-4o-mini`, `anthropic/claude-3.7-sonnet` | `OPENROUTER_API_KEY` |
-| `zhipu`     | `glm-4-flash`, `glm-4`                 | `ZHIPU_API_KEY`      |
+| `zhipu`      | `glm-4-flash`, `glm-4`                              | `ZHIPU_API_KEY`      |
 
 ---
 
@@ -269,11 +273,11 @@ tools:
 
 **Restart policies:**
 
-| Value        | Behaviour                                         |
-| ------------ | ------------------------------------------------- |
-| `on-failure` | Restart on non-zero exit (default)                |
-| `always`     | Restart on any exit including clean               |
-| `never`      | Do not restart                                    |
+| Value        | Behaviour                           |
+| ------------ | ----------------------------------- |
+| `on-failure` | Restart on non-zero exit (default)  |
+| `always`     | Restart on any exit including clean |
+| `never`      | Do not restart                      |
 
 Max 5 restarts with a 10-second cooldown. Restart counter survives api-server restarts.
 
@@ -368,17 +372,37 @@ Set `BRAVE_API_KEY` or `SERPAPI_KEY` for real results; stub used otherwise.
 
 ## Environment variables
 
-| Variable           | Default                 | Description                                      |
-| ------------------ | ----------------------- | ------------------------------------------------ |
-| `QUARK_API_SERVER`  | `http://127.0.0.1:7070` | Override api-server address for all CLI commands |
-| `QUARK_DRY_RUN`     | —                       | Set to `1` to activate the noop gateway          |
-| `ANTHROPIC_API_KEY` | —                       | Forwarded to spaces that declare it in `env`     |
-| `OPENAI_API_KEY`    | —                       | Forwarded to spaces that declare it in `env`     |
-| `OPENROUTER_API_KEY`| —                       | Forwarded to spaces that declare it in `env`     |
-| `ZHIPU_API_KEY`     | —                       | Forwarded to spaces that declare it in `env`     |
+| Variable             | Default                 | Description                                      |
+| -------------------- | ----------------------- | ------------------------------------------------ |
+| `QUARK_API_SERVER`   | `http://127.0.0.1:7070` | Override api-server address for all CLI commands |
+| `QUARK_DRY_RUN`      | —                       | Set to `1` to activate the noop gateway          |
+| `ANTHROPIC_API_KEY`  | —                       | Forwarded to spaces that declare it in `env`     |
+| `OPENAI_API_KEY`     | —                       | Forwarded to spaces that declare it in `env`     |
+| `OPENROUTER_API_KEY` | —                       | Forwarded to spaces that declare it in `env`     |
+| `ZHIPU_API_KEY`      | —                       | Forwarded to spaces that declare it in `env`     |
+
+---
+
+## Web UI
+
+A Next.js frontend is included in `web/`. It proxies the agent API and provides a chat interface for interacting with running spaces.
+
+```bash
+cd web
+bun install
+bun dev     # starts on http://localhost:3000
+```
+
+Requires [Bun](https://bun.sh).
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, module structure, code style, and the PR process.
 
 ---
 
 ## License
 
-MIT
+Apache License 2.0

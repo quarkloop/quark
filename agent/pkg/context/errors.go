@@ -1,5 +1,4 @@
 // Package llmctx manages the ordered message window fed to an LLM agent.
-// R9: renamed from "context" to "llmctx" to avoid shadowing the stdlib "context" package.
 //
 // File layout:
 //

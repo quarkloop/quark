@@ -1,4 +1,6 @@
 BINARY_DIR := bin
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+LDFLAGS := -X github.com/quarkloop/cli/pkg/cli/config.Version=$(VERSION)
 
 MODULES := \
 	core \
@@ -25,7 +27,7 @@ BINARIES := \
 	tools/write/cmd/write \
 	tools/web-search/cmd/web-search
 
-.PHONY: all build clean test test-e2e vet fmt tidy \
+.PHONY: all build clean test test-e2e vet fmt fmt-check tidy \
 	build-agent build-api-server build-cli \
 	build-tools-bash build-tools-kb build-tools-read build-tools-space build-tools-write build-tools-web-search
 
@@ -41,7 +43,7 @@ build-api-server:
 	go build -o $(BINARY_DIR)/api-server ./api-server/cmd/api-server
 
 build-cli:
-	go build -o $(BINARY_DIR)/quark ./cli/cmd/quark
+	go build -ldflags "$(LDFLAGS)" -o $(BINARY_DIR)/quark ./cli/cmd/quark
 
 build-tools-bash:
 	go build -o $(BINARY_DIR)/bash ./tools/bash/cmd/bash
@@ -85,6 +87,13 @@ fmt:
 		echo "--- Formatting $$mod ---"; \
 		(cd $$mod && gofmt -w .); \
 	done
+
+## Check formatting without modifying files (exits non-zero if any file is unformatted)
+fmt-check:
+	@unformatted=$$(for mod in $(MODULES); do (cd $$mod && gofmt -l .); done); \
+	if [ -n "$$unformatted" ]; then \
+		echo "Unformatted files:"; echo "$$unformatted"; exit 1; \
+	fi
 
 ## Run go mod tidy across all modules
 tidy:

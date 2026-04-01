@@ -53,7 +53,10 @@ func searchBrave(query string, maxResults int, apiKey string) ([]SearchResult, e
 		return nil, fmt.Errorf("brave search: %w", err)
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("brave search: read body: %w", err)
+	}
 
 	var result struct {
 		Web struct {
@@ -85,7 +88,10 @@ func searchSerpAPI(query string, maxResults int, apiKey string) ([]SearchResult,
 		return nil, fmt.Errorf("serpapi: %w", err)
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("serpapi: read body: %w", err)
+	}
 
 	var result struct {
 		OrganicResults []struct {

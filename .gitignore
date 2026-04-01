@@ -2,3 +2,18 @@ bin/
 vendor/
 *.zip
 .env
+
+# Go
+*.out
+*.test
+*.prof
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
