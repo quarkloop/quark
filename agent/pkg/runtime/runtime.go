@@ -164,11 +164,14 @@ func (r *Runtime) reportHealth() error {
 		PID     int    `json:"pid"`
 		Port    int    `json:"port"`
 	}
-	body, _ := json.Marshal(healthReport{
+	body, err := json.Marshal(healthReport{
 		AgentID: r.cfg.AgentID,
 		PID:     os.Getpid(),
 		Port:    r.cfg.Port,
 	})
+	if err != nil {
+		return fmt.Errorf("marshal health report: %w", err)
+	}
 	url := fmt.Sprintf("%s/api/v1/agents/%s/health", r.cfg.APIServer, r.cfg.AgentID)
 	resp, err := http.Post(url, "application/json", bytes.NewReader(body))
 	if err != nil {
