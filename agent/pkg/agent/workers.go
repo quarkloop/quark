@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"time"
 
@@ -27,7 +28,9 @@ func (a *Agent) SpawnWorker(ctx context.Context, step plan.Step) error {
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	_ = a.sessStore.Create(sess)
+	if err := a.sessStore.Create(sess); err != nil {
+		return fmt.Errorf("create subagent session: %w", err)
+	}
 
 	go a.runWorker(ctx, step, sessKey)
 	return nil
@@ -52,7 +55,11 @@ func (a *Agent) runWorker(ctx context.Context, step plan.Step, sessKey string) {
 		log.Printf("worker[%s]: complete", step.ID)
 	}
 
-	data, _ := json.Marshal(event)
+	data, err := json.Marshal(event)
+	if err != nil {
+		log.Printf("worker[%s]: failed to marshal event: %v", step.ID, err)
+		return
+	}
 	if err := a.res.KB.Set(agentcore.NSEvents, step.ID+"-done", data); err != nil {
 		log.Printf("worker[%s]: failed to write event: %v", step.ID, err)
 	}
