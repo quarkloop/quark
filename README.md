@@ -4,7 +4,7 @@
 [![Go 1.22+](https://img.shields.io/badge/go-1.22+-00ADD8.svg)](https://go.dev/dl/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-> Pack your agents. Ship your intelligence.
+> Your agents. Your machine. Fully Autonomous.
 
 **quark** is a local runtime for autonomous multi-agent AI spaces. Define a goal, declare your agents and model, and quark handles the rest — launching agent runtimes for isolated workspaces, managing the supervisor→worker execution loop, persisting context across restarts, and streaming activity and logs in real time.
 
