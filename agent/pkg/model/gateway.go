@@ -107,7 +107,7 @@ func New(cfg GatewayConfig) (Gateway, error) {
 			model:     cfg.Model,
 			apiKey:    cfg.APIKey,
 			http:      newHTTPClientNoHTTP2(),
-			maxTokens: 8192, // GLM-4 supports up to 128k context
+			maxTokens: resolveZhipuMaxTokens(cfg.Model),
 		}, nil
 	case "openrouter":
 		if cfg.APIKey == "" {

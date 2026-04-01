@@ -7,7 +7,41 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 )
+
+// zhipuModelDefaults maps GLM model name prefixes to their max output tokens.
+// Zhipu's API doesn't expose this programmatically, so we maintain this table.
+var zhipuModelDefaults = map[string]int{
+	"GLM-4-Plus":   4096,
+	"GLM-4":        4096,
+	"GLM-4-Flash":  4096,
+	"GLM-4-FlashX": 4096,
+	"GLM-4-Air":    4096,
+	"GLM-4-AirX":   4096,
+	"GLM-4-Long":   4096,
+	"GLM-4V":       4096,
+	"GLM-4V-Flash": 4096,
+	"codegeex-4":   4096,
+	"embedding-3":  4096,
+}
+
+// resolveZhipuMaxTokens returns the max output tokens for a GLM model name.
+// Falls back to 8192 for unknown models.
+func resolveZhipuMaxTokens(modelName string) int {
+	// Direct match.
+	if n, ok := zhipuModelDefaults[modelName]; ok {
+		return n
+	}
+	// Case-insensitive prefix match.
+	upper := strings.ToUpper(modelName)
+	for prefix, n := range zhipuModelDefaults {
+		if strings.HasPrefix(upper, strings.ToUpper(prefix)) {
+			return n
+		}
+	}
+	return 8192
+}
 
 type zhipuGateway struct {
 	model     string
