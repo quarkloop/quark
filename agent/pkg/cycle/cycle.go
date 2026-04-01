@@ -189,7 +189,10 @@ Rules:
 		Summary  string `json:"summary"`
 	}
 	if err := json.Unmarshal(planData, &check); err == nil && check.Complete {
-		existing, _ := planStore.Load()
+		existing, err := planStore.Load()
+		if err != nil {
+			log.Printf("cycle: plan load error during completion: %v", err)
+		}
 		if existing == nil {
 			existing = &plan.Plan{}
 		}
