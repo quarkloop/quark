@@ -1,4 +1,4 @@
-# quark
+# Quark
 
 [![CI](https://github.com/quarkloop/quark/actions/workflows/ci.yml/badge.svg)](https://github.com/quarkloop/quark/actions/workflows/ci.yml)
 [![Go 1.22+](https://img.shields.io/badge/go-1.22+-00ADD8.svg)](https://go.dev/dl/)
@@ -6,7 +6,7 @@
 
 > Your agents. Your machine. Fully Autonomous.
 
-**quark** is a local runtime for autonomous multi-agent AI spaces. Define a goal, declare your agents and model, and quark handles the rest — launching agent runtimes for isolated workspaces, managing the supervisor→worker execution loop, persisting context across restarts, and streaming activity and logs in real time.
+**Quark** is a local runtime for autonomous multi-agent AI spaces. Define a goal, declare your agents and model, and Quark handles the rest — launching agent runtimes for isolated workspaces, managing the supervisor→worker execution loop, persisting context across restarts, and streaming activity and logs in real time.
 
 ```
 quark init my-research    # scaffold a project
@@ -50,7 +50,7 @@ Sessions use hierarchical keys: `agent:<agentID>:<type>[:<id>]`. The main sessio
 
 ### Multi-module workspace
 
-quark is structured as a Go workspace with twelve independent modules:
+Quark is structured as a Go workspace with twelve independent modules:
 
 | Module             | Role                                                                                     |
 | ------------------ | ---------------------------------------------------------------------------------------- |

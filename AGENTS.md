@@ -1,4 +1,4 @@
-# quark
+# Quark
 
 Local runtime for autonomous multi-agent AI spaces.
 

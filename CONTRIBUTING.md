@@ -1,10 +1,10 @@
-# Contributing to quark
+# Contributing to Quark
 
 Thank you for your interest in contributing. This guide covers everything you need to get started.
 
 ## Prerequisites
 
-- **Go 1.22+** — quark uses Go workspace mode; all 12 modules resolve locally
+- **Go 1.22+** — Quark uses Go workspace mode; all 12 modules resolve locally
 - An LLM provider API key if you want to run E2E tests (optional for unit tests)
 
 ## Getting started
@@ -39,7 +39,7 @@ E2E tests run with a 10-minute timeout. See `agent/e2e/` for details.
 
 ## Module structure
 
-quark is a Go workspace (`go.work`) containing 12 independent modules. The dependency graph is strict — no circular imports:
+Quark is a Go workspace (`go.work`) containing 12 independent modules. The dependency graph is strict — no circular imports:
 
 ```
 core → agent → tools/space
@@ -84,7 +84,7 @@ Examples:
 
 ## Reporting bugs
 
-Please use GitHub Issues with the bug report template. Include your quark version (`quark version`), OS, Go version, and steps to reproduce.
+Please use GitHub Issues with the bug report template. Include your Quark version (`quark version`), OS, Go version, and steps to reproduce.
 
 ## Feature requests
 

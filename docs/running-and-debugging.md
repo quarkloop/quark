@@ -1,6 +1,6 @@
 # Running & Debugging
 
-Practical techniques for running, testing, and debugging the quark agent runtime locally.
+Practical techniques for running, testing, and debugging the Quark agent runtime locally.
 
 ---
 
@@ -274,7 +274,7 @@ Models may use ` ```bash ` or ` ```json ` instead of ` ```tool ` for tool calls.
 
 ### Provider Errors (405, 429, etc.)
 
-These are upstream provider issues, not bugs in quark:
+These are upstream provider issues, not bugs in Quark:
 
 - **405**: Provider WAF blocking requests (seen with StepFun/Alibaba). Usually transient — retry later or switch models.
 - **429**: Rate limited. The free tier on OpenRouter has strict limits.
