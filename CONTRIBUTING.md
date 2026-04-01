@@ -90,6 +90,10 @@ Please use GitHub Issues with the bug report template. Include your Quark versio
 
 Open a GitHub Issue with the feature request template. Describe the problem you're solving and your proposed solution.
 
+## Code of Conduct
+
+Please note that this project is released with a [Contributor Code of Conduct](CODE_OF_CONDUCT.md). By participating in this project you agree to abide by its terms.
+
 ## License
 
 By contributing you agree that your contributions will be licensed under the [Apache License 2.0](LICENSE).
