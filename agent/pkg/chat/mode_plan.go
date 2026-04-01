@@ -174,16 +174,6 @@ func chatStream(
 	sg model.StreamingGateway,
 	message string,
 ) (*agentcore.ChatResponse, error) {
-	if message != "" {
-		m, err := inference.NewUserMessage(res.TC, res.IDGen, agentcore.AuthorUser, message)
-		if err != nil {
-			return nil, fmt.Errorf("chat stream: build user msg: %w", err)
-		}
-		if err := ac.AppendMessage(ctx, m); err != nil {
-			return nil, fmt.Errorf("chat stream: append user msg: %w", err)
-		}
-	}
-
 	adapter, err := res.AdapterReg.Get(res.Gateway.Provider())
 	if err != nil {
 		return nil, fmt.Errorf("chat stream: adapter: %w", err)
@@ -207,6 +197,11 @@ func chatStream(
 		return nil, fmt.Errorf("chat stream: collect: %w", err)
 	}
 
+	if message != "" {
+		if m, err := inference.NewUserMessage(res.TC, res.IDGen, agentcore.AuthorUser, message); err == nil {
+			ac.AppendMessage(ctx, m)
+		}
+	}
 	if agtMsg, err := inference.NewAgentMessage(res.TC, res.IDGen, agentcore.AuthorAgent, content); err == nil {
 		ac.AppendMessage(ctx, agtMsg)
 	}
