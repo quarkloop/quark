@@ -1,0 +1,123 @@
+version: 2
+
+project_name: quark
+
+builds:
+  - id: agent
+    dir: agent
+    main: ./cmd/agent
+    binary: agent
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+  - id: api-server
+    dir: api-server
+    main: ./cmd/api-server
+    binary: api-server
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+  - id: quark
+    dir: cli
+    main: ./cmd/quark
+    binary: quark
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X github.com/quarkloop/cli/pkg/cli/config.Version={{.Version}}
+
+  - id: bash
+    dir: tools/bash
+    main: ./cmd/bash
+    binary: bash
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+  - id: kb
+    dir: tools/kb
+    main: ./cmd/kb
+    binary: kb
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+  - id: read
+    dir: tools/read
+    main: ./cmd/read
+    binary: read
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+  - id: space
+    dir: tools/space
+    main: ./cmd/space
+    binary: space
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+  - id: write
+    dir: tools/write
+    main: ./cmd/write
+    binary: write
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+  - id: web-search
+    dir: tools/web-search
+    main: ./cmd/web-search
+    binary: web-search
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    format_overrides:
+      - goos: windows
+        format: zip
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^chore:"
+      - "^ci:"
+      - "^test:"
+      - "^refactor:"
