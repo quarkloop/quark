@@ -12,27 +12,35 @@ import (
 const openAIBaseURL = "https://api.openai.com/v1/chat/completions"
 
 // openaiModelDefaults maps well-known model names to their max output tokens.
+// Values from https://platform.openai.com/docs/models (Max output column).
 // Used as fallback when the API doesn't expose this info (OpenAI) or the
 // model isn't found in the OpenRouter catalog.
 var openaiModelDefaults = map[string]int{
+	// GPT-5 family (latest)
+	"gpt-5.4":      131072, // 128K
+	"gpt-5.4-mini": 131072, // 128K
+	"gpt-5.4-nano": 131072, // 128K
+	"gpt-5.2":      131072, // 128K
+	"gpt-5.1":      131072, // 128K
+	"gpt-5":        131072, // 128K
 	// GPT-4o family
-	"gpt-4o":            16384,
-	"gpt-4o-mini":       16384,
-	"gpt-4o-2024-":      16384,
-	"gpt-4o-mini-2024-": 16384,
+	"gpt-4o":            16384, // 16K
+	"gpt-4o-mini":       16384, // 16K
+	"gpt-4o-2024-":      16384, // 16K
+	"gpt-4o-mini-2024-": 16384, // 16K
 	// GPT-4 Turbo
-	"gpt-4-turbo":       4096,
-	"gpt-4-turbo-2024-": 4096,
+	"gpt-4-turbo":       4096, // 4K
+	"gpt-4-turbo-2024-": 4096, // 4K
 	// GPT-4
-	"gpt-4":     8192,
-	"gpt-4-32k": 8192,
+	"gpt-4":     8192, // 8K
+	"gpt-4-32k": 8192, // 8K
 	// o-series (reasoning)
-	"o1":         100000,
-	"o1-mini":    65536,
-	"o1-preview": 32768,
-	"o3":         100000,
-	"o3-mini":    100000,
-	"o4-mini":    100000,
+	"o1":         100000, // 100K
+	"o1-mini":    65536,  // 64K
+	"o1-preview": 32768,  // 32K
+	"o3":         100000, // 100K
+	"o3-mini":    100000, // 100K
+	"o4-mini":    100000, // 100K
 }
 
 type openAIGateway struct {
