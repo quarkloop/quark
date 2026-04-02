@@ -2,6 +2,7 @@ package agentcore
 
 import (
 	"github.com/quarkloop/agent/pkg/activity"
+	"github.com/quarkloop/agent/pkg/config"
 	llmctx "github.com/quarkloop/agent/pkg/context"
 	"github.com/quarkloop/agent/pkg/model"
 	"github.com/quarkloop/agent/pkg/tool"
@@ -13,6 +14,7 @@ import (
 // participates in agent processing.
 type Resources struct {
 	KB          kb.Store
+	ConfigStore *config.Store
 	Gateway     model.Gateway
 	Dispatcher  tool.Invoker
 	AdapterReg  *llmctx.AdapterRegistry

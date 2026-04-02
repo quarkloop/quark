@@ -24,6 +24,7 @@ import (
 	"github.com/quarkloop/agent/pkg/activity"
 	"github.com/quarkloop/agent/pkg/agent"
 	"github.com/quarkloop/agent/pkg/agentcore"
+	"github.com/quarkloop/agent/pkg/config"
 	"github.com/quarkloop/agent/pkg/infra/httpserver"
 	"github.com/quarkloop/agent/pkg/model"
 	"github.com/quarkloop/agent/pkg/session"
@@ -91,12 +92,31 @@ func New(cfg *Config) (*Runtime, error) {
 
 	feed := activity.NewFeed(1024, k)
 	sessStore := session.NewStore(k)
+	cfgStore := config.New(k)
+
+	// Auto-configure model if not set via env vars or Quarkfile.
+	if spaceCfg.provider == "" || spaceCfg.modelName == "" {
+		provider, modelName := resolveModelFromEnv()
+		if provider != "" && modelName != "" {
+			if err := cfgStore.SetByAgent("model_provider", provider); err == nil {
+				cfgStore.SetByAgent("model_name", modelName)
+			}
+			spaceCfg.provider = provider
+			spaceCfg.modelName = modelName
+		}
+	}
+
+	// Write auto-detected settings to config store.
+	if err := autoConfigure(cfgStore, spaceCfg); err != nil {
+		log.Printf("runtime: auto-configure warning: %v", err)
+	}
 
 	res := &agentcore.Resources{
-		KB:         k,
-		Gateway:    gw,
-		Dispatcher: spaceCfg.dispatcher,
-		Activity:   feed,
+		KB:          k,
+		ConfigStore: cfgStore,
+		Gateway:     gw,
+		Dispatcher:  spaceCfg.dispatcher,
+		Activity:    feed,
 	}
 
 	a := agent.New(cfg.AgentID, spaceCfg.supervisor, res, sessStore, spaceCfg.subAgents)
@@ -292,3 +312,37 @@ func startToolProcesses(orch *ToolOrchestrator, spaceCfg *spaceConfig) {
 }
 
 var _ tool.Invoker = (*tool.HTTPDispatcher)(nil)
+
+// resolveModelFromEnv checks which API keys are available and returns the best
+// provider/model pair. Resolution order: ANTHROPIC → OPENAI → OPENROUTER → ZHIPU.
+func resolveModelFromEnv() (provider, modelName string) {
+	if os.Getenv("ANTHROPIC_API_KEY") != "" {
+		return "anthropic", "claude-sonnet-4-20250514"
+	}
+	if os.Getenv("OPENAI_API_KEY") != "" {
+		return "openai", "gpt-4o"
+	}
+	if os.Getenv("OPENROUTER_API_KEY") != "" {
+		return "openrouter", "anthropic/claude-sonnet-4"
+	}
+	if os.Getenv("ZHIPU_API_KEY") != "" {
+		return "zhipu", "GLM-4"
+	}
+	return "", ""
+}
+
+// autoConfigure writes auto-detected operational settings to the config store.
+// These are agent self-configuration values that the owner can override.
+func autoConfigure(store *config.Store, sc *spaceConfig) error {
+	if sc.provider != "" {
+		if err := store.SetByAgent("model_provider", sc.provider); err != nil {
+			return fmt.Errorf("set model_provider: %w", err)
+		}
+	}
+	if sc.modelName != "" {
+		if err := store.SetByAgent("model_name", sc.modelName); err != nil {
+			return fmt.Errorf("set model_name: %w", err)
+		}
+	}
+	return nil
+}
