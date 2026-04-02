@@ -26,6 +26,7 @@ import (
 	"github.com/quarkloop/agent/pkg/agentcore"
 	"github.com/quarkloop/agent/pkg/config"
 	"github.com/quarkloop/agent/pkg/eventbus"
+	"github.com/quarkloop/agent/pkg/hooks"
 	"github.com/quarkloop/agent/pkg/infra/httpserver"
 	"github.com/quarkloop/agent/pkg/model"
 	"github.com/quarkloop/agent/pkg/session"
@@ -95,6 +96,7 @@ func New(cfg *Config) (*Runtime, error) {
 	bus := eventbus.New()
 	actWriter := activity.NewWriter(bus, k, 1024)
 	actWriter.Start()
+	hookReg := hooks.New()
 	sessStore := session.NewStore(k)
 	cfgStore := config.New(k)
 
@@ -120,9 +122,19 @@ func New(cfg *Config) (*Runtime, error) {
 		ConfigStore: cfgStore,
 		EventBus:    bus,
 		Activity:    actWriter,
+		Hooks:       hookReg,
 		Gateway:     gw,
 		Dispatcher:  spaceCfg.dispatcher,
 	}
+
+	// Register built-in security and audit hooks.
+	hooks.RegisterBuiltInHooks(hookReg, hooks.ToolPermissions{
+		Allowed: nil, // populated from Quarkfile permissions.tools.allowed
+		Denied:  nil, // populated from Quarkfile permissions.tools.denied
+	}, hooks.FilesystemPermissions{
+		AllowedPaths: nil,
+		ReadOnly:     nil,
+	}, bus)
 
 	a := agent.New(cfg.AgentID, spaceCfg.supervisor, res, sessStore, spaceCfg.subAgents)
 	if err := a.Init(); err != nil {

@@ -5,6 +5,7 @@ import (
 	"github.com/quarkloop/agent/pkg/config"
 	llmctx "github.com/quarkloop/agent/pkg/context"
 	"github.com/quarkloop/agent/pkg/eventbus"
+	"github.com/quarkloop/agent/pkg/hooks"
 	"github.com/quarkloop/agent/pkg/model"
 	"github.com/quarkloop/agent/pkg/tool"
 	"github.com/quarkloop/core/pkg/kb"
@@ -18,6 +19,7 @@ type Resources struct {
 	ConfigStore *config.Store
 	EventBus    *eventbus.Bus
 	Activity    *activity.Writer
+	Hooks       *hooks.Registry
 	Gateway     model.Gateway
 	Dispatcher  tool.Invoker
 	AdapterReg  *llmctx.AdapterRegistry

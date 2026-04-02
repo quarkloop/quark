@@ -12,9 +12,68 @@ import (
 	"strings"
 
 	msg "github.com/quarkloop/agent/pkg/context/message"
+	"github.com/quarkloop/agent/pkg/hooks"
 	"github.com/quarkloop/agent/pkg/model"
 	"github.com/quarkloop/agent/pkg/tool"
 )
+
+// InvokeToolWithHooks wraps InvokeTool with hook interception.
+// BeforeToolCall hooks can block or modify the call.
+// AfterToolCall hooks can observe or redact the result.
+func InvokeToolWithHooks(
+	ctx context.Context,
+	reg *hooks.Registry,
+	disp tool.Invoker,
+	stepID string,
+	call msg.ToolCallPayload,
+	sessionID string,
+) msg.ToolResultPayload {
+	// BeforeToolCall hooks.
+	hookPayload := &hooks.ToolCallPayload{
+		ToolName:  call.ToolName,
+		Arguments: rawToMap(call.Arguments),
+		StepID:    stepID,
+		SessionID: sessionID,
+	}
+	modified, decision, _ := reg.Execute(ctx, hooks.BeforeToolCall, hookPayload)
+	if decision == hooks.Block || decision == hooks.Halt || decision == hooks.Collapse {
+		reason := "blocked by hook"
+		if modified != nil {
+			if s, ok := modified.(string); ok {
+				reason = s
+			}
+		}
+		return msg.ToolResultPayload{
+			ToolCallID:   call.ToolCallID,
+			ToolName:     call.ToolName,
+			IsError:      true,
+			ErrorMessage: reason,
+		}
+	}
+	if decision == hooks.Shape {
+		if tp, ok := modified.(*hooks.ToolCallPayload); ok {
+			call.ToolName = tp.ToolName
+			if raw, err := json.Marshal(tp.Arguments); err == nil {
+				call.Arguments = raw
+			}
+		}
+	}
+
+	result := InvokeTool(ctx, disp, stepID, call)
+
+	// AfterToolCall hooks.
+	resultPayload := &hooks.ToolResultPayload{
+		ToolName: result.ToolName,
+		Content:  result.Content,
+		IsError:  result.IsError,
+		StepID:   stepID,
+	}
+	reg.Execute(ctx, hooks.AfterToolCall, resultPayload)
+	result.Content = resultPayload.Content
+	result.IsError = resultPayload.IsError
+
+	return result
+}
 
 // InvokeTool calls a tool via the dispatcher and returns the result payload.
 func InvokeTool(
@@ -340,4 +399,10 @@ func Truncate(s string, n int) string {
 		return s
 	}
 	return s[:n] + "…"
+}
+
+func rawToMap(raw json.RawMessage) map[string]interface{} {
+	var m map[string]interface{}
+	_ = json.Unmarshal(raw, &m)
+	return m
 }
