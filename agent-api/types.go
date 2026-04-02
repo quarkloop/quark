@@ -173,3 +173,14 @@ type CreateSessionResponse struct {
 type ErrorResponse struct {
 	Error string `json:"error"`
 }
+
+// BudgetResponse is the wire type for GET /sessions/{sessionKey}/budget.
+type BudgetResponse struct {
+	TotalBudget      int     `json:"total_budget"`
+	UsedTokens       int     `json:"used_tokens"`
+	AvailableTokens  int     `json:"available_tokens"`
+	UsagePct         float64 `json:"usage_pct"`
+	AtSoftLimit      bool    `json:"at_soft_limit"`
+	AtHardLimit      bool    `json:"at_hard_limit"`
+	CompactionNeeded bool    `json:"compaction_needed"`
+}
