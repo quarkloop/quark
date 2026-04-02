@@ -175,7 +175,16 @@ quark stop space-abc123
 
 ## Quickstart (with a real LLM)
 
-Edit the `Quarkfile` and set your provider and model, then export your API key:
+The agent auto-detects available API keys on startup. Just export your key:
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+quark lock .
+quark run . --detach
+quark logs <id>
+```
+
+Or set the model explicitly in the Quarkfile:
 
 ```yaml
 model:
@@ -184,13 +193,6 @@ model:
 
 env:
   - ANTHROPIC_API_KEY
-```
-
-```bash
-export ANTHROPIC_API_KEY="sk-ant-..."
-quark lock .
-quark run . --detach
-quark logs <id>
 ```
 
 Supported providers:
@@ -210,26 +212,30 @@ Supported providers:
 
 ```
 my-space/
-├── Quarkfile               # space definition — model, agents, tools, env, restart
+├── Quarkfile               # space definition — agents, tools, permissions, capabilities
 ├── .quark/
-│   └── lock.yaml           # lock file — commit this
+│   ├── lock.yaml           # lock file — commit this
+│   ├── kb/                 # knowledge base — JSONL files
+│   │   ├── config/         # goal, dynamic config, mode
+│   │   ├── plans/          # execution plan history
+│   │   ├── memory/         # agent memory entries
+│   │   ├── documents/      # ingested documents
+│   │   ├── notes/          # freeform notes written by agents
+│   │   └── artifacts/      # step output artifacts
+│   ├── skills/             # space-level skills (SKILL.md)
+│   └── plugins/            # downloaded plugin content (future)
 ├── prompts/
 │   └── supervisor.txt      # supervisor system prompt
-├── agents/                 # optional per-agent prompt overrides
-└── kb/                     # knowledge base — JSONL files
-    ├── config/             # goal and space config
-    ├── plans/              # execution plan history
-    ├── memory/             # agent memory entries
-    ├── documents/          # ingested documents
-    ├── notes/              # freeform notes written by agents
-    └── artifacts/          # step output artifacts
+└── agents/                 # optional per-agent prompt overrides
 ```
+
+All runtime artifacts live in `.quark/`. The Quarkfile stays at the root alongside your own files.
 
 ---
 
 ## Quarkfile reference
 
-Minimal `Quarkfile`:
+Minimal `Quarkfile` (model is optional — auto-detected from env keys):
 
 ```yaml
 quark: "1.0"
@@ -237,13 +243,37 @@ quark: "1.0"
 meta:
   name: my-space
 
-model:
-  provider: anthropic
-  name: claude-opus-4-6
+# model:                          # optional — auto-detected from env keys
+#   provider: anthropic
+#   name: claude-opus-4-6
 
 supervisor:
   agent: quark/supervisor
   prompt: ./prompts/supervisor.txt
+
+permissions:
+  filesystem:
+    allowed_paths: ["./", "/tmp"]
+    read_only: []
+  network:
+    allowed_hosts: ["api.openai.com", "api.anthropic.com"]
+    deny: ["10.0.0.0/8"]
+  tools:
+    allowed: ["bash", "read", "write"]
+    denied: []
+  plugins:
+    allowed: []
+    auto_install: false
+  audit:
+    log_tool_calls: true
+    log_llm_responses: false
+    retention_days: 30
+
+capabilities:
+  spawn_agents: true
+  max_workers: 10
+  create_plans: true
+  approval_policy: required       # required | auto
 
 env:
   - ANTHROPIC_API_KEY

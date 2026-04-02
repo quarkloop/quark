@@ -83,16 +83,31 @@ The `agent` module is split into focused sub-packages with strict single respons
 | `agent/pkg/chat` | Chat mode routing: ask, plan, masterplan, auto. Prompt builders. |
 | `agent/pkg/cycle` | Supervisor loop: orient → plan → dispatch → monitor → assess. |
 | `agent/pkg/agent` | Thin orchestrator: session management, request routing, lifecycle glue. |
+| `agent/pkg/config` | KB-backed dynamic config store with owner-wins semantics. |
+| `agent/pkg/eventbus` | In-memory pub/sub with per-subscriber channels and typed event kinds. |
+| `agent/pkg/hooks` | Extensible interception: Observer/Modifier/Gate hooks at tool and inference points. |
+| `agent/pkg/intervention` | Per-session message queue for mid-execution user course-correction. |
+| `agent/pkg/model` | LLM provider abstraction: Anthropic, OpenAI, OpenRouter, Zhipu, noop. |
+| `agent/pkg/context` | LLM context management: token accounting, compaction, visibility policies. |
+| `agent/pkg/activity` | Persisted event log — async subscriber to EventBus with ring buffer. |
+| `agent/pkg/tool` | HTTP tool dispatcher and tool definition types. |
+| `agent/pkg/plan` | Plan and step types, KB-backed stores, master plan support. |
+| `agent/pkg/runtime` | Agent lifecycle: process management, HTTP server, health reporting. |
 
 **Dependency graph** (no circular imports):
 ```
 agentcore (types, constants, resources)
    ↑
    ├── inference
-   ├── execution (→ inference)
-   ├── chat (→ inference, execution)
-   ├── cycle (→ inference)
-   └── session (→ core/pkg/kb only)
+   ├── execution (→ inference, hooks)
+   ├── chat (→ inference, execution, intervention)
+   ├── cycle (→ inference, intervention)
+   ├── session (→ core/pkg/kb only)
+   ├── config (→ core/pkg/kb)
+   ├── eventbus (leaf)
+   ├── hooks (→ eventbus)
+   ├── intervention (leaf)
+   └── activity (→ eventbus, core/pkg/kb)
 
 agent (→ all of the above)
 ```
@@ -155,7 +170,7 @@ Mode is per-session. Default is `auto`. Main session mode persists in KB across 
 ## Tools vs Skills
 
 - **Tools** are HTTP-dispatched executables that agents invoke (bash, read, write, web-search). Defined in the Quarkfile with a name and endpoint config.
-- **Skills** are a future concept — informational/advisory, not executable. A skill can advise which tools to use. Not yet implemented.
+- **Skills** are `SKILL.md` files that provide domain-specific guidance to the agent. Listed in the system prompt as paths the agent reads on demand. Organized via the Skill Cascade: space > plugin > builtin.
 
 Tools are NOT registered in a registry. They are declared directly in the Quarkfile:
 
