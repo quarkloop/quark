@@ -1,6 +1,8 @@
 package agentcore
 
 import (
+	"sync"
+
 	"github.com/quarkloop/agent/pkg/activity"
 	"github.com/quarkloop/agent/pkg/config"
 	llmctx "github.com/quarkloop/agent/pkg/context"
@@ -16,6 +18,10 @@ import (
 // Resources holds the shared dependencies that all agent sub-packages need.
 // It is constructed once by the runtime and passed to every package that
 // participates in agent processing.
+//
+// The Gateway, Dispatcher, and Permissions fields support live hot-swap via
+// SwapGateway/SwapDispatcher/SwapPermissions. All concurrent callers must
+// access these three fields through their Get* accessor methods.
 type Resources struct {
 	KB            kb.Store
 	ConfigStore   *config.Store
@@ -24,13 +30,58 @@ type Resources struct {
 	Hooks         *hooks.Registry
 	SkillResolver *skill.Resolver
 	PluginManager *plugin.Manager
-	Gateway       model.Gateway
-	Dispatcher    tool.Invoker
 	AdapterReg    *llmctx.AdapterRegistry
 	TC            llmctx.TokenComputer
 	IDGen         llmctx.IDGenerator
 	VisPolicy     *llmctx.VisibilityPolicy
-	Permissions   Permissions
+
+	// hot-swappable fields — access via GetGateway/GetDispatcher/GetPermissions.
+	mu          sync.RWMutex
+	Gateway     model.Gateway // initialize directly; use GetGateway() for concurrent reads
+	Dispatcher  tool.Invoker  // initialize directly; use GetDispatcher() for concurrent reads
+	Permissions Permissions   // initialize directly; use GetPermissions() for concurrent reads
+}
+
+// GetGateway returns the current LLM gateway. Safe for concurrent use.
+func (r *Resources) GetGateway() model.Gateway {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.Gateway
+}
+
+// SwapGateway atomically replaces the LLM gateway. Used during hot-reload.
+func (r *Resources) SwapGateway(gw model.Gateway) {
+	r.mu.Lock()
+	r.Gateway = gw
+	r.mu.Unlock()
+}
+
+// GetDispatcher returns the current tool dispatcher. Safe for concurrent use.
+func (r *Resources) GetDispatcher() tool.Invoker {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.Dispatcher
+}
+
+// SwapDispatcher atomically replaces the tool dispatcher. Used during hot-reload.
+func (r *Resources) SwapDispatcher(d tool.Invoker) {
+	r.mu.Lock()
+	r.Dispatcher = d
+	r.mu.Unlock()
+}
+
+// GetPermissions returns the current permissions snapshot. Safe for concurrent use.
+func (r *Resources) GetPermissions() Permissions {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.Permissions
+}
+
+// SwapPermissions atomically replaces the permissions. Used during hot-reload.
+func (r *Resources) SwapPermissions(p Permissions) {
+	r.mu.Lock()
+	r.Permissions = p
+	r.mu.Unlock()
 }
 
 // Permissions mirrors the Quarkfile permissions block at runtime.
