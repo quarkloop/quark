@@ -11,15 +11,17 @@ import (
 
 	"github.com/quarkloop/agent/pkg/agentcore"
 	llmctx "github.com/quarkloop/agent/pkg/context"
+	"github.com/quarkloop/agent/pkg/intervention"
 	"github.com/quarkloop/agent/pkg/plan"
 )
 
 // Deps holds the dependencies that chat mode handlers need beyond Resources.
 type Deps struct {
-	Def         *agentcore.Definition
-	SubAgents   map[string]*agentcore.Definition
-	PlanStore   *plan.Store
-	MasterStore *plan.MasterPlanStore
+	Def           *agentcore.Definition
+	SubAgents     map[string]*agentcore.Definition
+	PlanStore     *plan.Store
+	MasterStore   *plan.MasterPlanStore
+	Interventions *intervention.Queue
 }
 
 // Process routes a chat request to the appropriate mode handler.

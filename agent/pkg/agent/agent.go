@@ -18,6 +18,7 @@ import (
 	llmctx "github.com/quarkloop/agent/pkg/context"
 	"github.com/quarkloop/agent/pkg/cycle"
 	"github.com/quarkloop/agent/pkg/eventbus"
+	"github.com/quarkloop/agent/pkg/intervention"
 	planpkg "github.com/quarkloop/agent/pkg/plan"
 	"github.com/quarkloop/agent/pkg/session"
 )
@@ -95,11 +96,12 @@ func (a *Agent) Init() error {
 		mode := a.restoreMode()
 		a.mu.Lock()
 		a.sessions[mainKey] = &SessionState{
-			Session:     mainSess,
-			Context:     ac,
-			Mode:        mode,
-			PlanStore:   planpkg.NewStore(a.res.KB, agentcore.NSPlans, agentcore.KeyMasterPlan),
-			MasterStore: planpkg.NewMasterPlanStore(a.res.KB, agentcore.NSPlans, agentcore.KeyMasterPlanDoc),
+			Session:       mainSess,
+			Context:       ac,
+			Mode:          mode,
+			PlanStore:     planpkg.NewStore(a.res.KB, agentcore.NSPlans, agentcore.KeyMasterPlan),
+			MasterStore:   planpkg.NewMasterPlanStore(a.res.KB, agentcore.NSPlans, agentcore.KeyMasterPlanDoc),
+			Interventions: intervention.New(10),
 		}
 		a.mu.Unlock()
 	} else {
@@ -124,11 +126,12 @@ func (a *Agent) Init() error {
 
 		a.mu.Lock()
 		a.sessions[mainKey] = &SessionState{
-			Session:     mainSess,
-			Context:     ac,
-			Mode:        agentcore.ModeAuto,
-			PlanStore:   planpkg.NewStore(a.res.KB, agentcore.NSPlans, agentcore.KeyMasterPlan),
-			MasterStore: planpkg.NewMasterPlanStore(a.res.KB, agentcore.NSPlans, agentcore.KeyMasterPlanDoc),
+			Session:       mainSess,
+			Context:       ac,
+			Mode:          agentcore.ModeAuto,
+			PlanStore:     planpkg.NewStore(a.res.KB, agentcore.NSPlans, agentcore.KeyMasterPlan),
+			MasterStore:   planpkg.NewMasterPlanStore(a.res.KB, agentcore.NSPlans, agentcore.KeyMasterPlanDoc),
+			Interventions: intervention.New(10),
 		}
 		a.mu.Unlock()
 	}
@@ -149,9 +152,10 @@ func (a *Agent) Init() error {
 		}
 		a.mu.Lock()
 		a.sessions[sess.Key] = &SessionState{
-			Session: sess,
-			Context: ac,
-			Mode:    agentcore.ModeAuto,
+			Session:       sess,
+			Context:       ac,
+			Mode:          agentcore.ModeAuto,
+			Interventions: intervention.New(10),
 		}
 		a.mu.Unlock()
 	}
@@ -189,10 +193,11 @@ func (a *Agent) Chat(ctx context.Context, sessionKey string, req agentcore.ChatR
 	a.emitMessage(sessionKey, agentcore.AuthorUser, req.Message, string(mode))
 
 	deps := &chat.Deps{
-		Def:         a.def,
-		SubAgents:   a.subAgents,
-		PlanStore:   state.PlanStore,
-		MasterStore: state.MasterStore,
+		Def:           a.def,
+		SubAgents:     a.subAgents,
+		PlanStore:     state.PlanStore,
+		MasterStore:   state.MasterStore,
+		Interventions: state.Interventions,
 	}
 	if deps.PlanStore == nil {
 		deps.PlanStore = planpkg.NewStore(a.res.KB, agentcore.NSPlans, agentcore.KeyMasterPlan)
@@ -270,7 +275,7 @@ func (a *Agent) runPlanCycle(ctx context.Context, state *SessionState) time.Dura
 		return 2 * time.Second
 	}
 
-	done, err := cycle.Supervisor(ctx, state.Context, a.res, state.PlanStore, a, a.subAgents)
+	done, err := cycle.Supervisor(ctx, state.Context, a.res, state.PlanStore, a, a.subAgents, state.Interventions)
 	if err != nil {
 		log.Printf("agent: plan cycle error: %v", err)
 		return 5 * time.Second
@@ -326,7 +331,7 @@ func (a *Agent) runMasterPlanCycle(ctx context.Context, state *SessionState) tim
 	}
 
 	subPlanStore := state.MasterStore.SubPlanStore(phase.ID)
-	done, err := cycle.Supervisor(ctx, state.Context, a.res, subPlanStore, a, a.subAgents)
+	done, err := cycle.Supervisor(ctx, state.Context, a.res, subPlanStore, a, a.subAgents, state.Interventions)
 
 	if err != nil {
 		phase.Status = planpkg.StepFailed
@@ -382,9 +387,10 @@ func (a *Agent) CreateSession(t session.Type, title string) (*session.Session, e
 
 	a.mu.Lock()
 	a.sessions[key] = &SessionState{
-		Session: sess,
-		Context: ac,
-		Mode:    agentcore.ModeAuto,
+		Session:       sess,
+		Context:       ac,
+		Mode:          agentcore.ModeAuto,
+		Interventions: intervention.New(10),
 	}
 	a.mu.Unlock()
 
@@ -426,6 +432,56 @@ func (a *Agent) DeleteSession(sessionKey string) error {
 
 	a.emit(sessionKey, eventbus.KindSessionEnded, map[string]string{"reason": "deleted"})
 	return nil
+}
+
+// Intervene pushes a user message into a session's intervention queue.
+// The message will be consumed at the next safe interruption point.
+func (a *Agent) Intervene(sessionKey, content string, priority int) (string, int, error) {
+	a.mu.RLock()
+	state, ok := a.sessions[sessionKey]
+	a.mu.RUnlock()
+	if !ok {
+		return "", 0, fmt.Errorf("session %q not found", sessionKey)
+	}
+	if state.Interventions == nil {
+		return "", 0, fmt.Errorf("session %q has no intervention queue", sessionKey)
+	}
+	msg := intervention.Message{
+		SessionID: sessionKey,
+		Content:   content,
+		Priority:  priority,
+	}
+	if err := state.Interventions.Push(msg); err != nil {
+		return "", state.Interventions.Pending(), err
+	}
+	return msg.ID, state.Interventions.Pending(), nil
+}
+
+// BroadcastIntervene pushes a message to all active session queues.
+// Used for "stop everything" style interventions.
+func (a *Agent) BroadcastIntervene(content string, priority int) int {
+	a.mu.RLock()
+	sessions := make([]*SessionState, 0, len(a.sessions))
+	for _, s := range a.sessions {
+		sessions = append(sessions, s)
+	}
+	a.mu.RUnlock()
+
+	count := 0
+	for _, s := range sessions {
+		if s.Interventions == nil {
+			continue
+		}
+		msg := intervention.Message{
+			SessionID: s.Session.Key,
+			Content:   content,
+			Priority:  priority,
+		}
+		if s.Interventions.Push(msg) == nil {
+			count++
+		}
+	}
+	return count
 }
 
 // ListSessions returns all sessions for this agent.

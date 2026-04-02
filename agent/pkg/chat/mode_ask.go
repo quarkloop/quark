@@ -14,6 +14,7 @@ import (
 	"github.com/quarkloop/agent/pkg/eventbus"
 	"github.com/quarkloop/agent/pkg/execution"
 	"github.com/quarkloop/agent/pkg/inference"
+	"github.com/quarkloop/agent/pkg/intervention"
 )
 
 // processAsk handles a chat request in ask mode. It performs LLM calls with
@@ -31,6 +32,20 @@ func processAsk(
 	parser := res.Gateway.Parser()
 
 	for iter := 0; iter < agentcore.MaxAskToolIterations; iter++ {
+		// Check for interventions between tool iterations.
+		if deps.Interventions != nil {
+			if intvs := deps.Interventions.Poll(intervention.Drain); len(intvs) > 0 {
+				for _, intv := range intvs {
+					userMsg = intv.Content
+					res.EventBus.Emit(eventbus.Event{
+						Kind:      eventbus.KindIntervention,
+						SessionID: req.SessionKey,
+						Data:      map[string]string{"content": intv.Content},
+					})
+				}
+			}
+		}
+
 		resp, err := inference.Infer(ctx, ac, res, userMsg)
 		if err != nil {
 			return nil, fmt.Errorf("ask infer: %w", err)

@@ -16,6 +16,7 @@ import (
 	"github.com/quarkloop/agent/pkg/eventbus"
 	"github.com/quarkloop/agent/pkg/execution"
 	"github.com/quarkloop/agent/pkg/inference"
+	"github.com/quarkloop/agent/pkg/intervention"
 	"github.com/quarkloop/agent/pkg/plan"
 )
 
@@ -34,8 +35,25 @@ func Supervisor(
 	planStore *plan.Store,
 	spawner WorkerSpawner,
 	subAgents map[string]*agentcore.Definition,
+	interventions *intervention.Queue,
 ) (bool, error) {
 	scanFreshness(ctx, ac)
+
+	// Check for interventions before orient — if present, append to context.
+	if interventions != nil {
+		if msgs := interventions.Poll(intervention.Drain); len(msgs) > 0 {
+			for _, msg := range msgs {
+				userMsg, err := inference.NewUserMessage(res.TC, res.IDGen, agentcore.AuthorUser, msg.Content)
+				if err == nil {
+					ac.AppendMessage(ctx, userMsg)
+				}
+			}
+			res.EventBus.Emit(eventbus.Event{
+				Kind: eventbus.KindIntervention,
+				Data: map[string]string{"count": fmt.Sprintf("%d", len(msgs))},
+			})
+		}
+	}
 
 	state, err := orient(ac, res, planStore, subAgents)
 	if err != nil {
