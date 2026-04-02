@@ -155,6 +155,14 @@ func (s *agentProxyService) RejectPlan(ctx context.Context, r *http.Request) err
 	return client.RejectPlan(ctx)
 }
 
+func (s *agentProxyService) SessionBudget(ctx context.Context, r *http.Request, sessionKey string) (*agentapi.BudgetResponse, error) {
+	client, err := s.clientForRequest(r)
+	if err != nil {
+		return nil, err
+	}
+	return client.SessionBudget(ctx, sessionKey)
+}
+
 func (s *agentProxyService) clientForRequest(r *http.Request) (*agentclient.Client, error) {
 	agentID := r.PathValue("id")
 	if agentID == "" {
