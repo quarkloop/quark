@@ -53,7 +53,7 @@ func loadSpaceConfig(dir string, store kb.Store) (*spaceConfig, error) {
 		return nil, err
 	}
 
-	log.Printf("runtime: loaded space %q tools=%v workers=%d approval=%s",
+	log.Printf("runtime: loaded space %q tools=%v subagents=%d approval=%s",
 		qf.Meta.Name, dispatcher.List(), len(subAgents), supervisor.Config.ApprovalPolicy)
 
 	return &spaceConfig{

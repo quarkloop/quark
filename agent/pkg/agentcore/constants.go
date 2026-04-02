@@ -49,8 +49,8 @@ const (
 	AuthorUser = "user"
 	// AuthorAgent identifies generic agent-originated messages.
 	AuthorAgent = "agent"
-	// AuthorWorker identifies worker agent system prompts.
-	AuthorWorker = "worker"
+	// AuthorSubagent identifies subagent agent system prompts.
+	AuthorSubagent = "subagent"
 	// AuthorToolExecutor identifies tool execution results.
 	AuthorToolExecutor = "tool-executor"
 )
@@ -62,7 +62,7 @@ const (
 	DefaultContextWindow = 8192
 	// DefaultCompactionThreshold is the percentage at which compaction triggers.
 	DefaultCompactionThreshold = 80
-	// MaxToolIterations is the maximum number of tool-call rounds per worker step.
+	// MaxToolIterations is the maximum number of tool-call rounds per subagent step.
 	MaxToolIterations = 4
 	// MaxAskToolIterations is the maximum number of tool-call rounds in ask mode.
 	MaxAskToolIterations = 10

@@ -20,10 +20,10 @@ import (
 	"github.com/quarkloop/agent/pkg/plan"
 )
 
-// WorkerSpawner is called by the supervisor to dispatch ready plan steps.
-// The agent implements this to create sub-sessions and launch workers.
-type WorkerSpawner interface {
-	SpawnWorker(ctx context.Context, step plan.Step) error
+// SubagentSpawner is called by the supervisor to dispatch ready plan steps.
+// The agent implements this to create sub-sessions and launch subagents.
+type SubagentSpawner interface {
+	SpawnSubagent(ctx context.Context, step plan.Step) error
 }
 
 // Supervisor runs one iteration of the autonomous loop.
@@ -33,7 +33,7 @@ func Supervisor(
 	ac *llmctx.AgentContext,
 	res *agentcore.Resources,
 	planStore *plan.Store,
-	spawner WorkerSpawner,
+	spawner SubagentSpawner,
 	subAgents map[string]*agentcore.Definition,
 	interventions *intervention.Queue,
 ) (bool, error) {
@@ -279,8 +279,8 @@ Rules:
 	return planStore.Save(p)
 }
 
-// dispatch reads the current plan and spawns workers for ready steps.
-func dispatch(ctx context.Context, res *agentcore.Resources, planStore *plan.Store, spawner WorkerSpawner) error {
+// dispatch reads the current plan and spawns subagents for ready steps.
+func dispatch(ctx context.Context, res *agentcore.Resources, planStore *plan.Store, spawner SubagentSpawner) error {
 	p, err := planStore.Load()
 	if err != nil || p == nil || p.Complete {
 		return nil
@@ -304,8 +304,8 @@ func dispatch(ctx context.Context, res *agentcore.Resources, planStore *plan.Sto
 		log.Printf("cycle: dispatching step %s to agent %s", step.ID, step.Agent)
 		emitActivity(res.EventBus, eventbus.KindStepDispatched, map[string]string{"step": step.ID, "agent": step.Agent})
 
-		if err := spawner.SpawnWorker(ctx, *step); err != nil {
-			log.Printf("cycle: spawn worker error for step %s: %v", step.ID, err)
+		if err := spawner.SpawnSubagent(ctx, *step); err != nil {
+			log.Printf("cycle: spawn subagent error for step %s: %v", step.ID, err)
 		}
 	}
 	return nil

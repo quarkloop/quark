@@ -84,7 +84,7 @@ func InvokeTool(
 ) msg.ToolResultPayload {
 	var input map[string]any
 	if err := json.Unmarshal(call.Arguments, &input); err != nil {
-		log.Printf("worker[%s]: failed to parse tool args: %v", stepID, err)
+		log.Printf("subagent[%s]: failed to parse tool args: %v", stepID, err)
 		return msg.ToolResultPayload{
 			ToolCallID:   call.ToolCallID,
 			ToolName:     call.ToolName,

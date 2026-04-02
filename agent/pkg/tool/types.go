@@ -1,9 +1,9 @@
 // Package tool provides the tool dispatcher and type definitions.
 //
 // A tool is an executable capability (e.g. web-search, code-interpreter) that
-// a worker agent can invoke. Tools are resolved from the registry at space
+// a subagent agent can invoke. Tools are resolved from the registry at space
 // startup and registered with the HTTPDispatcher. The Executor calls
-// dispatcher.Invoke during the worker execution loop.
+// dispatcher.Invoke during the subagent execution loop.
 package tool
 
 // Definition is the resolved tool specification fetched from the registry.

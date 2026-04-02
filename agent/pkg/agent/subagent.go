@@ -14,9 +14,9 @@ import (
 
 func (a *Agent) clock() time.Time { return time.Now() }
 
-// SpawnWorker implements cycle.WorkerSpawner.
+// SpawnSubagent implements cycle.SubagentSpawner.
 // It delegates to the subagent manager which enforces resource boundaries.
-func (a *Agent) SpawnWorker(ctx context.Context, step plan.Step) error {
+func (a *Agent) SpawnSubagent(ctx context.Context, step plan.Step) error {
 	if a.subagentMgr == nil {
 		return fmt.Errorf("subagent manager not initialized")
 	}

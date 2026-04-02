@@ -165,7 +165,7 @@ func AuditObserver(bus *eventbus.Bus) *Hook {
 				Data: map[string]string{
 					"tool":  tp.ToolName,
 					"step":  tp.StepID,
-					"agent": "worker",
+					"agent": "subagent",
 				},
 			})
 			return HookResult{Decision: Pass}

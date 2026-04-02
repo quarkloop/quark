@@ -34,11 +34,11 @@ Each tool runs as a standalone HTTP server. Start them before the agent:
 
 The `--addr` flag sets the listen address (not `--port`). Defaults:
 
-| Tool | Default Address |
-|------|----------------|
-| bash | 127.0.0.1:8091 |
-| read | 127.0.0.1:8092 |
-| write | 127.0.0.1:8093 |
+| Tool  | Default Address |
+| ----- | --------------- |
+| bash  | 127.0.0.1:8091  |
+| read  | 127.0.0.1:8092  |
+| write | 127.0.0.1:8093  |
 
 Check tool help with `./bin/bash serve --help`.
 
@@ -69,12 +69,12 @@ export OPENROUTER_API_KEY=sk-or-v1-...
 ./bin/agent run --dir /tmp/test-space --port 7100 --id supervisor
 ```
 
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--dir` | Space directory containing the Quarkfile | `.` |
-| `--port` | HTTP API port | 7100 |
-| `--id` | Agent ID (required) | — |
-| `--api-server` | Optional api-server URL for health reports | — |
+| Flag           | Description                                | Default |
+| -------------- | ------------------------------------------ | ------- |
+| `--dir`        | Space directory containing the Quarkfile   | `.`     |
+| `--port`       | HTTP API port                              | 7100    |
+| `--id`         | Agent ID (required)                        | —       |
+| `--api-server` | Optional api-server URL for health reports | —       |
 
 ### Environment Variables
 

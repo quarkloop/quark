@@ -36,7 +36,7 @@ func ExecuteStep(
 
 	systemPrompt := resolveSystemPrompt(res, stepDef, step.Agent)
 
-	workerCtx, err := buildWorkerContext(res, systemPrompt, agentcore.DefaultContextWindow)
+	subagentCtx, err := buildSubagentContext(res, systemPrompt, agentcore.DefaultContextWindow)
 	if err != nil {
 		return executeStepRaw(ctx, res, step, systemPrompt, artifacts)
 	}
@@ -51,11 +51,11 @@ func ExecuteStep(
 
 	var finalResult string
 	for iter := 0; iter < agentcore.MaxToolIterations; iter++ {
-		resp, err := inference.Infer(ctx, workerCtx, res, userMsg)
+		resp, err := inference.Infer(ctx, subagentCtx, res, userMsg)
 		if err != nil {
 			return "", fmt.Errorf("infer iter %d: %w", iter, err)
 		}
-		log.Printf("worker[%s]: iter %d, %d tokens", step.ID, iter, resp.TotalTokens())
+		log.Printf("subagent[%s]: iter %d, %d tokens", step.ID, iter, resp.TotalTokens())
 
 		// Prefer native tool calls over text-parsed ones.
 		var toolCall msg.ToolCallPayload
@@ -111,14 +111,14 @@ func ExecuteStep(
 			res.TC,
 		)
 		if err != nil {
-			log.Printf("worker[%s]: failed to create linked exchange: %v", step.ID, err)
+			log.Printf("subagent[%s]: failed to create linked exchange: %v", step.ID, err)
 			continue
 		}
 
 		tc = tc.WithVisibility(res.VisPolicy.For(llmctx.ToolCallMessageType))
 		tr = tr.WithVisibility(res.VisPolicy.For(llmctx.ToolResultMessageType))
-		workerCtx.AppendMessage(ctx, tc)
-		workerCtx.AppendMessage(ctx, tr)
+		subagentCtx.AppendMessage(ctx, tc)
+		subagentCtx.AppendMessage(ctx, tr)
 
 		userMsg = "" // next iteration: let LLM process tool results
 	}
@@ -134,11 +134,11 @@ func ExecuteStep(
 	}
 
 	if err := res.KB.Set(agentcore.NSArtifacts, step.ID, []byte(finalResult)); err != nil {
-		log.Printf("worker[%s]: failed to write artifact: %v", step.ID, err)
+		log.Printf("subagent[%s]: failed to write artifact: %v", step.ID, err)
 	}
 
-	if report := workerCtx.DetectOrphans(); report.HasOrphans() {
-		log.Printf("worker[%s]: %d orphaned messages detected", step.ID, len(report.OrphanIDs))
+	if report := subagentCtx.DetectOrphans(); report.HasOrphans() {
+		log.Printf("subagent[%s]: %d orphaned messages detected", step.ID, len(report.OrphanIDs))
 	}
 
 	return finalResult, nil
@@ -186,15 +186,15 @@ func executeStepRaw(ctx context.Context, res *agentcore.Resources, step plan.Ste
 	return resp.Content, nil
 }
 
-// buildWorkerContext creates a short-lived AgentContext for a worker step.
-func buildWorkerContext(res *agentcore.Resources, systemPrompt string, windowSize int) (*llmctx.AgentContext, error) {
+// buildSubagentContext creates a short-lived AgentContext for a worker step.
+func buildSubagentContext(res *agentcore.Resources, systemPrompt string, windowSize int) (*llmctx.AgentContext, error) {
 	if windowSize <= 0 {
 		windowSize = agentcore.DefaultContextWindow
 	}
 	window, _ := llmctx.NewContextWindow(int32(windowSize))
 
 	sysID, _ := res.IDGen.Next()
-	agentAuthor, _ := llmctx.NewAuthorID(agentcore.AuthorWorker)
+	agentAuthor, _ := llmctx.NewAuthorID(agentcore.AuthorSubagent)
 	sysMsg, err := llmctx.NewSystemPromptMessage(sysID, agentAuthor, systemPrompt, res.TC)
 	if err != nil {
 		return nil, err

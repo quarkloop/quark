@@ -41,7 +41,7 @@ func PlanPrompt(def *agentcore.Definition, tools []string, agents []string, poli
 
 	return fmt.Sprintf(`You are a supervisor agent. Create a focused execution plan for the user's request.
 
-Available worker agents: %s
+Available subagent agents: %s
 Available tools: %s
 
 Respond with a JSON object using this structure:
@@ -110,7 +110,7 @@ Rules:
 func SupervisorPrompt(def *agentcore.Definition, tools []string, agents []string) string {
 	return fmt.Sprintf(`You are the supervisor agent orchestrating a multi-agent space.
 
-Available worker agents: %s
+Available subagent agents: %s
 Available tools: %s
 
 Your job is to:
