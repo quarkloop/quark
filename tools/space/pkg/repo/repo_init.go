@@ -21,14 +21,14 @@ meta:
   author: ""                       # your name or team name
   labels: {}                       # arbitrary key/value tags
 
-# ── Default model ────────────────────────────────────────────────────────────
-# All agents inherit this unless they declare their own model.
-model:
-  provider: anthropic               # anthropic | openai | zhipu
-  name: claude-opus-4-6             # model name as accepted by the provider
-  # fallback:                       # optional fallback if the primary is unavailable
-  #   provider: openai
-  #   name: gpt-4o
+# ── Model (optional) ─────────────────────────────────────────────────────────
+# Model is optional. When absent the agent resolves from env vars or dynamic config.
+# model:
+#   provider: anthropic             # anthropic | openai | zhipu
+#   name: claude-opus-4-6           # model name as accepted by the provider
+#   fallback:                       # optional fallback if the primary is unavailable
+#     provider: openai
+#     name: gpt-4o
 
 # ── Supervisor agent ─────────────────────────────────────────────────────────
 # Every space has exactly one supervisor.  It receives the master goal, creates
@@ -74,6 +74,34 @@ tools:
 #     name: web_search
 #     config:
 #       endpoint: "http://127.0.0.1:8090/search"
+
+# ── Permissions ──────────────────────────────────────────────────────────────
+# Policy constraints enforced by the agent runtime.
+permissions:
+  filesystem:
+    allowed_paths: ["./", "/tmp"]
+    read_only: []
+  network:
+    allowed_hosts: ["api.openai.com", "api.anthropic.com"]
+    deny: ["10.0.0.0/8", "192.168.0.0/16"]
+  tools:
+    allowed: ["bash", "read", "write"]
+    denied: []
+  plugins:
+    allowed: []
+    auto_install: false
+  audit:
+    log_tool_calls: true
+    log_llm_responses: false
+    retention_days: 30
+
+# ── Capabilities ─────────────────────────────────────────────────────────────
+# What agents in this space are allowed to do.
+capabilities:
+  spawn_agents: true
+  max_workers: 10
+  create_plans: true
+  approval_policy: required       # required | auto
 
 # ── Environment variables ─────────────────────────────────────────────────────
 # Names of environment variables that will be read from the shell at 'quark run'
@@ -142,9 +170,11 @@ func runInit(dir string) error {
 	}
 	for _, d := range []string{
 		"prompts", "agents",
-		"kb/plans", "kb/memory", "kb/documents",
-		"kb/config", "kb/notes", "kb/artifacts",
-		".quark",
+		".quark/lock.yaml",
+		".quark/skills",
+		".quark/kb/plans", ".quark/kb/memory", ".quark/kb/documents",
+		".quark/kb/config", ".quark/kb/notes", ".quark/kb/artifacts",
+		".quark/plugins", ".quark/sessions",
 	} {
 		if err := os.MkdirAll(filepath.Join(absDir, d), 0755); err != nil {
 			return fmt.Errorf("creating %s: %w", d, err)
@@ -154,7 +184,6 @@ func runInit(dir string) error {
 		"Quarkfile":              defaultQuarkfile,
 		"prompts/supervisor.txt": defaultSupervisorPrompt,
 		".gitignore":             defaultGitignore,
-		".quark/lock.yaml":       defaultLockStub,
 	}
 	for name, content := range files {
 		path := filepath.Join(absDir, name)
@@ -163,6 +192,13 @@ func runInit(dir string) error {
 		}
 		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 			return fmt.Errorf("writing %s: %w", name, err)
+		}
+	}
+	// Write lock.yaml stub (directory already created above)
+	lockPath := filepath.Join(absDir, ".quark", "lock.yaml")
+	if _, err := os.Stat(lockPath); err != nil {
+		if err := os.WriteFile(lockPath, []byte(defaultLockStub), 0644); err != nil {
+			return fmt.Errorf("writing lock.yaml: %w", err)
 		}
 	}
 	return nil

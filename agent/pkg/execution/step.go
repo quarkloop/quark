@@ -36,7 +36,7 @@ func ExecuteStep(
 
 	systemPrompt := resolveSystemPrompt(res, stepDef, step.Agent)
 
-	workerCtx, err := buildWorkerContext(res, systemPrompt, stepDef.Config.ContextWindow)
+	workerCtx, err := buildWorkerContext(res, systemPrompt, agentcore.DefaultContextWindow)
 	if err != nil {
 		return executeStepRaw(ctx, res, step, systemPrompt, artifacts)
 	}

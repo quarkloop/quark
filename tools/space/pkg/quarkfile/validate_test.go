@@ -14,11 +14,17 @@ func base() *quarkfile.Quarkfile {
 	return &quarkfile.Quarkfile{
 		Quark: "1.0",
 		Meta:  quarkfile.Meta{Name: "test-space"},
-		Model: quarkfile.Model{Provider: "anthropic", Name: "claude-opus-4-6"},
 		Supervisor: quarkfile.Supervisor{
 			Agent: "quark/supervisor@latest",
 		},
 	}
+}
+
+// baseWithModel returns a valid Quarkfile with model section.
+func baseWithModel() *quarkfile.Quarkfile {
+	qf := base()
+	qf.Model = quarkfile.Model{Provider: "anthropic", Name: "claude-opus-4-6"}
+	return qf
 }
 
 func TestValidate_ValidMinimal(t *testing.T) {
@@ -40,30 +46,38 @@ func TestValidate_MissingMetaName(t *testing.T) {
 }
 
 func TestValidate_MissingModelProvider(t *testing.T) {
-	qf := base()
+	qf := baseWithModel()
 	qf.Model.Provider = ""
-	assertInvalid(t, qf, "model.provider")
+	assertInvalid(t, qf, "model")
 }
 
 func TestValidate_MissingModelName(t *testing.T) {
-	qf := base()
+	qf := baseWithModel()
 	qf.Model.Name = ""
-	assertInvalid(t, qf, "model.name")
+	assertInvalid(t, qf, "model")
 }
 
 func TestValidate_InvalidModelProvider(t *testing.T) {
-	qf := base()
+	qf := baseWithModel()
 	qf.Model.Provider = "made-up-provider"
 	assertInvalid(t, qf, "provider")
 }
 
 func TestValidate_ValidProviders(t *testing.T) {
 	for _, p := range []string{"anthropic", "openai", "zhipu", "noop"} {
-		qf := base()
+		qf := baseWithModel()
 		qf.Model.Provider = p
 		if err := quarkfile.Validate(t.TempDir(), qf); err != nil {
 			t.Errorf("provider %q should be valid, got: %v", p, err)
 		}
+	}
+}
+
+func TestValidate_NoModelSection(t *testing.T) {
+	// Model is optional — a Quarkfile without model should validate.
+	qf := base()
+	if err := quarkfile.Validate(t.TempDir(), qf); err != nil {
+		t.Fatalf("expected valid without model section, got: %v", err)
 	}
 }
 

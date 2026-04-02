@@ -84,7 +84,7 @@ func (a *Agent) Init() error {
 		ac, err := LoadSessionSnapshot(a.res.KB, a.res.TC, a.res.IDGen, mainKey)
 		if err != nil {
 			log.Printf("agent: no snapshot for main session, creating fresh context")
-			ac, err = a.buildFreshContext(a.def.Config.ContextWindow, agentcore.ModeAuto)
+			ac, err = a.buildFreshContext(agentcore.DefaultContextWindow, agentcore.ModeAuto)
 			if err != nil {
 				return fmt.Errorf("fresh context: %w", err)
 			}
@@ -117,7 +117,7 @@ func (a *Agent) Init() error {
 			return fmt.Errorf("create main session: %w", err)
 		}
 
-		ac, err := a.buildFreshContext(a.def.Config.ContextWindow, agentcore.ModeAuto)
+		ac, err := a.buildFreshContext(agentcore.DefaultContextWindow, agentcore.ModeAuto)
 		if err != nil {
 			return fmt.Errorf("fresh context: %w", err)
 		}
@@ -145,7 +145,7 @@ func (a *Agent) Init() error {
 		}
 		ac, err := LoadSessionSnapshot(a.res.KB, a.res.TC, a.res.IDGen, sess.Key)
 		if err != nil {
-			ac, _ = a.buildFreshContext(a.def.Config.ContextWindow, agentcore.ModeAuto)
+			ac, _ = a.buildFreshContext(agentcore.DefaultContextWindow, agentcore.ModeAuto)
 		}
 		a.mu.Lock()
 		a.sessions[sess.Key] = &SessionState{
@@ -375,7 +375,7 @@ func (a *Agent) CreateSession(t session.Type, title string) (*session.Session, e
 		return nil, fmt.Errorf("create session: %w", err)
 	}
 
-	ac, err := a.buildFreshContext(a.def.Config.ContextWindow, agentcore.ModeAuto)
+	ac, err := a.buildFreshContext(agentcore.DefaultContextWindow, agentcore.ModeAuto)
 	if err != nil {
 		return nil, fmt.Errorf("build context: %w", err)
 	}

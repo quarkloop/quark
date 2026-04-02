@@ -24,11 +24,8 @@ const (
 	ApprovalAuto ApprovalPolicy = "auto"
 )
 
-// Config holds agent configuration values.
+// Config holds agent policy configuration values.
 type Config struct {
-	ContextWindow  int            `json:"context_window"`
-	Compaction     string         `json:"compaction"`
-	MemoryPolicy   string         `json:"memory_policy"`
 	ApprovalPolicy ApprovalPolicy `json:"approval_policy"`
 }
 

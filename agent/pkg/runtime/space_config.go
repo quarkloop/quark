@@ -37,9 +37,6 @@ func loadSpaceConfig(dir string, store kb.Store) (*spaceConfig, error) {
 	}
 
 	supervisor := buildSupervisorDef(dir, qf)
-	if supervisor.Config.ContextWindow == 0 {
-		supervisor.Config.ContextWindow = agentcore.DefaultContextWindow
-	}
 	if policy := os.Getenv("QUARK_APPROVAL_POLICY"); policy != "" {
 		supervisor.Config.ApprovalPolicy = agentcore.ApprovalPolicy(policy)
 	}
@@ -55,8 +52,8 @@ func loadSpaceConfig(dir string, store kb.Store) (*spaceConfig, error) {
 		return nil, err
 	}
 
-	log.Printf("runtime: loaded space %q provider=%s model=%s tools=%v workers=%d approval=%s",
-		qf.Meta.Name, qf.Model.Provider, qf.Model.Name, dispatcher.List(), len(subAgents), supervisor.Config.ApprovalPolicy)
+	log.Printf("runtime: loaded space %q tools=%v workers=%d approval=%s",
+		qf.Meta.Name, dispatcher.List(), len(subAgents), supervisor.Config.ApprovalPolicy)
 
 	return &spaceConfig{
 		provider:   qf.Model.Provider,
@@ -68,19 +65,20 @@ func loadSpaceConfig(dir string, store kb.Store) (*spaceConfig, error) {
 	}, nil
 }
 
-// buildSupervisorDef creates the supervisor agent definition from the
-// Quarkfile. The system prompt is loaded from the prompt file if specified.
 func buildSupervisorDef(dir string, qf *quarkfile.Quarkfile) *agentcore.Definition {
 	def := &agentcore.Definition{
 		Name: "supervisor",
-		Config: agentcore.Config{
-			ContextWindow: agentcore.DefaultContextWindow,
-		},
 		Capabilities: agentcore.Capabilities{
-			SpawnAgents: true,
-			MaxWorkers:  10,
-			CreatePlans: true,
+			SpawnAgents: qf.Capabilities.SpawnAgents,
+			MaxWorkers:  qf.Capabilities.MaxWorkers,
+			CreatePlans: qf.Capabilities.CreatePlans,
 		},
+	}
+	if def.Capabilities.MaxWorkers == 0 {
+		def.Capabilities.MaxWorkers = 10
+	}
+	if qf.Capabilities.ApprovalPolicy != "" {
+		def.Config.ApprovalPolicy = agentcore.ApprovalPolicy(qf.Capabilities.ApprovalPolicy)
 	}
 	if qf.Supervisor.Prompt != "" {
 		if prompt, err := loadPromptText(dir, qf.Supervisor.Prompt); err == nil {
@@ -92,15 +90,11 @@ func buildSupervisorDef(dir string, qf *quarkfile.Quarkfile) *agentcore.Definiti
 	return def
 }
 
-// buildSubAgentDefs creates worker agent definitions from the Quarkfile.
 func buildSubAgentDefs(dir string, qf *quarkfile.Quarkfile) map[string]*agentcore.Definition {
 	subAgents := map[string]*agentcore.Definition{}
 	for _, entry := range qf.Agents {
 		def := &agentcore.Definition{
 			Name: entry.Name,
-			Config: agentcore.Config{
-				ContextWindow: agentcore.DefaultContextWindow,
-			},
 		}
 		if entry.Prompt != "" {
 			if prompt, err := loadPromptText(dir, entry.Prompt); err == nil {

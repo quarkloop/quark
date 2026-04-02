@@ -28,19 +28,16 @@ const QuarkfileFilename = "Quarkfile"
 // SHA-256 digest so builds are reproducible.
 const LockfileFilename = ".quark/lock.yaml"
 
-// Quarkfile is the parsed representation of the "Quarkfile" YAML.
-// It defines space identity, model provider, supervisor + worker agents,
-// tools, environment forwarding, KB configuration, and restart policy.
 // Quarkfile is the parsed, in-memory representation of the Quarkfile on disk.
 //
-// It declares the space name, LLM model/provider, supervisor agent, optional
-// worker agents, tools, environment variable forwarding, restart policy, and
-// network port exposure. Obtain one via Load; validate it with Validate.
+// It declares the space name, supervisor agent, optional worker agents, tools,
+// permissions, capabilities, environment variable forwarding, restart policy,
+// and network port exposure. Obtain one via Load; validate it with Validate.
 type Quarkfile struct {
 	Quark        string       `yaml:"quark"`
 	From         string       `yaml:"from,omitempty"`
 	Meta         Meta         `yaml:"meta"`
-	Model        Model        `yaml:"model"`
+	Model        Model        `yaml:"model,omitempty"`
 	Supervisor   Supervisor   `yaml:"supervisor"`
 	Agents       []Agent      `yaml:"agents,omitempty"`
 	Tools        []Tool       `yaml:"tools,omitempty"`
@@ -49,6 +46,12 @@ type Quarkfile struct {
 	ModelGateway ModelGateway `yaml:"model_gateway,omitempty"`
 	Network      Network      `yaml:"network,omitempty"`
 	Restart      string       `yaml:"restart,omitempty"`
+
+	// Permissions — policy constraints enforced by the agent runtime.
+	Permissions Permissions `yaml:"permissions,omitempty"`
+
+	// Capabilities — what agents in this space are allowed to do.
+	Capabilities Capabilities `yaml:"capabilities,omitempty"`
 }
 
 // Meta holds human-readable identity fields for the space.
@@ -135,6 +138,54 @@ type PortExpose struct {
 	Port        int    `yaml:"port"`
 	Protocol    string `yaml:"protocol"`
 	Description string `yaml:"description,omitempty"`
+}
+
+// Permissions defines policy constraints enforced by the agent runtime.
+type Permissions struct {
+	Filesystem FilesystemPermissions `yaml:"filesystem,omitempty"`
+	Network    NetworkPermissions    `yaml:"network,omitempty"`
+	Tools      ToolPermissions       `yaml:"tools,omitempty"`
+	Plugins    PluginPermissions     `yaml:"plugins,omitempty"`
+	Audit      AuditPermissions      `yaml:"audit,omitempty"`
+}
+
+// FilesystemPermissions controls which paths the agent can access.
+type FilesystemPermissions struct {
+	AllowedPaths []string `yaml:"allowed_paths,omitempty"`
+	ReadOnly     []string `yaml:"read_only,omitempty"`
+}
+
+// NetworkPermissions controls which hosts the agent can reach.
+type NetworkPermissions struct {
+	AllowedHosts []string `yaml:"allowed_hosts,omitempty"`
+	Deny         []string `yaml:"deny,omitempty"`
+}
+
+// ToolPermissions controls which tools the agent can invoke.
+type ToolPermissions struct {
+	Allowed []string `yaml:"allowed,omitempty"`
+	Denied  []string `yaml:"denied,omitempty"`
+}
+
+// PluginPermissions controls which plugins the agent can load.
+type PluginPermissions struct {
+	Allowed     []string `yaml:"allowed,omitempty"`
+	AutoInstall bool     `yaml:"auto_install"`
+}
+
+// AuditPermissions controls logging and retention policies.
+type AuditPermissions struct {
+	LogToolCalls    bool `yaml:"log_tool_calls"`
+	LogLLMResponses bool `yaml:"log_llm_responses"`
+	RetentionDays   int  `yaml:"retention_days,omitempty"`
+}
+
+// Capabilities declares what agents in this space are allowed to do.
+type Capabilities struct {
+	SpawnAgents    bool   `yaml:"spawn_agents"`
+	MaxWorkers     int    `yaml:"max_workers,omitempty"`
+	CreatePlans    bool   `yaml:"create_plans"`
+	ApprovalPolicy string `yaml:"approval_policy,omitempty"`
 }
 
 // Load reads and YAML-parses the Quarkfile inside dir.
