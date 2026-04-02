@@ -32,6 +32,7 @@ type AgentContext struct {
 	cachedTokens  TokenCount  // running total maintained on every mutation
 	compact       compactionTracker
 	tput          throughputTracker
+	budget        *BudgetConfig
 }
 
 // =============================================================================
@@ -62,6 +63,14 @@ func (ac *AgentContext) AppendMessage(ctx context.Context, message *Message) err
 	}
 	ac.mu.Lock()
 	defer ac.mu.Unlock()
+
+	if ac.budget != nil {
+		status := ac.budgetStatus()
+		if status.AtHardLimit {
+			return newErr(ErrCodeBudgetExceeded,
+				fmt.Sprintf("context budget hard limit reached (%d/%d tokens)", status.UsedTokens, status.TotalBudget), nil)
+		}
+	}
 
 	ac.index[message.id.value] = len(ac.messages)
 	ac.messages = append(ac.messages, message)
@@ -337,6 +346,67 @@ func (ac *AgentContext) Pressure() WindowPressure {
 
 // Window returns the configured ContextWindow.
 func (ac *AgentContext) Window() ContextWindow { return ac.contextWindow }
+
+// budgetStatus computes budget utilization without acquiring the lock.
+// Must only be called from methods that already hold ac.mu (read or write).
+func (ac *AgentContext) budgetStatus() BudgetStatus {
+	if ac.contextWindow.IsUnbound() {
+		return BudgetStatus{
+			TotalBudget:     0,
+			UsedTokens:      int(ac.cachedTokens.Value()),
+			AvailableTokens: -1,
+		}
+	}
+
+	cfg := ac.budget
+	softPct := defaultSoftThresholdPct
+	hardPct := defaultHardThresholdPct
+	total := int(ac.contextWindow.Value())
+
+	if cfg != nil {
+		if cfg.TotalTokens > 0 {
+			total = cfg.TotalTokens
+		}
+		if cfg.SoftThresholdPct > 0 {
+			softPct = cfg.SoftThresholdPct
+		}
+		if cfg.HardThresholdPct > 0 {
+			hardPct = cfg.HardThresholdPct
+		}
+	}
+
+	used := int(ac.cachedTokens.Value())
+	softThreshold := int(float64(total) * softPct)
+	hardThreshold := int(float64(total) * hardPct)
+	available := total - used
+	if available < 0 {
+		available = 0
+	}
+	usagePct := 0.0
+	if total > 0 {
+		usagePct = float64(used) / float64(total) * 100.0
+	}
+
+	return BudgetStatus{
+		TotalBudget:      total,
+		UsedTokens:       used,
+		AvailableTokens:  available,
+		UsagePct:         usagePct,
+		SoftThreshold:    softThreshold,
+		HardThreshold:    hardThreshold,
+		CompactionNeeded: used >= softThreshold,
+		AtHardLimit:      used >= hardThreshold,
+	}
+}
+
+// BudgetStatus returns a snapshot of the current token budget utilization.
+// Returns a zero BudgetStatus (with AvailableTokens=-1) when the context
+// window is unbounded.
+func (ac *AgentContext) BudgetStatus() BudgetStatus {
+	ac.mu.RLock()
+	defer ac.mu.RUnlock()
+	return ac.budgetStatus()
+}
 
 // TC returns the TokenComputer used by this context.
 // Expose this so callers constructing new Messages can use the same instance.
