@@ -105,6 +105,32 @@ func (o *ToolOrchestrator) Start(name, ref string, port int) (*ToolProcess, erro
 	return proc, nil
 }
 
+// Stop gracefully stops a single named tool process.
+func (o *ToolOrchestrator) Stop(name string) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	remaining := o.processes[:0]
+	for _, proc := range o.processes {
+		if proc.Name != name {
+			remaining = append(remaining, proc)
+			continue
+		}
+		if proc.Cmd != nil && proc.Cmd.Process != nil {
+			log.Printf("orchestrator: stopping %s (pid %d)", proc.Name, proc.Cmd.Process.Pid)
+			_ = proc.Cmd.Process.Signal(os.Interrupt)
+			done := make(chan error, 1)
+			go func(c *exec.Cmd) { done <- c.Wait() }(proc.Cmd)
+			select {
+			case <-done:
+			case <-time.After(3 * time.Second):
+				_ = proc.Cmd.Process.Kill()
+			}
+		}
+	}
+	o.processes = remaining
+}
+
 // Shutdown gracefully stops all managed tool processes.
 func (o *ToolOrchestrator) Shutdown() {
 	o.mu.Lock()
