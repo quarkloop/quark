@@ -26,10 +26,113 @@ import (
 type spaceConfig struct {
 	provider   string
 	modelName  string
+	routing    *quarkfile.RoutingSection
 	supervisor *agentcore.Definition
 	subAgents  map[string]*agentcore.Definition
 	registry   *tool.Registry
 	toolDefs   map[string]*tool.Definition
+	qf         *quarkfile.Quarkfile // raw parsed Quarkfile, retained for diffing
+}
+
+// ConfigDiff describes what changed between two Quarkfile versions.
+type ConfigDiff struct {
+	ModelChanged       bool
+	RoutingChanged     bool
+	ToolsAdded         []string
+	ToolsRemoved       []string
+	PermissionsChanged bool
+	PromptsChanged     bool
+}
+
+// IsEmpty reports whether the diff contains no changes.
+func (d ConfigDiff) IsEmpty() bool {
+	return !d.ModelChanged && !d.RoutingChanged &&
+		len(d.ToolsAdded) == 0 && len(d.ToolsRemoved) == 0 &&
+		!d.PermissionsChanged && !d.PromptsChanged
+}
+
+// DiffQuarkfiles returns the set of changes between two Quarkfile versions.
+// Returns an empty diff if either argument is nil.
+func DiffQuarkfiles(oldQF, newQF *quarkfile.Quarkfile) ConfigDiff {
+	if oldQF == nil || newQF == nil {
+		return ConfigDiff{}
+	}
+	var d ConfigDiff
+
+	if oldQF.Model.Provider != newQF.Model.Provider || oldQF.Model.Name != newQF.Model.Name {
+		d.ModelChanged = true
+	}
+
+	if !routingSectionsEqual(oldQF.Routing, newQF.Routing) {
+		d.RoutingChanged = true
+	}
+
+	oldTools := make(map[string]bool, len(oldQF.Tools))
+	for _, t := range oldQF.Tools {
+		oldTools[t.Name] = true
+	}
+	newTools := make(map[string]bool, len(newQF.Tools))
+	for _, t := range newQF.Tools {
+		newTools[t.Name] = true
+	}
+	for name := range newTools {
+		if !oldTools[name] {
+			d.ToolsAdded = append(d.ToolsAdded, name)
+		}
+	}
+	for name := range oldTools {
+		if !newTools[name] {
+			d.ToolsRemoved = append(d.ToolsRemoved, name)
+		}
+	}
+
+	if !permissionsEqual(oldQF.Permissions, newQF.Permissions) {
+		d.PermissionsChanged = true
+	}
+
+	if oldQF.Supervisor.Prompt != newQF.Supervisor.Prompt {
+		d.PromptsChanged = true
+	}
+
+	return d
+}
+
+func routingSectionsEqual(a, b quarkfile.RoutingSection) bool {
+	if len(a.Rules) != len(b.Rules) || len(a.Fallback) != len(b.Fallback) {
+		return false
+	}
+	for i := range a.Rules {
+		if a.Rules[i] != b.Rules[i] {
+			return false
+		}
+	}
+	for i := range a.Fallback {
+		if a.Fallback[i] != b.Fallback[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func permissionsEqual(a, b quarkfile.Permissions) bool {
+	return slicesEqual(a.Filesystem.AllowedPaths, b.Filesystem.AllowedPaths) &&
+		slicesEqual(a.Filesystem.ReadOnly, b.Filesystem.ReadOnly) &&
+		slicesEqual(a.Network.AllowedHosts, b.Network.AllowedHosts) &&
+		slicesEqual(a.Network.Deny, b.Network.Deny) &&
+		slicesEqual(a.Tools.Allowed, b.Tools.Allowed) &&
+		slicesEqual(a.Tools.Denied, b.Tools.Denied)
+}
+
+func slicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func loadSpaceConfig(dir string, store kb.Store) (*spaceConfig, error) {
@@ -57,13 +160,21 @@ func loadSpaceConfig(dir string, store kb.Store) (*spaceConfig, error) {
 	log.Printf("runtime: loaded space %q tools=%v subagents=%d approval=%s",
 		qf.Meta.Name, registry.List(), len(subAgents), supervisor.Config.ApprovalPolicy)
 
+	var routing *quarkfile.RoutingSection
+	if len(qf.Routing.Rules) > 0 || len(qf.Routing.Fallback) > 0 {
+		r := qf.Routing
+		routing = &r
+	}
+
 	return &spaceConfig{
 		provider:   qf.Model.Provider,
 		modelName:  qf.Model.Name,
+		routing:    routing,
 		supervisor: supervisor,
 		subAgents:  subAgents,
 		registry:   registry,
 		toolDefs:   toolDefs,
+		qf:         qf,
 	}, nil
 }
 
@@ -481,4 +592,24 @@ func (s *agentService) RejectPlan(ctx context.Context, r *http.Request) error {
 		return agentapi.Error(http.StatusBadRequest, err.Error(), err)
 	}
 	return nil
+}
+
+func (s *agentService) SessionBudget(ctx context.Context, r *http.Request, sessionKey string) (*agentapi.BudgetResponse, error) {
+	a, err := s.resolveAgent(ctx, sessionKey)
+	if err != nil {
+		return nil, agentapi.Error(http.StatusNotFound, "agent not found", err)
+	}
+	status, err := a.BudgetStatus(sessionKey)
+	if err != nil {
+		return nil, agentapi.Error(http.StatusNotFound, "session not found", err)
+	}
+	return &agentapi.BudgetResponse{
+		TotalBudget:      status.TotalBudget,
+		UsedTokens:       status.UsedTokens,
+		AvailableTokens:  status.AvailableTokens,
+		UsagePct:         status.UsagePct,
+		AtSoftLimit:      status.CompactionNeeded,
+		AtHardLimit:      status.AtHardLimit,
+		CompactionNeeded: status.CompactionNeeded,
+	}, nil
 }
