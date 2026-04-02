@@ -28,7 +28,7 @@ func processMasterPlan(
 	var cr *agentcore.ChatResponse
 
 	if req.Stream {
-		if sg, ok := res.Gateway.(model.StreamingGateway); ok {
+		if sg, ok := res.GetGateway().(model.StreamingGateway); ok {
 			resp, err := chatStream(ctx, ac, res, deps, sg, message)
 			if err != nil {
 				return nil, fmt.Errorf("masterplan stream: %w", err)
