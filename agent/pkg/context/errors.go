@@ -34,6 +34,7 @@ const (
 	ErrCodeSerializationFailed ContextErrorCode = "SERIALIZATION_FAILED"
 	ErrCodeRepositoryFailed    ContextErrorCode = "REPOSITORY_FAILED"
 	ErrCodeInvalidConfig       ContextErrorCode = "INVALID_CONFIG"
+	ErrCodeBudgetExceeded      ContextErrorCode = "BUDGET_EXCEEDED"
 )
 
 // ---------------------------------------------------------------------------
