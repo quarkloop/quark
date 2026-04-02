@@ -29,6 +29,7 @@ type AgentContextBuilder struct {
 	compactor    Compactor
 	tc           TokenComputer
 	idGen        IDGenerator
+	budget       *BudgetConfig
 }
 
 // NewAgentContextBuilder returns a fresh builder with no configuration set.
@@ -70,6 +71,14 @@ func (b *AgentContextBuilder) WithIDGenerator(g IDGenerator) *AgentContextBuilde
 	return b
 }
 
+// WithBudget sets the token budget configuration for the context.
+// Optional: when not set, no hard budget enforcement is applied beyond the
+// context window pressure heuristics.
+func (b *AgentContextBuilder) WithBudget(cfg *BudgetConfig) *AgentContextBuilder {
+	b.budget = cfg
+	return b
+}
+
 // Build validates the configuration and returns a ready AgentContext.
 // Returns *ContextError with ErrCodeInvalidConfig if required fields are missing.
 func (b *AgentContextBuilder) Build() (*AgentContext, error) {
@@ -90,6 +99,7 @@ func (b *AgentContextBuilder) Build() (*AgentContext, error) {
 		tc:            b.tc,
 		idGen:         idGen,
 		tput:          newThroughputTracker(),
+		budget:        b.budget,
 	}
 	if b.systemPrompt != nil {
 		ac.messages = append(ac.messages, b.systemPrompt)
