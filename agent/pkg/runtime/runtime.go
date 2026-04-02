@@ -31,6 +31,7 @@ import (
 	"github.com/quarkloop/agent/pkg/model"
 	"github.com/quarkloop/agent/pkg/resolver"
 	"github.com/quarkloop/agent/pkg/session"
+	"github.com/quarkloop/agent/pkg/skill"
 	"github.com/quarkloop/agent/pkg/tool"
 	"github.com/quarkloop/core/pkg/kb"
 )
@@ -119,14 +120,21 @@ func New(cfg *Config) (*Runtime, error) {
 		log.Printf("runtime: auto-configure warning: %v", err)
 	}
 
+	// Build skill resolver with space and builtin roots.
+	spaceSkillsDir := filepath.Join(cfg.Dir, ".quark", "skills")
+	skillResolver := skill.NewResolver(
+		skill.Root{Dir: spaceSkillsDir, Source: skill.SourceSpace, Priority: 3},
+	)
+
 	res := &agentcore.Resources{
-		KB:          k,
-		ConfigStore: cfgStore,
-		EventBus:    bus,
-		Activity:    actWriter,
-		Hooks:       hookReg,
-		Gateway:     gw,
-		Dispatcher:  spaceCfg.registry,
+		KB:            k,
+		ConfigStore:   cfgStore,
+		EventBus:      bus,
+		Activity:      actWriter,
+		Hooks:         hookReg,
+		SkillResolver: skillResolver,
+		Gateway:       gw,
+		Dispatcher:    spaceCfg.registry,
 	}
 
 	// Register built-in security and audit hooks.

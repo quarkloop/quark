@@ -143,17 +143,25 @@ func SystemPromptForMode(def *agentcore.Definition, res *agentcore.Resources, mo
 	tools := res.Dispatcher.List()
 	agents := make([]string, 0)
 
+	var base string
 	switch mode {
 	case agentcore.ModeAsk:
-		return AskPrompt(def, res.Gateway.Parser(), tools)
+		base = AskPrompt(def, res.Gateway.Parser(), tools)
 	case agentcore.ModePlan:
-		return PlanPrompt(def, tools, agents, def.Config.ApprovalPolicy)
+		base = PlanPrompt(def, tools, agents, def.Config.ApprovalPolicy)
 	case agentcore.ModeMasterPlan:
-		return MasterPlanPrompt(def, agents, def.Config.ApprovalPolicy)
+		base = MasterPlanPrompt(def, agents, def.Config.ApprovalPolicy)
 	default:
-		// Auto mode: use ask prompt as the default since it doesn't
-		// instruct JSON output. The actual mode handler will adjust
-		// the system prompt if needed (e.g. plan/masterplan).
-		return AskPrompt(def, res.Gateway.Parser(), tools)
+		base = AskPrompt(def, res.Gateway.Parser(), tools)
 	}
+
+	// Append active skills if resolver is available.
+	if res.SkillResolver != nil {
+		skills := res.SkillResolver.ResolveByTrigger(base)
+		for _, s := range skills {
+			base += fmt.Sprintf("\n\n## Skill: %s\n%s\n", s.Name, s.Content)
+		}
+	}
+
+	return base
 }
