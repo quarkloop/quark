@@ -30,7 +30,7 @@ func processPlan(
 
 	// Streaming path.
 	if req.Stream {
-		if sg, ok := res.Gateway.(model.StreamingGateway); ok {
+		if sg, ok := res.GetGateway().(model.StreamingGateway); ok {
 			resp, err := chatStream(ctx, ac, res, deps, sg, message)
 			if err != nil {
 				return nil, fmt.Errorf("plan stream: %w", err)
@@ -174,14 +174,15 @@ func chatStream(
 	sg model.StreamingGateway,
 	message string,
 ) (*agentcore.ChatResponse, error) {
-	adapter, err := res.AdapterReg.Get(res.Gateway.Provider())
+	gw := res.GetGateway()
+	adapter, err := res.AdapterReg.Get(gw.Provider())
 	if err != nil {
 		return nil, fmt.Errorf("chat stream: adapter: %w", err)
 	}
 	ca := llmctx.NewContextAdapter(ac, adapter)
 	payload, err := ca.BuildRequest(llmctx.RequestOptions{
-		Model:     res.Gateway.ModelName(),
-		MaxTokens: res.Gateway.MaxTokens(),
+		Model:     gw.ModelName(),
+		MaxTokens: gw.MaxTokens(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("chat stream: build request: %w", err)
