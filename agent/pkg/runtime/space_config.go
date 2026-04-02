@@ -16,6 +16,7 @@ import (
 	"github.com/quarkloop/agent/pkg/agentcore"
 	"github.com/quarkloop/agent/pkg/eventbus"
 	"github.com/quarkloop/agent/pkg/plan"
+	"github.com/quarkloop/agent/pkg/resolver"
 	"github.com/quarkloop/agent/pkg/session"
 	"github.com/quarkloop/agent/pkg/tool"
 	"github.com/quarkloop/core/pkg/kb"
@@ -162,44 +163,72 @@ func loadPromptText(dir, promptPath string) (string, error) {
 }
 
 type agentService struct {
-	agentID      string
 	dir          string
 	kb           kb.Store
-	agent        *agent.Agent
+	registry     *agent.Registry
+	resolver     resolver.Resolver
 	bus          *eventbus.Bus
 	actWriter    *activity.Writer
 	sessionStore *session.Store
 }
 
-func newAgentService(agentID, dir string, store kb.Store, a *agent.Agent, bus *eventbus.Bus, actWriter *activity.Writer, sessStore *session.Store) *agentService {
-	return &agentService{agentID: agentID, dir: dir, kb: store, agent: a, bus: bus, actWriter: actWriter, sessionStore: sessStore}
+func newAgentService(dir string, store kb.Store, registry *agent.Registry, res resolver.Resolver, bus *eventbus.Bus, actWriter *activity.Writer, sessStore *session.Store) *agentService {
+	return &agentService{dir: dir, kb: store, registry: registry, resolver: res, bus: bus, actWriter: actWriter, sessionStore: sessStore}
+}
+
+func (s *agentService) resolveAgent(ctx context.Context, sessionKey string) (*agent.Agent, error) {
+	msg := resolver.InboundMessage{
+		SessionKey: sessionKey,
+		Channel:    "web",
+	}
+	agentID, err := s.resolver.Resolve(ctx, msg)
+	if err != nil {
+		return nil, fmt.Errorf("resolve agent: %w", err)
+	}
+	a, ok := s.registry.Get(agentID)
+	if !ok {
+		return nil, fmt.Errorf("agent %q not found", agentID)
+	}
+	return a, nil
 }
 
 func (s *agentService) Health(ctx context.Context, r *http.Request) (*agentapi.HealthResponse, error) {
-	return &agentapi.HealthResponse{AgentID: s.agentID, Status: "running"}, nil
+	return &agentapi.HealthResponse{AgentID: "supervisor", Status: "running"}, nil
 }
 
 func (s *agentService) Info(ctx context.Context, r *http.Request) (*agentapi.InfoResponse, error) {
+	a, err := s.resolveAgent(ctx, "")
+	if err != nil {
+		return nil, err
+	}
 	return &agentapi.InfoResponse{
-		AgentID:  s.agentID,
-		Provider: s.agent.Provider(),
-		Model:    s.agent.ModelName(),
-		Mode:     string(s.agent.Mode()),
-		Tools:    s.agent.Tools(),
+		AgentID:  "supervisor",
+		Provider: a.Provider(),
+		Model:    a.ModelName(),
+		Mode:     string(a.Mode()),
+		Tools:    a.Tools(),
 	}, nil
 }
 
 func (s *agentService) Mode(ctx context.Context, r *http.Request) (*agentapi.ModeResponse, error) {
-	return &agentapi.ModeResponse{Mode: string(s.agent.Mode())}, nil
+	a, err := s.resolveAgent(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	return &agentapi.ModeResponse{Mode: string(a.Mode())}, nil
 }
 
 func (s *agentService) Stats(ctx context.Context, r *http.Request) (agentapi.StatsResponse, error) {
-	resp := agentapi.StatsResponse{
-		"agent_id":    s.agentID,
-		"agent_count": 1,
-		"mode":        string(s.agent.Mode()),
+	a, err := s.resolveAgent(ctx, "")
+	if err != nil {
+		return nil, err
 	}
-	if cs := s.agent.ContextStats(); cs != nil {
+	resp := agentapi.StatsResponse{
+		"agent_id":    "supervisor",
+		"agent_count": len(s.registry.List()),
+		"mode":        string(a.Mode()),
+	}
+	if cs := a.ContextStats(); cs != nil {
 		var contextStats map[string]interface{}
 		raw, err := json.Marshal(cs)
 		if err == nil && json.Unmarshal(raw, &contextStats) == nil {
@@ -210,6 +239,11 @@ func (s *agentService) Stats(ctx context.Context, r *http.Request) (agentapi.Sta
 }
 
 func (s *agentService) Chat(ctx context.Context, r *http.Request, req agentapi.ChatRequest) (*agentapi.ChatResponse, error) {
+	a, err := s.resolveAgent(ctx, req.SessionKey)
+	if err != nil {
+		return nil, err
+	}
+
 	agentReq := agentcore.ChatRequest{
 		Message:    req.Message,
 		SessionKey: req.SessionKey,
@@ -235,7 +269,7 @@ func (s *agentService) Chat(ctx context.Context, r *http.Request, req agentapi.C
 		}
 	}
 
-	resp, err := s.agent.Chat(ctx, req.SessionKey, agentReq)
+	resp, err := a.Chat(ctx, req.SessionKey, agentReq)
 	if err != nil {
 		return nil, err
 	}
@@ -345,7 +379,11 @@ func convertActivity(event activity.Event) agentapi.ActivityRecord {
 }
 
 func (s *agentService) Sessions(ctx context.Context, r *http.Request) ([]agentapi.SessionRecord, error) {
-	sessions, err := s.agent.ListSessions()
+	a, err := s.resolveAgent(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	sessions, err := a.ListSessions()
 	if err != nil {
 		return nil, err
 	}
@@ -357,7 +395,11 @@ func (s *agentService) Sessions(ctx context.Context, r *http.Request) ([]agentap
 }
 
 func (s *agentService) Session(ctx context.Context, r *http.Request, sessionKey string) (*agentapi.SessionRecord, error) {
-	sess, err := s.agent.GetSession(sessionKey)
+	a, err := s.resolveAgent(ctx, sessionKey)
+	if err != nil {
+		return nil, agentapi.Error(http.StatusNotFound, "session not found", err)
+	}
+	sess, err := a.GetSession(sessionKey)
 	if err != nil {
 		return nil, agentapi.Error(http.StatusNotFound, "session not found", err)
 	}
@@ -381,7 +423,11 @@ func (s *agentService) SessionActivity(ctx context.Context, r *http.Request, ses
 }
 
 func (s *agentService) CreateSession(ctx context.Context, r *http.Request, req agentapi.CreateSessionRequest) (*agentapi.CreateSessionResponse, error) {
-	sess, err := s.agent.CreateSession(session.Type(req.Type), req.Title)
+	a, err := s.resolveAgent(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	sess, err := a.CreateSession(session.Type(req.Type), req.Title)
 	if err != nil {
 		return nil, agentapi.Error(http.StatusBadRequest, err.Error(), err)
 	}
@@ -391,7 +437,11 @@ func (s *agentService) CreateSession(ctx context.Context, r *http.Request, req a
 }
 
 func (s *agentService) DeleteSession(ctx context.Context, r *http.Request, sessionKey string) error {
-	if err := s.agent.DeleteSession(sessionKey); err != nil {
+	a, err := s.resolveAgent(ctx, sessionKey)
+	if err != nil {
+		return err
+	}
+	if err := a.DeleteSession(sessionKey); err != nil {
 		return agentapi.Error(http.StatusBadRequest, err.Error(), err)
 	}
 	return nil
@@ -411,7 +461,11 @@ func convertSession(sess *session.Session) agentapi.SessionRecord {
 }
 
 func (s *agentService) ApprovePlan(ctx context.Context, r *http.Request) (*agentapi.Plan, error) {
-	p, err := s.agent.ApprovePlan()
+	a, err := s.resolveAgent(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	p, err := a.ApprovePlan()
 	if err != nil {
 		return nil, agentapi.Error(http.StatusBadRequest, err.Error(), err)
 	}
@@ -419,7 +473,11 @@ func (s *agentService) ApprovePlan(ctx context.Context, r *http.Request) (*agent
 }
 
 func (s *agentService) RejectPlan(ctx context.Context, r *http.Request) error {
-	if err := s.agent.RejectPlan(); err != nil {
+	a, err := s.resolveAgent(ctx, "")
+	if err != nil {
+		return err
+	}
+	if err := a.RejectPlan(); err != nil {
 		return agentapi.Error(http.StatusBadRequest, err.Error(), err)
 	}
 	return nil

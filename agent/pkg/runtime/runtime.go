@@ -29,6 +29,7 @@ import (
 	"github.com/quarkloop/agent/pkg/hooks"
 	"github.com/quarkloop/agent/pkg/infra/httpserver"
 	"github.com/quarkloop/agent/pkg/model"
+	"github.com/quarkloop/agent/pkg/resolver"
 	"github.com/quarkloop/agent/pkg/session"
 	"github.com/quarkloop/agent/pkg/tool"
 	"github.com/quarkloop/core/pkg/kb"
@@ -46,7 +47,8 @@ type Config struct {
 type Runtime struct {
 	cfg          *Config
 	kb           kb.Store
-	agent        *agent.Agent
+	registry     *agent.Registry
+	resolver     resolver.Resolver
 	bus          *eventbus.Bus
 	actWriter    *activity.Writer
 	httpSrv      *httpserver.Server
@@ -129,13 +131,15 @@ func New(cfg *Config) (*Runtime, error) {
 
 	// Register built-in security and audit hooks.
 	hooks.RegisterBuiltInHooks(hookReg, hooks.ToolPermissions{
-		Allowed: nil, // populated from Quarkfile permissions.tools.allowed
-		Denied:  nil, // populated from Quarkfile permissions.tools.denied
+		Allowed: nil,
+		Denied:  nil,
 	}, hooks.FilesystemPermissions{
 		AllowedPaths: nil,
 		ReadOnly:     nil,
 	}, bus)
 
+	// Create agent registry and register the supervisor agent.
+	registry := agent.NewRegistry()
 	a := agent.New(cfg.AgentID, spaceCfg.supervisor, res, sessStore, spaceCfg.subAgents)
 	if err := a.Init(); err != nil {
 		if orchestrator != nil {
@@ -144,10 +148,17 @@ func New(cfg *Config) (*Runtime, error) {
 		k.Close()
 		return nil, fmt.Errorf("initialise agent: %w", err)
 	}
+	registry.Register(cfg.AgentID, a)
+
+	// Build the resolver chain: session affinity → fallback to supervisor.
+	chain := resolver.NewChainResolver(
+		&resolver.SessionAffinityResolver{},
+		resolver.NewFallbackResolver(cfg.AgentID),
+	)
 
 	mux := http.NewServeMux()
 	agentapi.NewHandler(
-		newAgentService(cfg.AgentID, cfg.Dir, k, a, bus, actWriter, sessStore),
+		newAgentService(cfg.Dir, k, registry, chain, bus, actWriter, sessStore),
 		agentapi.WithBasePath(agentapi.DefaultBasePath),
 		agentapi.WithAliasBasePath(""),
 	).RegisterRoutes(mux)
@@ -156,7 +167,8 @@ func New(cfg *Config) (*Runtime, error) {
 	return &Runtime{
 		cfg:          cfg,
 		kb:           k,
-		agent:        a,
+		registry:     registry,
+		resolver:     chain,
 		bus:          bus,
 		actWriter:    actWriter,
 		httpSrv:      srv,
@@ -181,7 +193,20 @@ func (r *Runtime) Run(ctx context.Context) error {
 	go r.heartbeat(ctx)
 
 	log.Printf("runtime %s ready on port %d", r.cfg.AgentID, r.cfg.Port)
-	return r.agent.Run(ctx)
+
+	// Run all registered agents.
+	for _, agentID := range r.registry.List() {
+		a, _ := r.registry.Get(agentID)
+		go func(id string, ag *agent.Agent) {
+			if err := ag.Run(ctx); err != nil {
+				log.Printf("runtime %s: agent loop error: %v", id, err)
+			}
+		}(agentID, a)
+	}
+
+	// Block until context is cancelled.
+	<-ctx.Done()
+	return ctx.Err()
 }
 
 func (r *Runtime) Close() {
