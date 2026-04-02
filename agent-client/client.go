@@ -170,6 +170,15 @@ func (c *Client) RejectPlan(ctx context.Context) error {
 	return c.transport.Post(ctx, c.path(agentapi.PathPlanReject), nil, nil)
 }
 
+func (c *Client) SessionBudget(ctx context.Context, sessionKey string) (*agentapi.BudgetResponse, error) {
+	path := c.path(agentapi.PathSessions) + "/" + sessionKey + "/budget"
+	var resp agentapi.BudgetResponse
+	if err := c.transport.Get(ctx, path, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 func (c *Client) StreamActivity(ctx context.Context, fn func(agentapi.ActivityRecord)) error {
 	return c.transport.StreamSSE(ctx, c.path(agentapi.PathActivityStream), func(chunk string) {
 		var record agentapi.ActivityRecord
