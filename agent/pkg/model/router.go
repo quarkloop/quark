@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"regexp"
 	"strings"
 )
@@ -10,6 +11,66 @@ type RoutingRule struct {
 	Match   string
 	re      *regexp.Regexp
 	Gateway Gateway
+}
+
+// RoutingGateway selects a gateway per request based on routing rules.
+type RoutingGateway struct {
+	rules    []*RoutingRule
+	default_ Gateway
+}
+
+// NewRoutingGateway creates a routing gateway.
+func NewRoutingGateway(rules []RoutingRule, default_ Gateway) *RoutingGateway {
+	compiled := make([]*RoutingRule, 0, len(rules))
+	for _, r := range rules {
+		re, err := regexp.Compile(r.Match)
+		if err != nil {
+			continue
+		}
+		compiled = append(compiled, &RoutingRule{
+			Match:   r.Match,
+			re:      re,
+			Gateway: r.Gateway,
+		})
+	}
+	return &RoutingGateway{
+		rules:    compiled,
+		default_: default_,
+	}
+}
+
+func (r *RoutingGateway) InferRaw(ctx context.Context, payload []byte) (*RawResponse, error) {
+	gw := r.selectGateway(payload)
+	return gw.InferRaw(ctx, payload)
+}
+
+func (r *RoutingGateway) Provider() string {
+	return r.default_.Provider()
+}
+
+func (r *RoutingGateway) ModelName() string {
+	return r.default_.ModelName()
+}
+
+func (r *RoutingGateway) MaxTokens() int {
+	return r.default_.MaxTokens()
+}
+
+func (r *RoutingGateway) Parser() ToolCallParser {
+	return r.default_.Parser()
+}
+
+func (r *RoutingGateway) selectGateway(payload []byte) Gateway {
+	msg := extractUserMessage(payload)
+	if msg == "" {
+		return r.default_
+	}
+	for _, rule := range r.rules {
+		if rule.re.MatchString(msg) {
+			return rule.Gateway
+		}
+	}
+	return r.default_
 }
 
 // extractUserMessage pulls the last user message content from a JSON payload.
