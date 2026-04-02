@@ -36,6 +36,9 @@ const (
 	KindPluginLoaded      EventKind = "plugin.loaded"
 	KindPluginUnloaded    EventKind = "plugin.unloaded"
 	KindIntervention      EventKind = "intervention.received"
+	KindBudgetSoftLimit   EventKind = "budget.soft_limit"
+	KindBudgetHardLimit   EventKind = "budget.hard_limit"
+	KindBudgetCompacted   EventKind = "budget.compacted"
 )
 
 // Event is the unit of broadcast.
