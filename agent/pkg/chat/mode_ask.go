@@ -29,7 +29,7 @@ func processAsk(
 ) (*agentcore.ChatResponse, error) {
 	userMsg := req.Message
 	var totalIn, totalOut int
-	parser := res.Gateway.Parser()
+	parser := res.GetGateway().Parser()
 
 	for iter := 0; iter < agentcore.MaxAskToolIterations; iter++ {
 		// Check for interventions between tool iterations.
@@ -88,7 +88,7 @@ func processAsk(
 		// Execute the tool call.
 		log.Printf("ask: tool call %s (iter %d)", toolCall.ToolName, iter)
 		emitActivity(res.EventBus, req.SessionKey, eventbus.KindToolCalled, execution.BuildToolCalledActivityData("ask", toolCall))
-		toolResult := execution.InvokeTool(ctx, res.Dispatcher, "ask", toolCall)
+		toolResult := execution.InvokeTool(ctx, res.GetDispatcher(), "ask", toolCall)
 		emitActivity(res.EventBus, req.SessionKey, eventbus.KindToolCompleted, execution.BuildToolCompletedActivityData("ask", toolResult))
 
 		// Store tool output as artifact.
