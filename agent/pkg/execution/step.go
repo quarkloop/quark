@@ -47,7 +47,7 @@ func ExecuteStep(
 	requiredToolsBeforeSummary := RequiredToolCallsBeforeSummary(step.Description)
 	successfulToolCalls := map[string]bool{}
 	initialToolSatisfied := !requiresToolFirst
-	parser := res.Gateway.Parser()
+	parser := res.GetGateway().Parser()
 
 	var finalResult string
 	for iter := 0; iter < agentcore.MaxToolIterations; iter++ {
@@ -90,7 +90,7 @@ func ExecuteStep(
 		}
 
 		emitActivity(res.EventBus, eventbus.KindToolCalled, BuildToolCalledActivityData(step.ID, toolCall))
-		result := InvokeTool(ctx, res.Dispatcher, step.ID, toolCall)
+		result := InvokeTool(ctx, res.GetDispatcher(), step.ID, toolCall)
 		emitActivity(res.EventBus, eventbus.KindToolCompleted, BuildToolCompletedActivityData(step.ID, result))
 
 		if !result.IsError {
@@ -169,17 +169,18 @@ func executeStepRaw(ctx context.Context, res *agentcore.Resources, step plan.Ste
 	m, _ := inference.NewUserMessage(res.TC, res.IDGen, agentcore.AuthorUser, userMsg)
 	ac.AppendMessage(ctx, m)
 
-	adapter, _ := res.AdapterReg.Get(res.Gateway.Provider())
+	gw := res.GetGateway()
+	adapter, _ := res.AdapterReg.Get(gw.Provider())
 	ca := llmctx.NewContextAdapter(ac, adapter)
 	payload, err := ca.BuildRequest(llmctx.RequestOptions{
-		Model:     res.Gateway.ModelName(),
-		MaxTokens: res.Gateway.MaxTokens(),
+		Model:     gw.ModelName(),
+		MaxTokens: gw.MaxTokens(),
 	})
 	if err != nil {
 		return "", err
 	}
 
-	resp, err := res.Gateway.InferRaw(ctx, payload)
+	resp, err := gw.InferRaw(ctx, payload)
 	if err != nil {
 		return "", err
 	}
