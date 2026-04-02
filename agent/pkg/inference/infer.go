@@ -9,6 +9,7 @@ import (
 
 	"github.com/quarkloop/agent/pkg/agentcore"
 	llmctx "github.com/quarkloop/agent/pkg/context"
+	"github.com/quarkloop/agent/pkg/eventbus"
 	"github.com/quarkloop/agent/pkg/model"
 )
 
@@ -55,10 +56,17 @@ func Infer(
 		ac.AppendMessage(ctx, agtMsg)
 	}
 
-	if ac.Pressure() >= llmctx.PressureHigh {
-		log.Printf("inference: context pressure %s — auto-compacting", ac.Pressure())
+	status := ac.BudgetStatus()
+	if status.CompactionNeeded {
+		log.Printf("inference: budget soft limit reached (%d/%d tokens, %.1f%%) — compacting",
+			status.UsedTokens, status.TotalBudget, status.UsagePct)
 		if err := ac.Compact(ctx); err != nil {
 			log.Printf("inference: compact error: %v", err)
+		} else if res.EventBus != nil {
+			res.EventBus.Emit(eventbus.Event{
+				Kind: eventbus.KindBudgetCompacted,
+				Data: status,
+			})
 		}
 	}
 
