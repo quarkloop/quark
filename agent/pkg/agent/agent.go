@@ -234,7 +234,7 @@ func (a *Agent) Chat(ctx context.Context, sessionKey string, req agentcore.ChatR
 // Run starts the agent loop, blocking until ctx is cancelled.
 func (a *Agent) Run(ctx context.Context) error {
 	log.Printf("agent: starting (name=%s model=%s/%s)",
-		a.def.Name, a.res.Gateway.Provider(), a.res.Gateway.ModelName())
+		a.def.Name, a.res.GetGateway().Provider(), a.res.GetGateway().ModelName())
 
 	mainKey := session.MainKey(a.agentID)
 	a.emit(mainKey, eventbus.KindSessionStarted, map[string]string{
@@ -532,13 +532,28 @@ func (a *Agent) SetMode(m agentcore.Mode) {
 }
 
 // Provider returns the configured LLM provider identifier.
-func (a *Agent) Provider() string { return a.res.Gateway.Provider() }
+func (a *Agent) Provider() string { return a.res.GetGateway().Provider() }
 
 // ModelName returns the configured model identifier.
-func (a *Agent) ModelName() string { return a.res.Gateway.ModelName() }
+func (a *Agent) ModelName() string { return a.res.GetGateway().ModelName() }
 
 // Tools returns the names of all registered tools.
-func (a *Agent) Tools() []string { return a.res.Dispatcher.List() }
+func (a *Agent) Tools() []string { return a.res.GetDispatcher().List() }
+
+// BudgetStatus returns the token budget status for the given session.
+func (a *Agent) BudgetStatus(sessionKey string) (*llmctx.BudgetStatus, error) {
+	if sessionKey == "" {
+		sessionKey = session.MainKey(a.agentID)
+	}
+	a.mu.RLock()
+	state, ok := a.sessions[sessionKey]
+	a.mu.RUnlock()
+	if !ok {
+		return nil, fmt.Errorf("session %s not found", sessionKey)
+	}
+	status := state.Context.BudgetStatus()
+	return &status, nil
+}
 
 // ContextStats returns context metrics for the main session.
 func (a *Agent) ContextStats() *llmctx.ContextStats {
@@ -717,5 +732,5 @@ func (a *Agent) buildSupervisorSystemPrompt() string {
 	for name := range a.subAgents {
 		agents = append(agents, name)
 	}
-	return chat.SupervisorPrompt(a.def, a.res.Dispatcher.List(), agents)
+	return chat.SupervisorPrompt(a.def, a.res.GetDispatcher().List(), agents)
 }
