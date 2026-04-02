@@ -72,6 +72,9 @@ type ContextReader interface {
 	// Stats returns an immutable snapshot of context metrics.
 	Stats() ContextStats
 
+	// BudgetStatus returns a snapshot of the current token budget utilization.
+	BudgetStatus() BudgetStatus
+
 	// TC returns the TokenComputer used by this context.
 	TC() TokenComputer
 
