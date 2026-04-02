@@ -50,6 +50,9 @@ const (
 	// PathSessionActivity returns activity records for a session (GET).
 	PathSessionActivity = "/sessions/{sessionKey}/activity"
 
+	// PathSessionBudget returns the token budget status for a session (GET).
+	PathSessionBudget = "/sessions/{sessionKey}/budget"
+
 	// PathPlanApprove approves the current plan for execution (POST).
 	PathPlanApprove = "/plan/approve"
 
