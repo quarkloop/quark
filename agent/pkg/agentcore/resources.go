@@ -7,6 +7,7 @@ import (
 	"github.com/quarkloop/agent/pkg/eventbus"
 	"github.com/quarkloop/agent/pkg/hooks"
 	"github.com/quarkloop/agent/pkg/model"
+	"github.com/quarkloop/agent/pkg/plugin"
 	"github.com/quarkloop/agent/pkg/skill"
 	"github.com/quarkloop/agent/pkg/tool"
 	"github.com/quarkloop/core/pkg/kb"
@@ -22,6 +23,7 @@ type Resources struct {
 	Activity      *activity.Writer
 	Hooks         *hooks.Registry
 	SkillResolver *skill.Resolver
+	PluginManager *plugin.Manager
 	Gateway       model.Gateway
 	Dispatcher    tool.Invoker
 	AdapterReg    *llmctx.AdapterRegistry

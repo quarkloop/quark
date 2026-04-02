@@ -30,6 +30,7 @@ import (
 	"github.com/quarkloop/agent/pkg/hooks"
 	"github.com/quarkloop/agent/pkg/infra/httpserver"
 	"github.com/quarkloop/agent/pkg/model"
+	"github.com/quarkloop/agent/pkg/plugin"
 	"github.com/quarkloop/agent/pkg/resolver"
 	"github.com/quarkloop/agent/pkg/session"
 	"github.com/quarkloop/agent/pkg/skill"
@@ -135,6 +136,9 @@ func New(cfg *Config) (*Runtime, error) {
 		log.Printf("runtime: failed to register web channel: %v", err)
 	}
 
+	// Create plugin manager.
+	pluginMgr := plugin.NewManager()
+
 	res := &agentcore.Resources{
 		KB:            k,
 		ConfigStore:   cfgStore,
@@ -142,6 +146,7 @@ func New(cfg *Config) (*Runtime, error) {
 		Activity:      actWriter,
 		Hooks:         hookReg,
 		SkillResolver: skillResolver,
+		PluginManager: pluginMgr,
 		Gateway:       gw,
 		Dispatcher:    spaceCfg.registry,
 	}
