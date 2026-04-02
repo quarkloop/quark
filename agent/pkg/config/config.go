@@ -30,11 +30,27 @@ const (
 // runtime. Owner overrides always take precedence over agent self-config.
 type DynamicConfig struct {
 	Model         ModelConfig      `json:"model"`
+	Routing       RoutingConfig    `json:"routing,omitempty"`
 	ContextWindow int              `json:"context_window"`
 	Compaction    CompactionConfig `json:"compaction"`
 	Memory        MemoryConfig     `json:"memory"`
 	UpdatedAt     time.Time        `json:"updated_at"`
 	UpdatedBy     Source           `json:"updated_by"`
+}
+
+// RoutingConfig specifies model routing rules and fallback chain.
+// Rules are matched in order; the first match wins. The fallback chain
+// is tried in order when the primary gateway fails with a transient error.
+type RoutingConfig struct {
+	Rules    []RoutingRuleConfig `json:"rules,omitempty"`
+	Fallback []ModelConfig       `json:"fallback,omitempty"`
+}
+
+// RoutingRuleConfig maps a regex pattern to a specific model.
+type RoutingRuleConfig struct {
+	Match    string `json:"match"`
+	Provider string `json:"provider"`
+	Name     string `json:"name"`
 }
 
 // ModelConfig specifies the active LLM provider and model name.
