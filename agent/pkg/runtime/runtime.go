@@ -126,7 +126,7 @@ func New(cfg *Config) (*Runtime, error) {
 		Activity:    actWriter,
 		Hooks:       hookReg,
 		Gateway:     gw,
-		Dispatcher:  spaceCfg.dispatcher,
+		Dispatcher:  spaceCfg.registry,
 	}
 
 	// Register built-in security and audit hooks.
@@ -337,7 +337,7 @@ func detectBinDir() string {
 // startToolProcesses starts tool processes for each tool in the space config.
 // Failures are logged but non-fatal — the tool may already be running externally.
 func startToolProcesses(orch *ToolOrchestrator, spaceCfg *spaceConfig) {
-	for _, name := range spaceCfg.dispatcher.List() {
+	for _, name := range spaceCfg.registry.List() {
 		def := spaceCfg.toolDefs[name]
 		if def == nil || def.Endpoint == "" {
 			continue
@@ -357,7 +357,7 @@ func startToolProcesses(orch *ToolOrchestrator, spaceCfg *spaceConfig) {
 	}
 }
 
-var _ tool.Invoker = (*tool.HTTPDispatcher)(nil)
+var _ tool.Invoker = (*tool.Registry)(nil)
 
 // resolveModelFromEnv checks which API keys are available and returns the best
 // provider/model pair. Resolution order: ANTHROPIC → OPENAI → OPENROUTER → ZHIPU.

@@ -28,8 +28,8 @@ type spaceConfig struct {
 	modelName  string
 	supervisor *agentcore.Definition
 	subAgents  map[string]*agentcore.Definition
-	dispatcher *tool.HTTPDispatcher
-	toolDefs   map[string]*tool.Definition // tool name → definition (for orchestrator)
+	registry   *tool.Registry
+	toolDefs   map[string]*tool.Definition
 }
 
 func loadSpaceConfig(dir string, store kb.Store) (*spaceConfig, error) {
@@ -45,7 +45,7 @@ func loadSpaceConfig(dir string, store kb.Store) (*spaceConfig, error) {
 
 	subAgents := buildSubAgentDefs(dir, qf)
 
-	dispatcher, toolDefs, err := buildToolDispatcher(qf)
+	registry, toolDefs, err := buildToolRegistry(qf)
 	if err != nil {
 		return nil, err
 	}
@@ -55,14 +55,14 @@ func loadSpaceConfig(dir string, store kb.Store) (*spaceConfig, error) {
 	}
 
 	log.Printf("runtime: loaded space %q tools=%v subagents=%d approval=%s",
-		qf.Meta.Name, dispatcher.List(), len(subAgents), supervisor.Config.ApprovalPolicy)
+		qf.Meta.Name, registry.List(), len(subAgents), supervisor.Config.ApprovalPolicy)
 
 	return &spaceConfig{
 		provider:   qf.Model.Provider,
 		modelName:  qf.Model.Name,
 		supervisor: supervisor,
 		subAgents:  subAgents,
-		dispatcher: dispatcher,
+		registry:   registry,
 		toolDefs:   toolDefs,
 	}, nil
 }
@@ -110,11 +110,11 @@ func buildSubAgentDefs(dir string, qf *quarkfile.Quarkfile) map[string]*agentcor
 	return subAgents
 }
 
-// buildToolDispatcher creates the HTTP tool dispatcher from Quarkfile tool entries.
+// buildToolRegistry creates the tool registry from Quarkfile tool entries.
 // Each tool must have a name and an endpoint (via config or direct field).
-// Returns the dispatcher and a map of tool definitions for the orchestrator.
-func buildToolDispatcher(qf *quarkfile.Quarkfile) (*tool.HTTPDispatcher, map[string]*tool.Definition, error) {
-	dispatcher := tool.NewHTTPDispatcher()
+// Returns the registry and a map of tool definitions for the orchestrator.
+func buildToolRegistry(qf *quarkfile.Quarkfile) (*tool.Registry, map[string]*tool.Definition, error) {
+	registry := tool.NewRegistry()
 	defs := make(map[string]*tool.Definition)
 	for _, entry := range qf.Tools {
 		def := &tool.Definition{
@@ -132,11 +132,11 @@ func buildToolDispatcher(qf *quarkfile.Quarkfile) (*tool.HTTPDispatcher, map[str
 			return nil, nil, fmt.Errorf("tool %s has no endpoint", entry.Name)
 		}
 
-		dispatcher.Register(entry.Name, def)
+		registry.Register(entry.Name, def)
 		defs[entry.Name] = def
 		log.Printf("runtime: registered tool %s endpoint=%s", entry.Name, def.Endpoint)
 	}
-	return dispatcher, defs, nil
+	return registry, defs, nil
 }
 
 func seedKBConfig(store kb.Store, qf *quarkfile.Quarkfile) error {
