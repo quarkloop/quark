@@ -140,19 +140,19 @@ Respond with ONLY the mode name (ask, plan, or masterplan). Nothing else.`, mess
 
 // SystemPromptForMode returns the system prompt appropriate for the given mode.
 func SystemPromptForMode(def *agentcore.Definition, res *agentcore.Resources, mode agentcore.Mode) string {
-	tools := res.Dispatcher.List()
+	tools := res.GetDispatcher().List()
 	agents := make([]string, 0)
 
 	var base string
 	switch mode {
 	case agentcore.ModeAsk:
-		base = AskPrompt(def, res.Gateway.Parser(), tools)
+		base = AskPrompt(def, res.GetGateway().Parser(), tools)
 	case agentcore.ModePlan:
 		base = PlanPrompt(def, tools, agents, def.Config.ApprovalPolicy)
 	case agentcore.ModeMasterPlan:
 		base = MasterPlanPrompt(def, agents, def.Config.ApprovalPolicy)
 	default:
-		base = AskPrompt(def, res.Gateway.Parser(), tools)
+		base = AskPrompt(def, res.GetGateway().Parser(), tools)
 	}
 
 	// Append active skills if resolver is available.
