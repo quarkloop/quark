@@ -34,18 +34,19 @@ const LockfileFilename = ".quark/lock.yaml"
 // permissions, capabilities, environment variable forwarding, restart policy,
 // and network port exposure. Obtain one via Load; validate it with Validate.
 type Quarkfile struct {
-	Quark        string       `yaml:"quark"`
-	From         string       `yaml:"from,omitempty"`
-	Meta         Meta         `yaml:"meta"`
-	Model        Model        `yaml:"model,omitempty"`
-	Supervisor   Supervisor   `yaml:"supervisor"`
-	Agents       []Agent      `yaml:"agents,omitempty"`
-	Tools        []Tool       `yaml:"tools,omitempty"`
-	Env          []string     `yaml:"env,omitempty"`
-	KB           KBConfig     `yaml:"kb,omitempty"`
-	ModelGateway ModelGateway `yaml:"model_gateway,omitempty"`
-	Network      Network      `yaml:"network,omitempty"`
-	Restart      string       `yaml:"restart,omitempty"`
+	Quark        string         `yaml:"quark"`
+	From         string         `yaml:"from,omitempty"`
+	Meta         Meta           `yaml:"meta"`
+	Model        Model          `yaml:"model,omitempty"`
+	Routing      RoutingSection `yaml:"routing,omitempty"`
+	Supervisor   Supervisor     `yaml:"supervisor"`
+	Agents       []Agent        `yaml:"agents,omitempty"`
+	Tools        []Tool         `yaml:"tools,omitempty"`
+	Env          []string       `yaml:"env,omitempty"`
+	KB           KBConfig       `yaml:"kb,omitempty"`
+	ModelGateway ModelGateway   `yaml:"model_gateway,omitempty"`
+	Network      Network        `yaml:"network,omitempty"`
+	Restart      string         `yaml:"restart,omitempty"`
 
 	// Permissions — policy constraints enforced by the agent runtime.
 	Permissions Permissions `yaml:"permissions,omitempty"`
@@ -67,13 +68,9 @@ type Meta struct {
 
 // Model specifies the LLM provider and model name for the space.
 // Supported providers: "anthropic", "openai", "zhipu", "noop".
-// Model declares the LLM provider and model name used by the supervisor.
-// Fallback is an optional chain entry used when the primary model is
-// unavailable (not yet implemented in the gateway).
 type Model struct {
 	Provider string `yaml:"provider"`
 	Name     string `yaml:"name"`
-	Fallback *Model `yaml:"fallback,omitempty"`
 }
 
 // Supervisor configures the orchestrating agent that drives the
@@ -186,6 +183,27 @@ type Capabilities struct {
 	MaxWorkers     int    `yaml:"max_workers,omitempty"`
 	CreatePlans    bool   `yaml:"create_plans"`
 	ApprovalPolicy string `yaml:"approval_policy,omitempty"`
+}
+
+// RoutingSection configures model routing rules and fallback chain.
+// Rules are matched in order — the first match routes the request to the
+// specified model. The fallback chain is tried when the primary model fails.
+type RoutingSection struct {
+	Rules    []RoutingRuleEntry `yaml:"rules,omitempty"`
+	Fallback []ModelRef         `yaml:"fallback,omitempty"`
+}
+
+// RoutingRuleEntry maps a regex pattern to a model.
+type RoutingRuleEntry struct {
+	Match    string `yaml:"match"`
+	Provider string `yaml:"provider"`
+	Model    string `yaml:"model"`
+}
+
+// ModelRef specifies a provider and model name.
+type ModelRef struct {
+	Provider string `yaml:"provider"`
+	Model    string `yaml:"model"`
 }
 
 // Load reads and YAML-parses the Quarkfile inside dir.
