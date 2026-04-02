@@ -73,6 +73,9 @@ type Service interface {
 
 	// RejectPlan removes the current draft plan.
 	RejectPlan(ctx context.Context, r *http.Request) error
+
+	// SessionBudget returns the token budget status for a session.
+	SessionBudget(ctx context.Context, r *http.Request, sessionKey string) (*BudgetResponse, error)
 }
 
 // HTTPError is a structured error that carries an HTTP status code.
@@ -177,9 +180,10 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 		mux.HandleFunc("GET "+JoinPath(basePath, PathActivityStream), h.handleActivityStream)
 		mux.HandleFunc("GET "+JoinPath(basePath, PathSessions), h.handleSessions)
 		mux.HandleFunc("POST "+JoinPath(basePath, PathSessions), h.handleCreateSession)
+		mux.HandleFunc("GET "+JoinPath(basePath, PathSessionBudget), h.handleSessionBudget)
+		mux.HandleFunc("GET "+JoinPath(basePath, PathSessionActivity), h.handleSessionActivity)
 		mux.HandleFunc("GET "+JoinPath(basePath, PathSession), h.handleSession)
 		mux.HandleFunc("DELETE "+JoinPath(basePath, PathSession), h.handleDeleteSession)
-		mux.HandleFunc("GET "+JoinPath(basePath, PathSessionActivity), h.handleSessionActivity)
 	}
 }
 
@@ -446,6 +450,18 @@ func (h *Handler) handleSessionActivity(w http.ResponseWriter, r *http.Request) 
 		limit = h.cfg.maxLimit
 	}
 	resp, err := h.service.SessionActivity(r.Context(), r, sessionKey, limit)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// handleSessionBudget serves GET /sessions/{sessionKey}/budget — returns
+// the token budget status for a specific session.
+func (h *Handler) handleSessionBudget(w http.ResponseWriter, r *http.Request) {
+	sessionKey := r.PathValue("sessionKey")
+	resp, err := h.service.SessionBudget(r.Context(), r, sessionKey)
 	if err != nil {
 		writeError(w, err)
 		return
