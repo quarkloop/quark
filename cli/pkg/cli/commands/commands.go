@@ -5,6 +5,7 @@ import (
 
 	initCmd "github.com/quarkloop/cli/pkg/cli/commands/init"
 	"github.com/quarkloop/cli/pkg/cli/commands/lock"
+	pluginCmd "github.com/quarkloop/cli/pkg/cli/commands/plugin"
 	"github.com/quarkloop/cli/pkg/cli/commands/runtime"
 	"github.com/quarkloop/cli/pkg/cli/commands/space"
 	"github.com/quarkloop/cli/pkg/cli/commands/validate"
@@ -31,6 +32,7 @@ func RegisterCommands(root *cobra.Command) {
 	addGroup(root, "management",
 		space.SpaceCLI(),
 		runtime.SystemCLI(),
+		pluginCmd.NewCommand(),
 	)
 }
 
