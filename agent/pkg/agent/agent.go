@@ -21,18 +21,20 @@ import (
 	"github.com/quarkloop/agent/pkg/intervention"
 	planpkg "github.com/quarkloop/agent/pkg/plan"
 	"github.com/quarkloop/agent/pkg/session"
+	"github.com/quarkloop/agent/pkg/subagent"
 )
 
 // Agent drives the multi-agent loop inside a single space-runtime process.
 // It manages sessions (each with its own context) and routes requests.
 type Agent struct {
-	res       *agentcore.Resources
-	agentID   string
-	def       *agentcore.Definition
-	subAgents map[string]*agentcore.Definition
-	sessions  map[string]*SessionState // session key → state
-	sessStore *session.Store
-	mu        sync.RWMutex
+	res         *agentcore.Resources
+	agentID     string
+	def         *agentcore.Definition
+	subAgents   map[string]*agentcore.Definition
+	sessions    map[string]*SessionState // session key → state
+	sessStore   *session.Store
+	subagentMgr *subagent.Manager
+	mu          sync.RWMutex
 }
 
 // New constructs an Agent. Call Init before Run or Chat.
@@ -58,6 +60,15 @@ func New(
 
 // Init loads or creates the main session and restores active chat sessions.
 func (a *Agent) Init() error {
+	// Initialize subagent manager.
+	if a.res.EventBus != nil {
+		maxWorkers := a.def.Capabilities.MaxWorkers
+		if maxWorkers <= 0 {
+			maxWorkers = 5
+		}
+		a.subagentMgr = subagent.NewManager(maxWorkers, a.res.EventBus)
+	}
+
 	// Build shared llmctx infrastructure.
 	tc, err := llmctx.DefaultTokenComputer()
 	if err != nil {
