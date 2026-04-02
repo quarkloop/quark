@@ -6,8 +6,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strings"
-	"time"
 
 	"github.com/quarkloop/agent/pkg/agentcore"
 	llmctx "github.com/quarkloop/agent/pkg/context"
@@ -46,12 +44,10 @@ func Infer(
 		return nil, fmt.Errorf("build request: %w", err)
 	}
 
+	// The gateway handles retries and fallback chains internally.
 	resp, err := res.Gateway.InferRaw(ctx, payload)
 	if err != nil {
-		resp, err = inferWithRetry(ctx, res.Gateway, payload, err)
-		if err != nil {
-			return nil, fmt.Errorf("gateway: %w", err)
-		}
+		return nil, fmt.Errorf("gateway: %w", err)
 	}
 
 	agtMsg, err := NewAgentMessage(res.TC, res.IDGen, agentcore.AuthorAgent, resp.Content)
@@ -69,8 +65,7 @@ func Infer(
 	return resp, nil
 }
 
-// InferWithRetry wraps Infer with retries for transient errors (429, rate limits).
-// Max 2 retries with exponential backoff (2s, 4s).
+// InferWithRetry wraps Infer — retry logic is now handled by FallbackGateway.
 func InferWithRetry(
 	ctx context.Context,
 	ac *llmctx.AgentContext,
@@ -78,48 +73,4 @@ func InferWithRetry(
 	userMsg string,
 ) (*model.RawResponse, error) {
 	return Infer(ctx, ac, res, userMsg)
-}
-
-func inferWithRetry(ctx context.Context, gw model.Gateway, payload []byte, firstErr error) (*model.RawResponse, error) {
-	err := firstErr
-	backoff := 2 * time.Second
-	for attempt := 1; attempt <= 2; attempt++ {
-		if !isRetryableGatewayError(err) {
-			return nil, err
-		}
-		log.Printf("inference: retrying transient gateway error (attempt %d/2): %v", attempt, err)
-		if sleepErr := sleepWithContext(ctx, backoff); sleepErr != nil {
-			return nil, err
-		}
-
-		resp, retryErr := gw.InferRaw(ctx, payload)
-		if retryErr == nil {
-			return resp, nil
-		}
-		err = retryErr
-		backoff *= 2
-	}
-	return nil, err
-}
-
-func isRetryableGatewayError(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, " 429") ||
-		strings.Contains(msg, "rate-limit") ||
-		strings.Contains(msg, "rate limit") ||
-		strings.Contains(msg, "temporarily rate-limited")
-}
-
-func sleepWithContext(ctx context.Context, d time.Duration) error {
-	timer := time.NewTimer(d)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
-	}
 }
