@@ -31,22 +31,23 @@ func Infer(
 		}
 	}
 
-	adapter, err := res.AdapterReg.Get(res.Gateway.Provider())
+	gw := res.GetGateway()
+	adapter, err := res.AdapterReg.Get(gw.Provider())
 	if err != nil {
-		return nil, fmt.Errorf("adapter for %s: %w", res.Gateway.Provider(), err)
+		return nil, fmt.Errorf("adapter for %s: %w", gw.Provider(), err)
 	}
 	ca := llmctx.NewContextAdapter(ac, adapter)
 
 	payload, err := ca.BuildRequest(llmctx.RequestOptions{
-		Model:     res.Gateway.ModelName(),
-		MaxTokens: res.Gateway.MaxTokens(),
+		Model:     gw.ModelName(),
+		MaxTokens: gw.MaxTokens(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
 
 	// The gateway handles retries and fallback chains internally.
-	resp, err := res.Gateway.InferRaw(ctx, payload)
+	resp, err := gw.InferRaw(ctx, payload)
 	if err != nil {
 		return nil, fmt.Errorf("gateway: %w", err)
 	}
