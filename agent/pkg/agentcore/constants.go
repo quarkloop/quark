@@ -67,3 +67,12 @@ const (
 	// MaxAskToolIterations is the maximum number of tool-call rounds in ask mode.
 	MaxAskToolIterations = 10
 )
+
+const (
+	// DefaultSoftThresholdPct is the fraction of the token budget at which
+	// compaction is triggered (80%).
+	DefaultSoftThresholdPct = 0.80
+	// DefaultHardThresholdPct is the fraction of the token budget at which
+	// new messages are rejected (95%).
+	DefaultHardThresholdPct = 0.95
+)
