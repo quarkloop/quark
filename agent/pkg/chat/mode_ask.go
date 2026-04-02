@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/quarkloop/agent/pkg/activity"
 	"github.com/quarkloop/agent/pkg/agentcore"
 	llmctx "github.com/quarkloop/agent/pkg/context"
 	msg "github.com/quarkloop/agent/pkg/context/message"
+	"github.com/quarkloop/agent/pkg/eventbus"
 	"github.com/quarkloop/agent/pkg/execution"
 	"github.com/quarkloop/agent/pkg/inference"
 )
@@ -72,9 +72,9 @@ func processAsk(
 
 		// Execute the tool call.
 		log.Printf("ask: tool call %s (iter %d)", toolCall.ToolName, iter)
-		emitActivity(res.Activity, req.SessionKey, activity.ToolCalled, execution.BuildToolCalledActivityData("ask", toolCall))
+		emitActivity(res.EventBus, req.SessionKey, eventbus.KindToolCalled, execution.BuildToolCalledActivityData("ask", toolCall))
 		toolResult := execution.InvokeTool(ctx, res.Dispatcher, "ask", toolCall)
-		emitActivity(res.Activity, req.SessionKey, activity.ToolCompleted, execution.BuildToolCompletedActivityData("ask", toolResult))
+		emitActivity(res.EventBus, req.SessionKey, eventbus.KindToolCompleted, execution.BuildToolCompletedActivityData("ask", toolResult))
 
 		// Store tool output as artifact.
 		if !toolResult.IsError {
@@ -153,17 +153,16 @@ func collectStrings(v any, out *[]string) {
 	}
 }
 
-func emitActivity(sink activity.Sink, sessionKey string, eventType activity.EventType, data interface{}) {
-	if sink == nil {
+func emitActivity(bus *eventbus.Bus, sessionKey string, kind eventbus.EventKind, data interface{}) {
+	if bus == nil {
 		return
 	}
 	now := time.Now()
-	sink.Emit(activity.Event{
-		ID:        fmt.Sprintf("%s-%d", eventType, now.UnixNano()),
+	bus.Emit(eventbus.Event{
+		ID:        fmt.Sprintf("%s-%d", kind, now.UnixNano()),
 		SessionID: sessionKey,
-		Type:      eventType,
+		Kind:      kind,
 		Timestamp: now.UTC(),
 		Data:      data,
 	})
 }
-

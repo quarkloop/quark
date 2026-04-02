@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/quarkloop/agent/pkg/activity"
 	"github.com/quarkloop/agent/pkg/agentcore"
 	llmctx "github.com/quarkloop/agent/pkg/context"
 	"github.com/quarkloop/agent/pkg/context/freshness"
+	"github.com/quarkloop/agent/pkg/eventbus"
 	"github.com/quarkloop/agent/pkg/execution"
 	"github.com/quarkloop/agent/pkg/inference"
 	"github.com/quarkloop/agent/pkg/plan"
@@ -284,7 +284,7 @@ func dispatch(ctx context.Context, res *agentcore.Resources, planStore *plan.Sto
 			return err
 		}
 		log.Printf("cycle: dispatching step %s to agent %s", step.ID, step.Agent)
-		emitActivity(res.Activity, activity.StepDispatched, map[string]string{"step": step.ID, "agent": step.Agent})
+		emitActivity(res.EventBus, eventbus.KindStepDispatched, map[string]string{"step": step.ID, "agent": step.Agent})
 
 		if err := spawner.SpawnWorker(ctx, *step); err != nil {
 			log.Printf("cycle: spawn worker error for step %s: %v", step.ID, err)
@@ -334,9 +334,9 @@ func monitor(res *agentcore.Resources, planStore *plan.Store) error {
 				res.KB.Delete(agentcore.NSEvents, key)
 				modified = true
 				if event.Status == "complete" {
-					emitActivity(res.Activity, activity.StepCompleted, map[string]string{"step": event.StepID})
+					emitActivity(res.EventBus, eventbus.KindStepCompleted, map[string]string{"step": event.StepID})
 				} else {
-					emitActivity(res.Activity, activity.StepFailed, map[string]string{"step": event.StepID, "error": event.Error})
+					emitActivity(res.EventBus, eventbus.KindStepFailed, map[string]string{"step": event.StepID, "error": event.Error})
 				}
 				log.Printf("cycle: step %s → %s", event.StepID, event.Status)
 				break
@@ -379,12 +379,12 @@ func assess(planStore *plan.Store) (bool, error) {
 	return false, nil
 }
 
-func emitActivity(sink activity.Sink, eventType activity.EventType, data interface{}) {
-	if sink == nil {
+func emitActivity(bus *eventbus.Bus, kind eventbus.EventKind, data interface{}) {
+	if bus == nil {
 		return
 	}
-	sink.Emit(activity.Event{
-		Type: eventType,
+	bus.Emit(eventbus.Event{
+		Kind: kind,
 		Data: data,
 	})
 }

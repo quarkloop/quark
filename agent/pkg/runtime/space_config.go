@@ -14,6 +14,7 @@ import (
 	"github.com/quarkloop/agent/pkg/activity"
 	"github.com/quarkloop/agent/pkg/agent"
 	"github.com/quarkloop/agent/pkg/agentcore"
+	"github.com/quarkloop/agent/pkg/eventbus"
 	"github.com/quarkloop/agent/pkg/plan"
 	"github.com/quarkloop/agent/pkg/session"
 	"github.com/quarkloop/agent/pkg/tool"
@@ -165,12 +166,13 @@ type agentService struct {
 	dir          string
 	kb           kb.Store
 	agent        *agent.Agent
-	feed         *activity.Feed
+	bus          *eventbus.Bus
+	actWriter    *activity.Writer
 	sessionStore *session.Store
 }
 
-func newAgentService(agentID, dir string, store kb.Store, a *agent.Agent, feed *activity.Feed, sessStore *session.Store) *agentService {
-	return &agentService{agentID: agentID, dir: dir, kb: store, agent: a, feed: feed, sessionStore: sessStore}
+func newAgentService(agentID, dir string, store kb.Store, a *agent.Agent, bus *eventbus.Bus, actWriter *activity.Writer, sessStore *session.Store) *agentService {
+	return &agentService{agentID: agentID, dir: dir, kb: store, agent: a, bus: bus, actWriter: actWriter, sessionStore: sessStore}
 }
 
 func (s *agentService) Health(ctx context.Context, r *http.Request) (*agentapi.HealthResponse, error) {
@@ -281,7 +283,7 @@ func (s *agentService) Plan(ctx context.Context, r *http.Request) (*agentapi.Pla
 }
 
 func (s *agentService) Activity(ctx context.Context, r *http.Request, limit int) ([]agentapi.ActivityRecord, error) {
-	events := s.feed.Recent(limit)
+	events := s.actWriter.Recent(limit)
 	out := make([]agentapi.ActivityRecord, 0, len(events))
 	for _, event := range events {
 		out = append(out, convertActivity(event))
@@ -290,14 +292,14 @@ func (s *agentService) Activity(ctx context.Context, r *http.Request, limit int)
 }
 
 func (s *agentService) StreamActivity(ctx context.Context, r *http.Request, emit func(agentapi.ActivityRecord) error) error {
-	for _, event := range s.feed.Recent(64) {
+	for _, event := range s.actWriter.Recent(64) {
 		if err := emit(convertActivity(event)); err != nil {
 			return err
 		}
 	}
 
-	ch := s.feed.Subscribe()
-	defer s.feed.Unsubscribe(ch)
+	ch := s.bus.Subscribe(256)
+	defer s.bus.Unsubscribe(ch)
 
 	for {
 		select {
@@ -336,7 +338,7 @@ func convertActivity(event activity.Event) agentapi.ActivityRecord {
 	return agentapi.ActivityRecord{
 		ID:        event.ID,
 		SessionID: event.SessionID,
-		Type:      string(event.Type),
+		Type:      string(event.Kind),
 		Timestamp: event.Timestamp,
 		Data:      raw,
 	}
@@ -364,7 +366,7 @@ func (s *agentService) Session(ctx context.Context, r *http.Request, sessionKey 
 }
 
 func (s *agentService) SessionActivity(ctx context.Context, r *http.Request, sessionKey string, limit int) ([]agentapi.ActivityRecord, error) {
-	events, err := s.feed.History(sessionKey)
+	events, err := s.actWriter.History(sessionKey)
 	if err != nil {
 		return nil, err
 	}

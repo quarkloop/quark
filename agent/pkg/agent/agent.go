@@ -13,11 +13,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/quarkloop/agent/pkg/activity"
 	"github.com/quarkloop/agent/pkg/agentcore"
 	"github.com/quarkloop/agent/pkg/chat"
 	llmctx "github.com/quarkloop/agent/pkg/context"
 	"github.com/quarkloop/agent/pkg/cycle"
+	"github.com/quarkloop/agent/pkg/eventbus"
 	planpkg "github.com/quarkloop/agent/pkg/plan"
 	"github.com/quarkloop/agent/pkg/session"
 )
@@ -221,7 +221,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.def.Name, a.res.Gateway.Provider(), a.res.Gateway.ModelName())
 
 	mainKey := session.MainKey(a.agentID)
-	a.emit(mainKey, activity.SessionStarted, map[string]string{
+	a.emit(mainKey, eventbus.KindSessionStarted, map[string]string{
 		"agent": a.def.Name,
 	})
 
@@ -229,7 +229,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			a.saveCheckpoint(mainKey)
-			a.emit(mainKey, activity.SessionEnded, map[string]string{"reason": "cancelled"})
+			a.emit(mainKey, eventbus.KindSessionEnded, map[string]string{"reason": "cancelled"})
 			return ctx.Err()
 		default:
 		}
@@ -239,7 +239,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			a.saveCheckpoint(mainKey)
-			a.emit(mainKey, activity.SessionEnded, map[string]string{"reason": "cancelled"})
+			a.emit(mainKey, eventbus.KindSessionEnded, map[string]string{"reason": "cancelled"})
 			return ctx.Err()
 		case <-time.After(interval):
 		}
@@ -321,7 +321,7 @@ func (a *Agent) runMasterPlanCycle(ctx context.Context, state *SessionState) tim
 	if phase.Status == planpkg.StepPending {
 		phase.Status = planpkg.StepRunning
 		state.MasterStore.Save(mp)
-		a.emit(state.Session.Key, activity.PhaseStarted, map[string]string{"phase": phase.ID})
+		a.emit(state.Session.Key, eventbus.KindPhaseStarted, map[string]string{"phase": phase.ID})
 		log.Printf("agent: starting phase %s", phase.ID)
 	}
 
@@ -331,14 +331,14 @@ func (a *Agent) runMasterPlanCycle(ctx context.Context, state *SessionState) tim
 	if err != nil {
 		phase.Status = planpkg.StepFailed
 		state.MasterStore.Save(mp)
-		a.emit(state.Session.Key, activity.PhaseFailed, map[string]string{"phase": phase.ID, "error": err.Error()})
+		a.emit(state.Session.Key, eventbus.KindPhaseFailed, map[string]string{"phase": phase.ID, "error": err.Error()})
 		log.Printf("agent: phase %s failed: %v", phase.ID, err)
 		return 5 * time.Second
 	}
 	if done {
 		phase.Status = planpkg.StepComplete
 		state.MasterStore.Save(mp)
-		a.emit(state.Session.Key, activity.PhaseCompleted, map[string]string{"phase": phase.ID})
+		a.emit(state.Session.Key, eventbus.KindPhaseCompleted, map[string]string{"phase": phase.ID})
 		log.Printf("agent: phase %s complete", phase.ID)
 	}
 
@@ -388,7 +388,7 @@ func (a *Agent) CreateSession(t session.Type, title string) (*session.Session, e
 	}
 	a.mu.Unlock()
 
-	a.emit(key, activity.SessionStarted, map[string]string{"type": string(t), "title": title})
+	a.emit(key, eventbus.KindSessionStarted, map[string]string{"type": string(t), "title": title})
 	return sess, nil
 }
 
@@ -424,7 +424,7 @@ func (a *Agent) DeleteSession(sessionKey string) error {
 		return fmt.Errorf("update session: %w", err)
 	}
 
-	a.emit(sessionKey, activity.SessionEnded, map[string]string{"reason": "deleted"})
+	a.emit(sessionKey, eventbus.KindSessionEnded, map[string]string{"reason": "deleted"})
 	return nil
 }
 
@@ -512,7 +512,7 @@ func (a *Agent) ApprovePlan() (*planpkg.Plan, error) {
 	if err := planStore.Save(p); err != nil {
 		return nil, fmt.Errorf("save approved plan: %w", err)
 	}
-	a.emit(mainKey, activity.PlanUpdated, map[string]string{
+	a.emit(mainKey, eventbus.KindPlanUpdated, map[string]string{
 		"status": string(planpkg.PlanApproved),
 		"goal":   p.Goal,
 	})
@@ -545,7 +545,7 @@ func (a *Agent) RejectPlan() error {
 	if err := planStore.Save(p); err != nil {
 		return fmt.Errorf("save rejected plan: %w", err)
 	}
-	a.emit(mainKey, activity.PlanUpdated, map[string]string{
+	a.emit(mainKey, eventbus.KindPlanUpdated, map[string]string{
 		"status": string(planpkg.PlanDraft),
 		"goal":   p.Goal,
 	})
@@ -614,18 +614,18 @@ func (a *Agent) emitMessage(sessionKey, author, content, mode string) {
 	if mode != "" {
 		data["mode"] = mode
 	}
-	a.emit(sessionKey, activity.MessageAdded, data)
+	a.emit(sessionKey, eventbus.KindMessageAdded, data)
 }
 
-func (a *Agent) emit(sessionKey string, eventType activity.EventType, data interface{}) {
-	if a.res.Activity == nil {
+func (a *Agent) emit(sessionKey string, kind eventbus.EventKind, data interface{}) {
+	if a.res.EventBus == nil {
 		return
 	}
-	id := fmt.Sprintf("%s-%d", eventType, time.Now().UnixNano())
-	a.res.Activity.Emit(activity.Event{
+	id := fmt.Sprintf("%s-%d", kind, time.Now().UnixNano())
+	a.res.EventBus.Emit(eventbus.Event{
 		ID:        id,
+		Kind:      kind,
 		SessionID: sessionKey,
-		Type:      eventType,
 		Timestamp: time.Now().UTC(),
 		Data:      data,
 	})

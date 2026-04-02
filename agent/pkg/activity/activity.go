@@ -1,198 +1,137 @@
-// Package activity provides a streaming event feed for agent activity.
+// Package activity provides persisted, queryable event history for agents.
 //
-// Events cover the full lifecycle: session start/end, message additions,
-// tool calls, plan updates, step dispatch/completion, context compaction,
-// and checkpoint saves.
-//
-// The Feed type is both a Sink (for the agent to emit events) and a Source
-// (for consumers to subscribe via Go channels). Events are kept in a
-// ring buffer for real-time streaming and persisted to KB for history replay.
+// The Writer is an async subscriber to the EventBus that persists events
+// to the KB and maintains an in-memory ring buffer for recent-event queries.
+// It is the separation of concerns: EventBus handles real-time distribution,
+// Activity handles persistence and history.
 package activity
 
 import (
 	"encoding/json"
 	"fmt"
 	"sync"
-	"time"
 
+	"github.com/quarkloop/agent/pkg/eventbus"
 	"github.com/quarkloop/core/pkg/kb"
 )
 
-// EventType identifies the kind of activity event.
-type EventType string
+// Event aliases eventbus.Event for backward compatibility during migration.
+type Event = eventbus.Event
 
-const (
-	SessionStarted    EventType = "session.started"
-	SessionEnded      EventType = "session.ended"
-	MessageAdded      EventType = "message.added"
-	ToolCalled        EventType = "tool.called"
-	ToolCompleted     EventType = "tool.completed"
-	PlanCreated       EventType = "plan.created"
-	PlanUpdated       EventType = "plan.updated"
-	StepDispatched    EventType = "step.dispatched"
-	StepCompleted     EventType = "step.completed"
-	StepFailed        EventType = "step.failed"
-	ContextCompacted  EventType = "context.compacted"
-	CheckpointSaved   EventType = "checkpoint.saved"
-	ModeClassified    EventType = "mode.classified"
-	MasterPlanCreated EventType = "masterplan.created"
-	PhaseStarted      EventType = "phase.started"
-	PhaseCompleted    EventType = "phase.completed"
-	PhaseFailed       EventType = "phase.failed"
-)
+// Writer is an async subscriber to EventBus that persists events to KB
+// and maintains a ring buffer for recent-event queries.
+type Writer struct {
+	kb   kb.Store
+	bus  *eventbus.Bus
+	stop chan struct{}
+	ch   <-chan Event
 
-// Event is a single activity record.
-type Event struct {
-	ID        string      `json:"id"`
-	SessionID string      `json:"session_id"`
-	Type      EventType   `json:"type"`
-	Timestamp time.Time   `json:"timestamp"`
-	Data      interface{} `json:"data,omitempty"`
+	mu    sync.RWMutex
+	ring  []Event
+	head  int
+	count int
+	cap   int
 }
 
-// Sink accepts events from the agent.
-type Sink interface {
-	Emit(event Event)
+// NewWriter creates an Activity writer that subscribes to the EventBus.
+// It runs a goroutine that reads events and persists them.
+func NewWriter(bus *eventbus.Bus, kb kb.Store, ringCapacity int) *Writer {
+	if ringCapacity <= 0 {
+		ringCapacity = 1024
+	}
+	w := &Writer{
+		kb:   kb,
+		bus:  bus,
+		stop: make(chan struct{}),
+		ring: make([]Event, ringCapacity),
+		cap:  ringCapacity,
+	}
+	return w
 }
 
-// Source delivers events to subscribers via Go channels.
-type Source interface {
-	Subscribe(filter ...EventType) <-chan Event
-	Unsubscribe(ch <-chan Event)
+// Start begins the async persist loop.
+func (w *Writer) Start() {
+	w.ch = w.bus.Subscribe(4096)
+	go w.run(w.ch)
 }
 
-// Feed implements both Sink and Source with an in-memory ring buffer
-// and optional KB persistence for history replay.
-type Feed struct {
-	mu          sync.RWMutex
-	ring        []Event
-	head        int
-	count       int
-	cap         int
-	subscribers map[chan Event]map[EventType]bool
-	kb          kb.Store // nil = no persistence
+// Stop drains remaining events and shuts down.
+func (w *Writer) Stop() {
+	close(w.stop)
+	w.bus.Unsubscribe(w.ch)
 }
 
-// NewFeed creates a Feed with the given ring buffer capacity.
-// Pass a non-nil kb.Store to enable event persistence.
-func NewFeed(capacity int, k kb.Store) *Feed {
-	if capacity <= 0 {
-		capacity = 1024
-	}
-	return &Feed{
-		ring:        make([]Event, capacity),
-		cap:         capacity,
-		subscribers: make(map[chan Event]map[EventType]bool),
-		kb:          k,
-	}
-}
-
-// Emit records an event and broadcasts it to subscribers.
-func (f *Feed) Emit(event Event) {
-	if event.Timestamp.IsZero() {
-		event.Timestamp = time.Now().UTC()
-	}
-
-	f.mu.Lock()
-	// Write to ring buffer.
-	idx := (f.head + f.count) % f.cap
-	if f.count == f.cap {
-		// Buffer full — overwrite oldest.
-		f.ring[f.head] = event
-		f.head = (f.head + 1) % f.cap
-	} else {
-		f.ring[idx] = event
-		f.count++
-	}
-	// Snapshot subscribers under lock.
-	subs := make([]struct {
-		ch     chan Event
-		filter map[EventType]bool
-	}, 0, len(f.subscribers))
-	for ch, filter := range f.subscribers {
-		subs = append(subs, struct {
-			ch     chan Event
-			filter map[EventType]bool
-		}{ch, filter})
-	}
-	f.mu.Unlock()
-
-	// Persist to KB (non-blocking — don't hold lock).
-	if f.kb != nil && event.SessionID != "" {
-		key := fmt.Sprintf("%s/%s", event.SessionID, event.ID)
-		if data, err := json.Marshal(event); err == nil {
-			f.kb.Set("activity", key, data)
-		}
-	}
-
-	// Broadcast to matching subscribers.
-	for _, sub := range subs {
-		if len(sub.filter) > 0 && !sub.filter[event.Type] {
-			continue
-		}
+func (w *Writer) run(ch <-chan Event) {
+	for {
 		select {
-		case sub.ch <- event:
-		default:
-			// Drop event if subscriber is slow — non-blocking.
+		case <-w.stop:
+			// Drain remaining buffered events.
+			for {
+				select {
+				case ev, ok := <-ch:
+					if !ok {
+						return
+					}
+					w.persist(ev)
+				default:
+					return
+				}
+			}
+		case ev, ok := <-ch:
+			if !ok {
+				return
+			}
+			w.persist(ev)
 		}
 	}
 }
 
-// Subscribe returns a channel that receives events matching the given types.
-// Pass no filter types to receive all events.
-// The returned channel has a buffer of 64.
-func (f *Feed) Subscribe(filter ...EventType) <-chan Event {
-	ch := make(chan Event, 64)
-	filterMap := make(map[EventType]bool, len(filter))
-	for _, t := range filter {
-		filterMap[t] = true
+func (w *Writer) persist(ev Event) {
+	w.mu.Lock()
+	// Write to ring buffer.
+	idx := (w.head + w.count) % w.cap
+	if w.count == w.cap {
+		w.ring[w.head] = ev
+		w.head = (w.head + 1) % w.cap
+	} else {
+		w.ring[idx] = ev
+		w.count++
 	}
+	w.mu.Unlock()
 
-	f.mu.Lock()
-	f.subscribers[ch] = filterMap
-	f.mu.Unlock()
-
-	return ch
-}
-
-// Unsubscribe removes a subscriber channel. The channel is closed.
-func (f *Feed) Unsubscribe(ch <-chan Event) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	// Find the matching send channel.
-	for sendCh := range f.subscribers {
-		if sendCh == ch {
-			delete(f.subscribers, sendCh)
-			close(sendCh)
-			return
+	// Persist to KB asynchronously.
+	if w.kb != nil && ev.SessionID != "" {
+		key := fmt.Sprintf("%s/%s", ev.SessionID, ev.ID)
+		if data, err := json.Marshal(ev); err == nil {
+			w.kb.Set("activity", key, data)
 		}
 	}
 }
 
 // Recent returns the last n events from the ring buffer.
-func (f *Feed) Recent(n int) []Event {
-	f.mu.RLock()
-	defer f.mu.RUnlock()
+func (w *Writer) Recent(n int) []Event {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
 
-	if n > f.count {
-		n = f.count
+	if n > w.count {
+		n = w.count
 	}
 	out := make([]Event, n)
-	start := (f.head + f.count - n) % f.cap
+	start := (w.head + w.count - n) % w.cap
 	for i := 0; i < n; i++ {
-		out[i] = f.ring[(start+i)%f.cap]
+		out[i] = w.ring[(start+i)%w.cap]
 	}
 	return out
 }
 
 // History loads persisted events for a session from the KB.
 // Returns nil if no KB is configured or no events exist.
-func (f *Feed) History(sessionID string) ([]Event, error) {
-	if f.kb == nil {
+func (w *Writer) History(sessionID string) ([]Event, error) {
+	if w.kb == nil {
 		return nil, nil
 	}
 	prefix := sessionID + "/"
-	keys, err := f.kb.List("activity")
+	keys, err := w.kb.List("activity")
 	if err != nil {
 		return nil, err
 	}
@@ -201,7 +140,7 @@ func (f *Feed) History(sessionID string) ([]Event, error) {
 		if len(k) <= len(prefix) || k[:len(prefix)] != prefix {
 			continue
 		}
-		data, err := f.kb.Get("activity", k)
+		data, err := w.kb.Get("activity", k)
 		if err != nil {
 			continue
 		}

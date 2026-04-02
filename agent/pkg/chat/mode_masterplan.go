@@ -7,9 +7,9 @@ import (
 	"log"
 	"time"
 
-	"github.com/quarkloop/agent/pkg/activity"
 	"github.com/quarkloop/agent/pkg/agentcore"
 	llmctx "github.com/quarkloop/agent/pkg/context"
+	"github.com/quarkloop/agent/pkg/eventbus"
 	"github.com/quarkloop/agent/pkg/inference"
 	"github.com/quarkloop/agent/pkg/model"
 	"github.com/quarkloop/agent/pkg/plan"
@@ -64,7 +64,7 @@ func processMasterPlan(
 		cr.Warning = fmt.Sprintf("masterplan was not stored: %v", err)
 		log.Printf("chat: failed to store masterplan: %v", err)
 	} else {
-		emitActivity(res.Activity, req.SessionKey, activity.MasterPlanCreated, map[string]string{"mode": "masterplan"})
+		emitActivity(res.EventBus, req.SessionKey, eventbus.KindMasterPlanCreated, map[string]string{"mode": "masterplan"})
 	}
 
 	return cr, nil

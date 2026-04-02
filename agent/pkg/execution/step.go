@@ -7,10 +7,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/quarkloop/agent/pkg/activity"
 	"github.com/quarkloop/agent/pkg/agentcore"
 	llmctx "github.com/quarkloop/agent/pkg/context"
 	msg "github.com/quarkloop/agent/pkg/context/message"
+	"github.com/quarkloop/agent/pkg/eventbus"
 	"github.com/quarkloop/agent/pkg/inference"
 	"github.com/quarkloop/agent/pkg/plan"
 )
@@ -89,9 +89,9 @@ func ExecuteStep(
 			break
 		}
 
-		emitActivity(res.Activity, activity.ToolCalled, BuildToolCalledActivityData(step.ID, toolCall))
+		emitActivity(res.EventBus, eventbus.KindToolCalled, BuildToolCalledActivityData(step.ID, toolCall))
 		result := InvokeTool(ctx, res.Dispatcher, step.ID, toolCall)
-		emitActivity(res.Activity, activity.ToolCompleted, BuildToolCompletedActivityData(step.ID, result))
+		emitActivity(res.EventBus, eventbus.KindToolCompleted, BuildToolCompletedActivityData(step.ID, result))
 
 		if !result.IsError {
 			successfulToolCalls[strings.ToLower(toolCall.ToolName)] = true
@@ -258,12 +258,12 @@ func GatherArtifacts(res *agentcore.Resources) string {
 	return sb.String()
 }
 
-func emitActivity(sink activity.Sink, eventType activity.EventType, data interface{}) {
-	if sink == nil {
+func emitActivity(bus *eventbus.Bus, kind eventbus.EventKind, data interface{}) {
+	if bus == nil {
 		return
 	}
-	sink.Emit(activity.Event{
-		Type: eventType,
+	bus.Emit(eventbus.Event{
+		Kind: kind,
 		Data: data,
 	})
 }

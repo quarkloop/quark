@@ -6,9 +6,9 @@ import (
 	"log"
 	"strings"
 
-	"github.com/quarkloop/agent/pkg/activity"
 	"github.com/quarkloop/agent/pkg/agentcore"
 	llmctx "github.com/quarkloop/agent/pkg/context"
+	"github.com/quarkloop/agent/pkg/eventbus"
 	"github.com/quarkloop/agent/pkg/inference"
 )
 
@@ -28,7 +28,7 @@ func processAuto(
 	}
 
 	log.Printf("chat: auto classified as %s", resolved)
-	emitActivity(res.Activity, req.SessionKey, activity.ModeClassified, map[string]string{"resolved": string(resolved)})
+	emitActivity(res.EventBus, req.SessionKey, eventbus.KindModeClassified, map[string]string{"resolved": string(resolved)})
 
 	switch resolved {
 	case agentcore.ModeAsk:

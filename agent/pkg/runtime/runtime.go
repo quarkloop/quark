@@ -25,6 +25,7 @@ import (
 	"github.com/quarkloop/agent/pkg/agent"
 	"github.com/quarkloop/agent/pkg/agentcore"
 	"github.com/quarkloop/agent/pkg/config"
+	"github.com/quarkloop/agent/pkg/eventbus"
 	"github.com/quarkloop/agent/pkg/infra/httpserver"
 	"github.com/quarkloop/agent/pkg/model"
 	"github.com/quarkloop/agent/pkg/session"
@@ -45,7 +46,8 @@ type Runtime struct {
 	cfg          *Config
 	kb           kb.Store
 	agent        *agent.Agent
-	feed         *activity.Feed
+	bus          *eventbus.Bus
+	actWriter    *activity.Writer
 	httpSrv      *httpserver.Server
 	orchestrator *ToolOrchestrator
 }
@@ -90,7 +92,9 @@ func New(cfg *Config) (*Runtime, error) {
 		return nil, fmt.Errorf("build gateway: %w", err)
 	}
 
-	feed := activity.NewFeed(1024, k)
+	bus := eventbus.New()
+	actWriter := activity.NewWriter(bus, k, 1024)
+	actWriter.Start()
 	sessStore := session.NewStore(k)
 	cfgStore := config.New(k)
 
@@ -114,9 +118,10 @@ func New(cfg *Config) (*Runtime, error) {
 	res := &agentcore.Resources{
 		KB:          k,
 		ConfigStore: cfgStore,
+		EventBus:    bus,
+		Activity:    actWriter,
 		Gateway:     gw,
 		Dispatcher:  spaceCfg.dispatcher,
-		Activity:    feed,
 	}
 
 	a := agent.New(cfg.AgentID, spaceCfg.supervisor, res, sessStore, spaceCfg.subAgents)
@@ -130,7 +135,7 @@ func New(cfg *Config) (*Runtime, error) {
 
 	mux := http.NewServeMux()
 	agentapi.NewHandler(
-		newAgentService(cfg.AgentID, cfg.Dir, k, a, feed, sessStore),
+		newAgentService(cfg.AgentID, cfg.Dir, k, a, bus, actWriter, sessStore),
 		agentapi.WithBasePath(agentapi.DefaultBasePath),
 		agentapi.WithAliasBasePath(""),
 	).RegisterRoutes(mux)
@@ -140,7 +145,8 @@ func New(cfg *Config) (*Runtime, error) {
 		cfg:          cfg,
 		kb:           k,
 		agent:        a,
-		feed:         feed,
+		bus:          bus,
+		actWriter:    actWriter,
 		httpSrv:      srv,
 		orchestrator: orchestrator,
 	}, nil
@@ -168,6 +174,9 @@ func (r *Runtime) Run(ctx context.Context) error {
 
 func (r *Runtime) Close() {
 	_ = r.httpSrv.Shutdown(context.Background())
+	if r.actWriter != nil {
+		r.actWriter.Stop()
+	}
 	if r.orchestrator != nil {
 		r.orchestrator.Shutdown()
 	}

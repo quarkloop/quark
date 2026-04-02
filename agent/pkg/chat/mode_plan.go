@@ -7,9 +7,9 @@ import (
 	"log"
 	"time"
 
-	"github.com/quarkloop/agent/pkg/activity"
 	"github.com/quarkloop/agent/pkg/agentcore"
 	llmctx "github.com/quarkloop/agent/pkg/context"
+	"github.com/quarkloop/agent/pkg/eventbus"
 	"github.com/quarkloop/agent/pkg/execution"
 	"github.com/quarkloop/agent/pkg/inference"
 	"github.com/quarkloop/agent/pkg/model"
@@ -67,7 +67,7 @@ func processPlan(
 		cr.Warning = fmt.Sprintf("plan was not stored: %v", err)
 		log.Printf("chat: failed to store plan: %v raw=%q", err, execution.Truncate(string(planData), 512))
 	} else {
-		emitActivity(res.Activity, req.SessionKey, activity.PlanCreated, map[string]string{"mode": "plan"})
+		emitActivity(res.EventBus, req.SessionKey, eventbus.KindPlanCreated, map[string]string{"mode": "plan"})
 	}
 
 	return cr, nil

@@ -4,6 +4,7 @@ import (
 	"github.com/quarkloop/agent/pkg/activity"
 	"github.com/quarkloop/agent/pkg/config"
 	llmctx "github.com/quarkloop/agent/pkg/context"
+	"github.com/quarkloop/agent/pkg/eventbus"
 	"github.com/quarkloop/agent/pkg/model"
 	"github.com/quarkloop/agent/pkg/tool"
 	"github.com/quarkloop/core/pkg/kb"
@@ -15,13 +16,14 @@ import (
 type Resources struct {
 	KB          kb.Store
 	ConfigStore *config.Store
+	EventBus    *eventbus.Bus
+	Activity    *activity.Writer
 	Gateway     model.Gateway
 	Dispatcher  tool.Invoker
 	AdapterReg  *llmctx.AdapterRegistry
 	TC          llmctx.TokenComputer
 	IDGen       llmctx.IDGenerator
 	VisPolicy   *llmctx.VisibilityPolicy
-	Activity    activity.Sink
 	Permissions Permissions
 }
 
