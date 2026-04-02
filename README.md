@@ -6,7 +6,7 @@
 
 > Your agents. Your machine. Fully Autonomous.
 
-**Quark** is a local runtime for autonomous multi-agent AI spaces. Define a goal, declare your agents and model, and Quark handles the rest — launching agent runtimes for isolated workspaces, managing the supervisor→worker execution loop, persisting context across restarts, and streaming activity and logs in real time.
+**Quark** is a local runtime for autonomous multi-agent AI spaces. Define a goal, declare your agents and model, and Quark handles the rest — launching agent runtimes for isolated workspaces, managing the supervisor→subagent execution loop, persisting context across restarts, and streaming activity and logs in real time.
 
 ```
 quark init my-research    # scaffold a project
@@ -27,7 +27,7 @@ The agent runs a continuous planning cycle:
 ORIENT → PLAN → DISPATCH → MONITOR → ASSESS → (repeat)
 ```
 
-It reads the goal from the KB, produces a structured execution plan, fans out ready steps to worker goroutines, invokes tools like `bash`, `read`, `write`, or `web-search`, and iterates until the goal is complete.
+It reads the goal from the KB, produces a structured execution plan, fans out ready steps to subagents, invokes tools like `bash`, `read`, `write`, or `web-search`, and iterates until the goal is complete.
 
 Public HTTP APIs are split by entity:
 
@@ -43,7 +43,7 @@ A **session** is a communication channel between a user (or system) and an agent
 | ---------- | ---------------------------------------------------------------- |
 | `main`     | Persistent autonomous session — one per agent, survives restarts |
 | `chat`     | User-created conversation thread with independent context        |
-| `subagent` | Worker session for plan step execution                           |
+| `subagent` | Subagent session for plan step execution                           |
 | `cron`     | Session for scheduled task runs                                  |
 
 Sessions use hierarchical keys: `agent:<agentID>:<type>[:<id>]`. The main session is created automatically when an agent starts. Chat sessions are created via `POST /sessions` and deleted via `DELETE /sessions/{key}`. Chat messages include an optional `session_key` field to route to a specific session.
@@ -55,7 +55,7 @@ Quark is structured as a Go workspace with twelve independent modules:
 | Module             | Role                                                                                     |
 | ------------------ | ---------------------------------------------------------------------------------------- |
 | `core`             | Shared foundation: JSONL store, KB abstraction, CLI toolkit.                             |
-| `agent`            | Agent runtime, planning loop, activity feed, worker dispatch, model gateway integration. |
+| `agent`            | Agent runtime, planning loop, activity feed, subagent dispatch, model gateway integration. |
 | `agent-api`        | Shared HTTP API contracts and route helpers for agent runtimes.                          |
 | `agent-client`     | Shared HTTP/SSE client for direct and proxied agent access.                              |
 | `api-server`       | Space lifecycle controller and HTTP API server.                                          |
@@ -281,7 +281,7 @@ env:
 restart: on-failure
 ```
 
-Adding worker agents and tools:
+Adding subagent agents and tools:
 
 ```yaml
 agents:

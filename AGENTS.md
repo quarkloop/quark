@@ -11,7 +11,7 @@ Go 1.22 workspace with 12 modules and 9 binaries. Each module is a standalone Go
 | Module | Role |
 |--------|------|
 | `core` | Shared foundation: JSONL store, KB abstraction, CLI toolkit. No quarkloop deps. |
-| `agent` | Multi-agent execution engine: supervisor loop, worker dispatch, context management. |
+| `agent` | Multi-agent execution engine: supervisor loop, subagent dispatch, context management. |
 | `agent-api` | Shared HTTP API contracts and route helpers for direct and proxied agent access. |
 | `agent-client` | Shared HTTP/SSE client for talking to direct agents or proxied agents. |
 | `api-server` | HTTP API server for space management and agent interaction. |
