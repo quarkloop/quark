@@ -24,6 +24,7 @@ import (
 	"github.com/quarkloop/agent/pkg/activity"
 	"github.com/quarkloop/agent/pkg/agent"
 	"github.com/quarkloop/agent/pkg/agentcore"
+	"github.com/quarkloop/agent/pkg/channel"
 	"github.com/quarkloop/agent/pkg/config"
 	"github.com/quarkloop/agent/pkg/eventbus"
 	"github.com/quarkloop/agent/pkg/hooks"
@@ -50,6 +51,7 @@ type Runtime struct {
 	kb           kb.Store
 	registry     *agent.Registry
 	resolver     resolver.Resolver
+	chManager    *channel.Manager
 	bus          *eventbus.Bus
 	actWriter    *activity.Writer
 	httpSrv      *httpserver.Server
@@ -126,6 +128,13 @@ func New(cfg *Config) (*Runtime, error) {
 		skill.Root{Dir: spaceSkillsDir, Source: skill.SourceSpace, Priority: 3},
 	)
 
+	// Create channel manager and register the Web UI channel.
+	chManager := channel.NewManager(bus)
+	webCh := channel.NewWebChannel(nil) // no allowlist for web
+	if err := chManager.Register(webCh); err != nil {
+		log.Printf("runtime: failed to register web channel: %v", err)
+	}
+
 	res := &agentcore.Resources{
 		KB:            k,
 		ConfigStore:   cfgStore,
@@ -177,6 +186,7 @@ func New(cfg *Config) (*Runtime, error) {
 		kb:           k,
 		registry:     registry,
 		resolver:     chain,
+		chManager:    chManager,
 		bus:          bus,
 		actWriter:    actWriter,
 		httpSrv:      srv,
@@ -202,6 +212,11 @@ func (r *Runtime) Run(ctx context.Context) error {
 
 	log.Printf("runtime %s ready on port %d", r.cfg.AgentID, r.cfg.Port)
 
+	// Start all registered channels.
+	if err := r.chManager.StartAll(ctx); err != nil {
+		log.Printf("runtime %s: channel start error: %v", r.cfg.AgentID, err)
+	}
+
 	// Run all registered agents.
 	for _, agentID := range r.registry.List() {
 		a, _ := r.registry.Get(agentID)
@@ -218,6 +233,9 @@ func (r *Runtime) Run(ctx context.Context) error {
 }
 
 func (r *Runtime) Close() {
+	if r.chManager != nil {
+		r.chManager.StopAll(context.Background())
+	}
 	_ = r.httpSrv.Shutdown(context.Background())
 	if r.actWriter != nil {
 		r.actWriter.Stop()
