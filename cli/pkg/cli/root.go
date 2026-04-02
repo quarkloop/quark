@@ -11,7 +11,7 @@ func Root() *cobra.Command {
 	root := &cobra.Command{
 		Use:          "quark [OPTIONS] COMMAND",
 		Short:        "Quark — the agent runtime",
-		Long:         "Pack your agents. Ship your intelligence.\n\nQuark is a runtime for autonomous agents.",
+		Long:         "Your agents. Your machine. Fully Autonomous.\n\nQuark is a runtime for autonomous agents.",
 		SilenceUsage: true,
 	}
 
