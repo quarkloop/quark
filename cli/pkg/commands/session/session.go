@@ -1,5 +1,5 @@
 // Package session provides CLI commands for managing agent sessions.
-package session
+package sessioncmd
 
 import (
 	"encoding/json"
@@ -8,9 +8,9 @@ import (
 	"github.com/spf13/cobra"
 
 	agentapi "github.com/quarkloop/agent-api"
-	agentclient "github.com/quarkloop/agent-client"
-
 	"github.com/quarkloop/cli/pkg/middleware"
+	"github.com/quarkloop/cli/pkg/resolve"
+	sessioncli "github.com/quarkloop/cli/pkg/session"
 )
 
 func NewSessionCommand() *cobra.Command {
@@ -28,12 +28,15 @@ func NewSessionCommand() *cobra.Command {
 	return cmd
 }
 
-func agentURLFromFlags(cmd *cobra.Command) string {
-	url, _ := cmd.Flags().GetString("agent-url")
-	if url == "" {
-		return "http://127.0.0.1:7100"
+func resolveClient(cmd *cobra.Command) (*sessioncli.Client, error) {
+	if url := resolve.AgentURL(cmd); url != "" {
+		return sessioncli.NewHTTP(url), nil
 	}
-	return url
+	dir, err := resolve.SpaceDir()
+	if err != nil {
+		return nil, err
+	}
+	return sessioncli.NewLocal(dir)
 }
 
 func newSessionCreateCmd() *cobra.Command {
@@ -42,12 +45,16 @@ func newSessionCreateCmd() *cobra.Command {
 		Use:   "create",
 		Short: "Create a new session",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client := agentclient.New(agentURLFromFlags(cmd))
+			c, err := resolveClient(cmd)
+			if err != nil {
+				return err
+			}
+			defer c.Close()
 			req := agentapi.CreateSessionRequest{
 				Type:  agentapi.SessionType(sessType),
 				Title: title,
 			}
-			resp, err := client.CreateSession(cmd.Context(), req)
+			resp, err := c.Create(cmd.Context(), req)
 			if err != nil {
 				return fmt.Errorf("create session: %w", err)
 			}
@@ -66,12 +73,16 @@ func newSessionGetCmd() *cobra.Command {
 		Short: "Get a session",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client := agentclient.New(agentURLFromFlags(cmd))
-			session, err := client.Session(cmd.Context(), args[0])
+			c, err := resolveClient(cmd)
+			if err != nil {
+				return err
+			}
+			defer c.Close()
+			sess, err := c.Get(cmd.Context(), args[0])
 			if err != nil {
 				return fmt.Errorf("get session: %w", err)
 			}
-			data, _ := json.MarshalIndent(session, "", "  ")
+			data, _ := json.MarshalIndent(sess, "", "  ")
 			fmt.Println(string(data))
 			return nil
 		},
@@ -84,8 +95,12 @@ func newSessionDeleteCmd() *cobra.Command {
 		Short: "Delete a session (cannot delete main)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client := agentclient.New(agentURLFromFlags(cmd))
-			if err := client.DeleteSession(cmd.Context(), args[0]); err != nil {
+			c, err := resolveClient(cmd)
+			if err != nil {
+				return err
+			}
+			defer c.Close()
+			if err := c.Delete(cmd.Context(), args[0]); err != nil {
 				return fmt.Errorf("delete session: %w", err)
 			}
 			fmt.Printf("Session deleted: %s\n", args[0])
@@ -99,8 +114,12 @@ func newSessionListCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List all sessions",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client := agentclient.New(agentURLFromFlags(cmd))
-			sessions, err := client.Sessions(cmd.Context())
+			c, err := resolveClient(cmd)
+			if err != nil {
+				return err
+			}
+			defer c.Close()
+			sessions, err := c.List(cmd.Context())
 			if err != nil {
 				return fmt.Errorf("list sessions: %w", err)
 			}
