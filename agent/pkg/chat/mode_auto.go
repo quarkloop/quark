@@ -28,7 +28,7 @@ func processAuto(
 	}
 
 	log.Printf("chat: auto classified as %s", resolved)
-	emitActivity(res.EventBus, req.SessionKey, eventbus.KindModeClassified, map[string]string{"resolved": string(resolved)})
+	agentcore.EmitActivity(res.EventBus, req.SessionKey, eventbus.KindModeClassified, map[string]string{"resolved": string(resolved)})
 
 	switch resolved {
 	case agentcore.ModeAsk:
