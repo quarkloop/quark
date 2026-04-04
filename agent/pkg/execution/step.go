@@ -259,7 +259,7 @@ func GatherArtifacts(res *agentcore.Resources) string {
 	return sb.String()
 }
 
-func emitActivity(bus *eventbus.Bus, kind eventbus.EventKind, data interface{}) {
+func emitActivity(bus *eventbus.Bus, kind eventbus.EventKind, data any) {
 	if bus == nil {
 		return
 	}
