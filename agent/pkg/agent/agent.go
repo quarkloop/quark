@@ -7,8 +7,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -24,11 +22,11 @@ import (
 	"github.com/quarkloop/agent/pkg/subagent"
 )
 
-// Agent drives the multi-agent loop inside a single space-runtime process.
+// Agent drives the multi-agent loop inside a single space runtime process.
 // It manages sessions (each with its own context) and routes requests.
 type Agent struct {
-	res         *agentcore.Resources
 	agentID     string
+	res         *agentcore.Resources
 	def         *agentcore.Definition
 	subAgents   map[string]*agentcore.Definition
 	sessions    map[string]*SessionState // session key → state
@@ -711,26 +709,4 @@ func (a *Agent) emit(sessionKey string, kind eventbus.EventKind, data interface{
 		Timestamp: time.Now().UTC(),
 		Data:      data,
 	})
-}
-
-// buildSupervisorSystemPrompt resolves the supervisor's system prompt from
-// KB config, file path, inline text, or a generated default.
-func (a *Agent) buildSupervisorSystemPrompt() string {
-	if data, err := a.res.KB.Get(agentcore.NSConfig, agentcore.KeySupervisorPrompt); err == nil && len(data) > 0 {
-		return string(data)
-	}
-	if a.def.SystemPrompt != "" {
-		if !strings.Contains(a.def.SystemPrompt, "\n") {
-			if data, err := os.ReadFile(a.def.SystemPrompt); err == nil {
-				return string(data)
-			}
-		}
-		return a.def.SystemPrompt
-	}
-
-	agents := []string{}
-	for name := range a.subAgents {
-		agents = append(agents, name)
-	}
-	return chat.SupervisorPrompt(a.def, a.res.GetDispatcher().List(), agents)
 }

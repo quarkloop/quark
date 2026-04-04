@@ -9,10 +9,10 @@ import (
 	"github.com/quarkloop/agent/pkg/eventbus"
 	"github.com/quarkloop/agent/pkg/hooks"
 	"github.com/quarkloop/agent/pkg/model"
-	"github.com/quarkloop/agent/pkg/plugin"
 	"github.com/quarkloop/agent/pkg/skill"
 	"github.com/quarkloop/agent/pkg/tool"
-	"github.com/quarkloop/core/pkg/kb"
+	"github.com/quarkloop/cli/pkg/kb"
+	cliplugin "github.com/quarkloop/cli/pkg/plugin"
 )
 
 // Resources holds the shared dependencies that all agent sub-packages need.
@@ -29,7 +29,7 @@ type Resources struct {
 	Activity      *activity.Writer
 	Hooks         *hooks.Registry
 	SkillResolver *skill.Resolver
-	PluginManager *plugin.Manager
+	PluginManager *cliplugin.Manager
 	AdapterReg    *llmctx.AdapterRegistry
 	TC            llmctx.TokenComputer
 	IDGen         llmctx.IDGenerator

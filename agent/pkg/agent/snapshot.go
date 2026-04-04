@@ -7,7 +7,7 @@ import (
 
 	"github.com/quarkloop/agent/pkg/agentcore"
 	llmctx "github.com/quarkloop/agent/pkg/context"
-	"github.com/quarkloop/core/pkg/kb"
+	"github.com/quarkloop/cli/pkg/kb"
 )
 
 // SaveSessionSnapshot persists a session's context to KB.
