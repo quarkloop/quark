@@ -17,7 +17,7 @@ const (
 	// model, current mode, and registered tools. Use for UI display.
 	PathInfo = "/info"
 
-	// PathMode returns the agent's current working mode (GET).
+	// PathMode returns the agent's current working mode (GET) or sets it (POST).
 	PathMode = "/mode"
 
 	// PathStats returns agent statistics including context metrics (GET).
