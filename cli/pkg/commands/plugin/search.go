@@ -1,4 +1,4 @@
-package plugin
+package plugincmd
 
 import (
 	"fmt"
@@ -9,6 +9,11 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+)
+
+const (
+	registryOwner = "quarkloop"
+	registryRepo  = "plugins"
 )
 
 type registryPlugin struct {
