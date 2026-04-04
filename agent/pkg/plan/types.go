@@ -12,6 +12,14 @@ const (
 	PlanDraft PlanStatus = "draft"
 	// PlanApproved means the user has approved the plan for execution.
 	PlanApproved PlanStatus = "approved"
+	// PlanRejected means the plan was explicitly rejected.
+	PlanRejected PlanStatus = "rejected"
+	// PlanExecuting means the plan is currently running.
+	PlanExecuting PlanStatus = "executing"
+	// PlanSucceeded means the plan completed successfully.
+	PlanSucceeded PlanStatus = "succeeded"
+	// PlanFailed means the plan terminated with errors.
+	PlanFailed PlanStatus = "failed"
 )
 
 // StepStatus tracks the lifecycle of a single plan step.
