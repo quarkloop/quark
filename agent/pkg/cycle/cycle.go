@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"strings"
 	"time"
 
 	"github.com/quarkloop/agent/pkg/agentcore"
@@ -94,8 +93,8 @@ func orient(
 	res *agentcore.Resources,
 	planStore *plan.Store,
 	subAgents map[string]*agentcore.Definition,
-) (map[string]interface{}, error) {
-	state := map[string]interface{}{}
+) (map[string]any, error) {
+	state := map[string]any{}
 
 	if goal, err := res.KB.Get(agentcore.NSConfig, agentcore.KeyGoal); err == nil {
 		state["goal"] = string(goal)
@@ -126,7 +125,7 @@ func orient(
 		agentNames = append(agentNames, name)
 	}
 	state["available_agents"] = agentNames
-	state["available_tools"] = res.Dispatcher.List()
+	state["available_tools"] = res.GetDispatcher().List()
 
 	if ac != nil {
 		s := ac.Stats()
@@ -143,7 +142,7 @@ func updatePlan(
 	ac *llmctx.AgentContext,
 	res *agentcore.Resources,
 	planStore *plan.Store,
-	state map[string]interface{},
+	state map[string]any,
 ) error {
 	if p, ok := state["plan"].(*plan.Plan); ok {
 		if p.Complete {
@@ -196,7 +195,7 @@ Rules:
 
 	log.Printf("cycle: plan response (%d tokens): %s", resp.TotalTokens(), execution.Truncate(resp.Content, 200))
 
-	planData, err := extractJSON(resp.Content)
+	planData, err := agentcore.ExtractJSON(resp.Content)
 	if err != nil {
 		return fmt.Errorf("extracting plan JSON: %w", err)
 	}
@@ -302,7 +301,7 @@ func dispatch(ctx context.Context, res *agentcore.Resources, planStore *plan.Sto
 			return err
 		}
 		log.Printf("cycle: dispatching step %s to agent %s", step.ID, step.Agent)
-		emitActivity(res.EventBus, eventbus.KindStepDispatched, map[string]string{"step": step.ID, "agent": step.Agent})
+		agentcore.EmitActivity(res.EventBus, "", eventbus.KindStepDispatched, map[string]string{"step": step.ID, "agent": step.Agent})
 
 		if err := spawner.SpawnSubagent(ctx, *step); err != nil {
 			log.Printf("cycle: spawn subagent error for step %s: %v", step.ID, err)
@@ -352,9 +351,9 @@ func monitor(res *agentcore.Resources, planStore *plan.Store) error {
 				res.KB.Delete(agentcore.NSEvents, key)
 				modified = true
 				if event.Status == "complete" {
-					emitActivity(res.EventBus, eventbus.KindStepCompleted, map[string]string{"step": event.StepID})
+					agentcore.EmitActivity(res.EventBus, "", eventbus.KindStepCompleted, map[string]string{"step": event.StepID})
 				} else {
-					emitActivity(res.EventBus, eventbus.KindStepFailed, map[string]string{"step": event.StepID, "error": event.Error})
+					agentcore.EmitActivity(res.EventBus, "", eventbus.KindStepFailed, map[string]string{"step": event.StepID, "error": event.Error})
 				}
 				log.Printf("cycle: step %s → %s", event.StepID, event.Status)
 				break
@@ -395,48 +394,4 @@ func assess(planStore *plan.Store) (bool, error) {
 		}
 	}
 	return false, nil
-}
-
-func emitActivity(bus *eventbus.Bus, kind eventbus.EventKind, data interface{}) {
-	if bus == nil {
-		return
-	}
-	bus.Emit(eventbus.Event{
-		Kind: kind,
-		Data: data,
-	})
-}
-
-// extractJSON pulls the first JSON object from a string (handles markdown fences).
-func extractJSON(s string) ([]byte, error) {
-	s = strings.TrimSpace(s)
-	if strings.HasPrefix(s, "```") {
-		end := strings.LastIndex(s, "```")
-		if end > 3 {
-			s = strings.TrimSpace(s[3:end])
-			if nl := strings.Index(s, "\n"); nl >= 0 {
-				s = strings.TrimSpace(s[nl:])
-			}
-		}
-	}
-	start := strings.Index(s, "{")
-	if start < 0 {
-		return nil, fmt.Errorf("no JSON object found in response")
-	}
-	depth := 0
-	for i := start; i < len(s); i++ {
-		switch s[i] {
-		case '{':
-			depth++
-		case '}':
-			depth--
-			if depth == 0 {
-				raw := []byte(s[start : i+1])
-				if json.Valid(raw) {
-					return raw, nil
-				}
-			}
-		}
-	}
-	return nil, fmt.Errorf("malformed JSON in response")
 }
