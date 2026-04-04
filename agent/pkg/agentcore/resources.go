@@ -4,7 +4,6 @@ import (
 	"sync"
 
 	"github.com/quarkloop/agent/pkg/activity"
-	"github.com/quarkloop/agent/pkg/config"
 	llmctx "github.com/quarkloop/agent/pkg/context"
 	"github.com/quarkloop/agent/pkg/eventbus"
 	"github.com/quarkloop/agent/pkg/hooks"
@@ -12,7 +11,6 @@ import (
 	"github.com/quarkloop/agent/pkg/skill"
 	"github.com/quarkloop/agent/pkg/tool"
 	"github.com/quarkloop/cli/pkg/kb"
-	cliplugin "github.com/quarkloop/cli/pkg/plugin"
 )
 
 // Resources holds the shared dependencies that all agent sub-packages need.
@@ -24,12 +22,10 @@ import (
 // access these three fields through their Get* accessor methods.
 type Resources struct {
 	KB            kb.Store
-	ConfigStore   *config.Store
 	EventBus      *eventbus.Bus
 	Activity      *activity.Writer
 	Hooks         *hooks.Registry
 	SkillResolver *skill.Resolver
-	PluginManager *cliplugin.Manager
 	AdapterReg    *llmctx.AdapterRegistry
 	TC            llmctx.TokenComputer
 	IDGen         llmctx.IDGenerator
