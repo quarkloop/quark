@@ -1,18 +1,15 @@
-// Package plan provides CLI commands for managing execution plans.
-// Plans are stored in .quark/plans/ as JSONL files.
-package plan
+// Package plancmd provides CLI commands for managing execution plans.
+package plancmd
 
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
-	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/quarkloop/cli/pkg/middleware"
-	"github.com/quarkloop/cli/pkg/quarkfile"
+	"github.com/quarkloop/cli/pkg/plan"
+	"github.com/quarkloop/cli/pkg/resolve"
 )
 
 func NewPlanCommand() *cobra.Command {
@@ -32,30 +29,15 @@ func NewPlanCommand() *cobra.Command {
 	return cmd
 }
 
-func spaceDir(cmd *cobra.Command) string {
-	dir, _ := cmd.Flags().GetString("dir")
-	if dir == "" {
-		return "."
+func resolveClient(cmd *cobra.Command) (*plan.Client, error) {
+	if url := resolve.AgentURL(cmd); url != "" {
+		return plan.NewHTTP(url), nil
 	}
-	return dir
-}
-
-func plansDir(spaceDir string) (string, error) {
-	abs, err := filepath.Abs(spaceDir)
+	dir, err := resolve.SpaceDir()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	if !quarkfile.Exists(abs) {
-		return "", fmt.Errorf("no Quarkfile found in %s", abs)
-	}
-	return filepath.Join(abs, ".quark", "plans"), nil
-}
-
-type planRecord struct {
-	ID        string    `json:"id"`
-	Goal      string    `json:"goal"`
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"created_at"`
+	return plan.NewLocal(dir)
 }
 
 func newPlanCreateCmd() *cobra.Command {
@@ -64,29 +46,16 @@ func newPlanCreateCmd() *cobra.Command {
 		Use:   "create",
 		Short: "Create a new draft plan",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			pDir, err := plansDir(spaceDir(cmd))
+			c, err := resolveClient(cmd)
 			if err != nil {
 				return err
 			}
-			if err := os.MkdirAll(pDir, 0755); err != nil {
-				return fmt.Errorf("create plans dir: %w", err)
-			}
-			id := fmt.Sprintf("plan-%d", time.Now().UnixNano())
-			record := planRecord{
-				ID:        id,
-				Goal:      goal,
-				Status:    "draft",
-				CreatedAt: time.Now(),
-			}
-			data, err := json.Marshal(record)
+			defer c.Close()
+			p, err := c.Create(cmd.Context(), goal)
 			if err != nil {
-				return err
+				return fmt.Errorf("create plan: %w", err)
 			}
-			path := filepath.Join(pDir, id+".jsonl")
-			if err := os.WriteFile(path, append(data, '\n'), 0644); err != nil {
-				return fmt.Errorf("write plan: %w", err)
-			}
-			fmt.Printf("Plan created: %s\n", id)
+			fmt.Printf("Plan created: %s\n", p.Goal)
 			return nil
 		},
 	}
@@ -100,15 +69,16 @@ func newPlanGetCmd() *cobra.Command {
 		Short: "Get a plan",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			pDir, err := plansDir(spaceDir(cmd))
+			c, err := resolveClient(cmd)
 			if err != nil {
 				return err
 			}
-			path := filepath.Join(pDir, args[0]+".jsonl")
-			data, err := os.ReadFile(path)
+			defer c.Close()
+			p, err := c.Get(cmd.Context(), args[0])
 			if err != nil {
-				return fmt.Errorf("plan not found: %s", args[0])
+				return fmt.Errorf("get plan: %w", err)
 			}
+			data, _ := json.MarshalIndent(p, "", "  ")
 			fmt.Println(string(data))
 			return nil
 		},
@@ -120,32 +90,21 @@ func newPlanListCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List all plans",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			pDir, err := plansDir(spaceDir(cmd))
+			c, err := resolveClient(cmd)
 			if err != nil {
 				return err
 			}
-			entries, err := os.ReadDir(pDir)
+			defer c.Close()
+			plans, err := c.List(cmd.Context())
 			if err != nil {
-				if os.IsNotExist(err) {
-					fmt.Println("No plans.")
-					return nil
-				}
 				return fmt.Errorf("list plans: %w", err)
 			}
-			if len(entries) == 0 {
+			if len(plans) == 0 {
 				fmt.Println("No plans.")
 				return nil
 			}
-			for _, e := range entries {
-				data, err := os.ReadFile(filepath.Join(pDir, e.Name()))
-				if err != nil {
-					continue
-				}
-				var r planRecord
-				if err := json.Unmarshal(data, &r); err != nil {
-					continue
-				}
-				fmt.Printf("%s  %-10s  %s\n", r.ID, r.Status, r.Goal)
+			for _, p := range plans {
+				fmt.Printf("%-10s  %s\n", p.Status, p.Goal)
 			}
 			return nil
 		},
@@ -154,22 +113,54 @@ func newPlanListCmd() *cobra.Command {
 
 func newPlanApproveCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "approve <plan-id>",
-		Short: "Approve a draft plan",
-		Args:  cobra.ExactArgs(1),
+		Use:   "approve [plan-id]",
+		Short: "Approve the current active plan",
+		Long: `Approve the current active plan. In local mode, an optional plan-id
+may be provided to approve a specific stored plan. In HTTP mode (connected to a
+running agent), only the single active plan is approved and any plan-id argument
+is ignored.`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return updatePlanStatus(spaceDir(cmd), args[0], "approved")
+			c, err := resolveClient(cmd)
+			if err != nil {
+				return err
+			}
+			defer c.Close()
+			planID := ""
+			if len(args) > 0 {
+				planID = args[0]
+			}
+			if _, err := c.Approve(cmd.Context(), planID); err != nil {
+				return fmt.Errorf("approve plan: %w", err)
+			}
+			fmt.Println("Plan approved")
+			return nil
 		},
 	}
 }
 
 func newPlanRejectCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "reject <plan-id>",
-		Short: "Reject a draft plan",
-		Args:  cobra.ExactArgs(1),
+		Use:   "reject [plan-id]",
+		Short: "Reject the current active plan",
+		Long: `Reject the current active plan. In local mode, an optional plan-id
+may be provided to reject a specific stored plan. In HTTP mode, plan-id is ignored.`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return updatePlanStatus(spaceDir(cmd), args[0], "rejected")
+			c, err := resolveClient(cmd)
+			if err != nil {
+				return err
+			}
+			defer c.Close()
+			planID := ""
+			if len(args) > 0 {
+				planID = args[0]
+			}
+			if err := c.Reject(cmd.Context(), planID); err != nil {
+				return fmt.Errorf("reject plan: %w", err)
+			}
+			fmt.Println("Plan rejected")
+			return nil
 		},
 	}
 }
@@ -184,37 +175,18 @@ func newPlanUpdateCmd() *cobra.Command {
 			if status == "" {
 				return fmt.Errorf("--status is required")
 			}
-			return updatePlanStatus(spaceDir(cmd), args[0], status)
+			c, err := resolveClient(cmd)
+			if err != nil {
+				return err
+			}
+			defer c.Close()
+			if err := c.Update(cmd.Context(), args[0], status); err != nil {
+				return fmt.Errorf("update plan: %w", err)
+			}
+			fmt.Printf("Plan %s status updated to %s\n", args[0], status)
+			return nil
 		},
 	}
 	cmd.Flags().StringVar(&status, "status", "", "New status (draft|approved|rejected|executing|completed|failed)")
 	return cmd
-}
-
-func updatePlanStatus(spaceDir, planID, status string) error {
-	pDir, err := plansDir(spaceDir)
-	if err != nil {
-		return err
-	}
-	path := filepath.Join(pDir, planID+".jsonl")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return fmt.Errorf("plan not found: %s", planID)
-	}
-
-	var record planRecord
-	if err := json.Unmarshal(data, &record); err != nil {
-		return fmt.Errorf("parse plan: %w", err)
-	}
-	record.Status = status
-
-	data, err = json.Marshal(record)
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(path, data, 0644); err != nil {
-		return fmt.Errorf("update plan: %w", err)
-	}
-	fmt.Printf("Plan %s status updated to %s\n", planID, status)
-	return nil
 }
