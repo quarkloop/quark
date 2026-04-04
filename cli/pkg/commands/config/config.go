@@ -1,15 +1,15 @@
-// Package config provides CLI commands for managing agent configuration.
-package config
+// Package configcmd provides CLI commands for managing agent configuration.
+package configcmd
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/spf13/cobra"
 
-	agentapi "github.com/quarkloop/agent-api"
-	agentclient "github.com/quarkloop/agent-client"
-
+	"github.com/quarkloop/cli/pkg/config"
 	"github.com/quarkloop/cli/pkg/middleware"
+	"github.com/quarkloop/cli/pkg/resolve"
 )
 
 func NewConfigCommand() *cobra.Command {
@@ -27,32 +27,34 @@ func NewConfigCommand() *cobra.Command {
 	return cmd
 }
 
-func agentURL(cmd *cobra.Command) string {
-	url, _ := cmd.Flags().GetString("agent-url")
-	if url == "" {
-		return "http://127.0.0.1:7100"
+func resolveClient(cmd *cobra.Command) (*config.Client, error) {
+	if url := resolve.AgentURL(cmd); url != "" {
+		return config.NewHTTP(url), nil
 	}
-	return url
+	dir, err := resolve.SpaceDir()
+	if err != nil {
+		return nil, err
+	}
+	return config.NewLocal(dir)
 }
 
 func newConfigGetCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "get <key>",
-		Short: "Get a config value from the agent",
+		Short: "Get a config value",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			switch args[0] {
-			case "mode":
-				client := agentclient.New(agentURL(cmd))
-				mode, err := client.Mode(cmd.Context())
-				if err != nil {
-					return fmt.Errorf("get mode: %w", err)
-				}
-				fmt.Printf("mode: %s\n", mode.Mode)
-				return nil
-			default:
-				return fmt.Errorf("unknown config key: %s", args[0])
+			c, err := resolveClient(cmd)
+			if err != nil {
+				return err
 			}
+			defer c.Close()
+			val, err := c.Get(cmd.Context(), args[0])
+			if err != nil {
+				return fmt.Errorf("get config: %w", err)
+			}
+			fmt.Printf("%s: %s\n", args[0], val)
+			return nil
 		},
 	}
 }
@@ -60,25 +62,19 @@ func newConfigGetCmd() *cobra.Command {
 func newConfigSetCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "set <key> <value>",
-		Short: "Set a config value on the agent",
-		Long:  "Set a config value via the agent's config store. Supported keys: mode.",
+		Short: "Set a config value",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			switch args[0] {
-			case "mode":
-				client := agentclient.New(agentURL(cmd))
-				resp, err := client.Chat(cmd.Context(), agentapi.ChatRequest{
-					Message: "set mode to " + args[1],
-					Mode:    args[1],
-				})
-				if err != nil {
-					return fmt.Errorf("set mode: %w", err)
-				}
-				fmt.Printf("mode set to %s\n", resp.Mode)
-				return nil
-			default:
-				return fmt.Errorf("unsupported config key: %s", args[0])
+			c, err := resolveClient(cmd)
+			if err != nil {
+				return err
 			}
+			defer c.Close()
+			if err := c.Set(cmd.Context(), args[0], args[1]); err != nil {
+				return fmt.Errorf("set config: %w", err)
+			}
+			fmt.Printf("%s set to %s\n", args[0], args[1])
+			return nil
 		},
 	}
 }
@@ -88,26 +84,26 @@ func newConfigListCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List agent configuration values",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client := agentclient.New(agentURL(cmd))
-			info, err := client.Info(cmd.Context())
+			c, err := resolveClient(cmd)
+			if err != nil {
+				return err
+			}
+			defer c.Close()
+			vals, err := c.List(cmd.Context())
 			if err != nil {
 				return fmt.Errorf("list config: %w", err)
 			}
-			mode, err := client.Mode(cmd.Context())
-			if err != nil {
-				return fmt.Errorf("list config: %w", err)
+			if len(vals) == 0 {
+				fmt.Println("No configuration values.")
+				return nil
 			}
-			stats, err := client.Stats(cmd.Context())
-			if err != nil {
-				return fmt.Errorf("list config: %w", err)
+			keys := make([]string, 0, len(vals))
+			for k := range vals {
+				keys = append(keys, k)
 			}
-			fmt.Printf("agent_id: %s\n", info.AgentID)
-			fmt.Printf("provider: %s\n", info.Provider)
-			fmt.Printf("model:    %s\n", info.Model)
-			fmt.Printf("mode:     %s\n", mode.Mode)
-			fmt.Printf("tools:    %v\n", info.Tools)
-			for k, v := range stats {
-				fmt.Printf("%s: %v\n", k, v)
+			sort.Strings(keys)
+			for _, k := range keys {
+				fmt.Printf("%s: %s\n", k, vals[k])
 			}
 			return nil
 		},
@@ -118,11 +114,17 @@ func newConfigDeleteCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "delete <key>",
 		Short: "Delete a config value",
-		Long:  "Delete a config value — only works for resettable keys.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_ = agentURL(cmd)
-			fmt.Println("config delete not yet exposed via HTTP — use agent API directly")
+			c, err := resolveClient(cmd)
+			if err != nil {
+				return err
+			}
+			defer c.Close()
+			if err := c.Delete(cmd.Context(), args[0]); err != nil {
+				return fmt.Errorf("delete config: %w", err)
+			}
+			fmt.Printf("%s deleted\n", args[0])
 			return nil
 		},
 	}
