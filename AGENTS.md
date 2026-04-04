@@ -4,24 +4,21 @@ Local runtime for autonomous multi-agent AI spaces.
 
 ## Architecture
 
-Go 1.22 workspace with 12 modules and 9 binaries. Each module is a standalone Go module with its own `go.mod`.
+Go 1.22 workspace with 9 modules and 6 binaries. Each module is a standalone Go module with its own `go.mod`.
 
 ### Module Layout
 
 | Module | Role |
 |--------|------|
-| `core` | Shared foundation: JSONL store, KB abstraction, CLI toolkit. No quarkloop deps. |
+| `core` | Shared foundation: JSONL store, KB interface, CLI toolkit, space directory API. No quarkloop deps. |
 | `agent` | Multi-agent execution engine: supervisor loop, subagent dispatch, context management. |
-| `agent-api` | Shared HTTP API contracts and route helpers for direct and proxied agent access. |
-| `agent-client` | Shared HTTP/SSE client for talking to direct agents or proxied agents. |
-| `api-server` | HTTP API server for space management and agent interaction. |
-| `cli` | `quark` CLI binary — user-facing entrypoint. |
-| `tools/bash` | Tool: shell command execution (CLI + HTTP server). |
-| `tools/kb` | Tool: knowledge base get/set/delete/list (CLI). |
-| `tools/read` | Tool: read regular text files (CLI + HTTP server). |
-| `tools/space` | Tool: space init/lock/validate, Quarkfile parsing. |
-| `tools/write` | Tool: write and edit regular text files (CLI + HTTP server). |
-| `tools/web-search` | Tool: web search via Brave/SerpAPI (CLI + HTTP server). |
+| `agent-api` | Shared HTTP API contracts and route helpers for agent access. |
+| `agent-client` | Shared HTTP/SSE client for talking to agents. |
+| `cli` | `quark` CLI binary — user-facing entrypoint. Directly launches and connects to agent. |
+| `plugins/tool-bash` | Builtin plugin: shell command execution (CLI + HTTP server). |
+| `plugins/tool-read` | Builtin plugin: read regular text files (CLI + HTTP server). |
+| `plugins/tool-write` | Builtin plugin: write and edit regular text files (CLI + HTTP server). |
+| `plugins/tool-web-search` | Builtin plugin: web search via Brave/SerpAPI (CLI + HTTP server). |
 
 ### Dependency Graph
 
@@ -29,40 +26,61 @@ Go 1.22 workspace with 12 modules and 9 binaries. Each module is a standalone Go
 core
   ↑
   ├── agent
-  │   └── tools/space
-  ├── tools/bash
-  ├── tools/kb
-  ├── tools/read
-  ├── tools/write
-  └── tools/web-search
+  ├── agent-api
+  └── cli
 
 agent-api
   ↑
   ├── agent
   ├── agent-client
-  └── api-server
-       ↑
-       └── cli
+  │     ↑
+  │     └── cli
+  └── cli
+
+cli
+  ↑
+  └── agent  (agent imports cli/pkg/kb for KB interface)
+
+plugins/*  (no compile-time deps on quark modules)
+  ↑
+  └── core
 ```
 
-Public HTTP APIs are split by entity:
-- `/api/v1/spaces/{id}` is only for space lifecycle and workspace operations.
-- `/api/v1/agents/{id}` is only for agent operations exposed through the api-server.
-- `/api/v1/agent` is the direct API served by a standalone agent runtime.
+Builtin plugins live in `plugins/` as self-contained modules. They have no compile-time dependency on quark modules — the plugin contract (manifest.yaml + SKILL.md + CLI/HTTP interface) is the only coupling.
+
+## CLI Package Structure
+
+The `cli` module contains all CLI logic:
+
+| Package | Role |
+|---------|------|
+| `cli/cmd/quark` | Entry point binary. |
+| `cli/pkg/root.go` | Root command definition with command groups. |
+| `cli/pkg/commands/` | All command implementations (init, run, stop, doctor, plugin, session, config, kb, plan, activity, version). |
+| `cli/pkg/commands/plugin/` | Plugin install, uninstall, list, info, build, search commands. |
+| `cli/pkg/config/` | Build-time version info. |
+| `cli/pkg/kb/` | KB Store interface + JSONL-backed local implementation. |
+| `cli/pkg/kbclient/` | Unified KB client (local filesystem or HTTP transport). |
+| `cli/pkg/kbserver/` | HTTP server handlers for the KB REST API. |
+| `cli/pkg/middleware/` | PersistentPreRunE hooks (RequireSpace). |
+| `cli/pkg/plugin/` | Plugin manifest parsing, discovery, remote ops (clone, copy). |
+| `cli/pkg/quarkfile/` | Quarkfile struct, parsing, validation. |
+| `cli/pkg/space/` | Space init and validate operations. |
 
 ## Build
 
 ```bash
-make build       # 9 binaries in ./bin/
+make build       # 6 binaries in ./bin/
 make test        # tests across all modules
 make test-e2e    # E2E tests (requires OPENROUTER_API_KEY or ZHIPU_API_KEY)
 make vet         # go vet across all modules
+make lint        # staticcheck across all modules
 make fmt         # gofmt across all modules
 make tidy        # go mod tidy across all modules
 make clean       # rm -rf bin/
 ```
 
-Individual: `make build-agent`, `make build-tools-read`, `make build-tools-write`, etc.
+Individual: `make build-agent`, `make build-cli`, `make build-tool-bash`, `make build-tool-read`, `make build-tool-write`, `make build-tool-web-search`.
 
 ## Development
 
@@ -92,7 +110,8 @@ The `agent` module is split into focused sub-packages with strict single respons
 | `agent/pkg/activity` | Persisted event log — async subscriber to EventBus with ring buffer. |
 | `agent/pkg/tool` | HTTP tool dispatcher and tool definition types. |
 | `agent/pkg/plan` | Plan and step types, KB-backed stores, master plan support. |
-| `agent/pkg/runtime` | Agent lifecycle: process management, HTTP server, health reporting. |
+| `agent/pkg/runtime` | Agent lifecycle: process management, HTTP server. |
+| `agent/pkg/plugin` | Plugin manifest parsing, discovery from `.quark/plugins/`, hub client. |
 
 **Dependency graph** (no circular imports):
 ```
@@ -102,12 +121,12 @@ agentcore (types, constants, resources)
    ├── execution (→ inference, hooks)
    ├── chat (→ inference, execution, intervention)
    ├── cycle (→ inference, intervention)
-   ├── session (→ core/pkg/kb only)
-   ├── config (→ core/pkg/kb)
+   ├── session (→ cli/pkg/kb only)
+   ├── config (→ cli/pkg/kb)
    ├── eventbus (leaf)
    ├── hooks (→ eventbus)
    ├── intervention (leaf)
-   └── activity (→ eventbus, core/pkg/kb)
+   └── activity (→ eventbus, cli/pkg/kb)
 
 agent (→ all of the above)
 ```
@@ -167,19 +186,29 @@ Mode is per-session. Default is `auto`. Main session mode persists in KB across 
 | `required` | `ApprovalRequired` | Plans are created as drafts; user must approve before execution. |
 | `auto` | `ApprovalAuto` | Plans are auto-approved for immediate execution. |
 
-## Tools vs Skills
+## Plugins
 
-- **Tools** are HTTP-dispatched executables that agents invoke (bash, read, write, web-search). Defined in the Quarkfile with a name and endpoint config.
-- **Skills** are `SKILL.md` files that provide domain-specific guidance to the agent. Listed in the system prompt as paths the agent reads on demand. Organized via the Skill Cascade: space > plugin > builtin.
+Everything is a plugin. Three types exist:
 
-Tools are NOT registered in a registry. They are declared directly in the Quarkfile:
+| Type | What it contains | Examples |
+|------|-----------------|----------|
+| **tool** | Binary (CLI + HTTP) + manifest.yaml + SKILL.md | `tool-bash`, `tool-read`, `tool-write`, `tool-web-search` |
+| **agent** | System prompt + skill references + tool requirements | `agent-supervisor`, `agent-researcher` |
+| **skill** | Guidance files only, no binary | `skill-code-review`, `skill-debugging` |
 
-```yaml
-tools:
-  - ref: quark/bash
-    name: bash
-    config:
-      endpoint: "http://127.0.0.1:8091/run"
+Installed plugins live in `.quark/plugins/{type}-{name}/`:
+```
+.quark/plugins/
+├── tool-bash/
+│   ├── manifest.yaml
+│   ├── SKILL.md
+│   └── bin/bash
+├── tool-read/
+│   ├── manifest.yaml
+│   └── bin/read
+└── agent-researcher/
+    ├── manifest.yaml
+    └── SKILL.md
 ```
 
 ## E2E Tests
@@ -202,11 +231,11 @@ Provider resolution order: `OPENROUTER_API_KEY` first, then `ZHIPU_API_KEY`. The
 - CLI tools use `core/pkg/toolkit` for bootstrap (`NewToolCommand` + `Execute`).
 - Cobra for all CLI commands.
 - JSONL-backed key-value store (`core/pkg/store`) for persistence.
-- KB abstraction (`core/pkg/kb`) wraps the store with namespace/key semantics.
+- KB abstraction (`cli/pkg/kb`) wraps the store with namespace/key semantics.
 - Agent plan types live in `agent/pkg/plan`.
 - Shared agent types (Definition, Mode, ApprovalPolicy, ChatRequest/Response) live in `agent/pkg/agentcore`.
 - Session types and store live in `agent/pkg/session`.
 - Tool dispatch types live in `agent/pkg/tool`.
 - Shared agent HTTP contracts live in `agent-api`; reusable HTTP/SSE access lives in `agent-client`.
-- Tool binaries follow the pattern: `tools/<name>/cmd/<name>/main.go` (thin CLI) + `tools/<name>/pkg/<name>/` (library).
-- Module paths: `github.com/quarkloop/<module>` for top-level, `github.com/quarkloop/tools/<name>` for tools.
+- Plugin binaries follow the pattern: `plugins/{type}-{name}/cmd/{name}/main.go` (thin CLI) + `plugins/{type}-{name}/pkg/{name}/` (library).
+- Module paths: `github.com/quarkloop/<module>` for top-level, `github.com/quarkloop/plugins/{type}-{name}` for plugins.
