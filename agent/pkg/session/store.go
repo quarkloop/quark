@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/quarkloop/core/pkg/kb"
+	"github.com/quarkloop/cli/pkg/kb"
 )
 
 const namespace = "sessions"

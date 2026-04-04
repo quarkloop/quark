@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/quarkloop/core/pkg/kb"
+	"github.com/quarkloop/cli/pkg/kb"
 )
 
 // MasterPlanStore provides load/save operations for a MasterPlan backed by the KB.

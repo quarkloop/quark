@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/quarkloop/core/pkg/kb"
+	"github.com/quarkloop/cli/pkg/kb"
 )
 
 const (

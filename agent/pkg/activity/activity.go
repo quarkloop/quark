@@ -12,7 +12,7 @@ import (
 	"sync"
 
 	"github.com/quarkloop/agent/pkg/eventbus"
-	"github.com/quarkloop/core/pkg/kb"
+	"github.com/quarkloop/cli/pkg/kb"
 )
 
 // Event aliases eventbus.Event for backward compatibility during migration.

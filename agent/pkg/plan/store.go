@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/quarkloop/core/pkg/kb"
+	"github.com/quarkloop/cli/pkg/kb"
 )
 
 // Store provides load/save/query operations for the master execution plan
