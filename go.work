@@ -6,6 +6,7 @@ use (
 	./agent-client
 	./cli
 	./core
+	./e2e
 	./plugins/tool-bash
 	./plugins/tool-read
 	./plugins/tool-web-search
