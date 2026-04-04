@@ -1,18 +1,17 @@
-// Package activity provides CLI commands for managing the activity log.
-// The activity log is an append-only JSONL stream in .quark/activity/.
-package activity
+// Package activitycmd provides CLI commands for managing the activity log.
+package activitycmd
 
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	agentapi "github.com/quarkloop/agent-api"
+	"github.com/quarkloop/cli/pkg/activity"
 	"github.com/quarkloop/cli/pkg/middleware"
-	"github.com/quarkloop/core/pkg/space"
+	"github.com/quarkloop/cli/pkg/resolve"
 )
 
 func NewActivityCommand() *cobra.Command {
@@ -28,28 +27,15 @@ func NewActivityCommand() *cobra.Command {
 	return cmd
 }
 
-func spaceDir(cmd *cobra.Command) (string, error) {
-	dir, err := space.FindRoot(".")
-	if err != nil {
-		return "", err
+func resolveClient(cmd *cobra.Command) (*activity.Client, error) {
+	if url := resolve.AgentURL(cmd); url != "" {
+		return activity.NewHTTP(url), nil
 	}
-	return dir, nil
-}
-
-func activityDir(spaceDir string) string {
-	return space.ActivityDir(spaceDir)
-}
-
-func logPath(spaceDir string) string {
-	return space.ActivityLogPath(spaceDir)
-}
-
-type activityRecord struct {
-	ID        string          `json:"id"`
-	SessionID string          `json:"session_id"`
-	Type      string          `json:"type"`
-	Timestamp time.Time       `json:"timestamp"`
-	Data      json.RawMessage `json:"data,omitempty"`
+	dir, err := resolve.SpaceDir()
+	if err != nil {
+		return nil, err
+	}
+	return activity.NewLocal(dir), nil
 }
 
 func newActivityAppendCmd() *cobra.Command {
@@ -58,37 +44,20 @@ func newActivityAppendCmd() *cobra.Command {
 		Short: "Append an event to the activity log",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			dir, err := spaceDir(cmd)
+			c, err := resolveClient(cmd)
 			if err != nil {
 				return err
 			}
-			aDir := activityDir(dir)
-			if err := os.MkdirAll(aDir, 0755); err != nil {
-				return err
-			}
-			path := logPath(dir)
-			f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-			if err != nil {
-				return fmt.Errorf("open activity log: %w", err)
-			}
-			defer f.Close()
+			defer c.Close()
 
-			var record activityRecord
+			var record agentapi.ActivityRecord
 			if err := json.Unmarshal([]byte(args[0]), &record); err != nil {
 				return fmt.Errorf("invalid event JSON: %w", err)
 			}
 			if record.Timestamp.IsZero() {
 				record.Timestamp = time.Now()
 			}
-
-			data, err := json.Marshal(record)
-			if err != nil {
-				return err
-			}
-			if _, err := f.Write(append(data, '\n')); err != nil {
-				return fmt.Errorf("write activity: %w", err)
-			}
-			return nil
+			return c.Append(cmd.Context(), record)
 		},
 	}
 }
@@ -96,55 +65,42 @@ func newActivityAppendCmd() *cobra.Command {
 func newActivityQueryCmd() *cobra.Command {
 	var eventType, since string
 	var limit int
+	var follow bool
 	cmd := &cobra.Command{
 		Use:   "query",
 		Short: "Query activity log entries",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			dir, err := spaceDir(cmd)
+			c, err := resolveClient(cmd)
 			if err != nil {
 				return err
 			}
-			path := logPath(dir)
-			data, err := os.ReadFile(path)
+			defer c.Close()
+
+			if follow {
+				fmt.Println("Streaming live activity... (Ctrl+C to stop)")
+				return c.Stream(cmd.Context(), func(record agentapi.ActivityRecord) {
+					if eventType != "" && record.Type != eventType {
+						return
+					}
+					fmt.Printf("%s  %-30s  %s  %s\n", record.Timestamp, record.Type, record.SessionID, record.Data)
+				})
+			}
+
+			records, err := c.Query(cmd.Context(), activity.QueryOptions{
+				Type:  eventType,
+				Since: since,
+				Limit: limit,
+			})
 			if err != nil {
-				if os.IsNotExist(err) {
-					fmt.Println("No activity.")
-					return nil
-				}
-				return err
+				return fmt.Errorf("query activity: %w", err)
 			}
-
-			lines := strings.Split(strings.TrimSpace(string(data)), "\n")
-			count := 0
-			var sinceTime time.Time
-			if since != "" {
-				sinceTime, _ = time.Parse(time.RFC3339, since)
+			if len(records) == 0 {
+				fmt.Println("No activity.")
+				return nil
 			}
-
-			// Print newest first.
-			for i := len(lines) - 1; i >= 0; i-- {
-				line := strings.TrimSpace(lines[i])
-				if line == "" {
-					continue
-				}
-				var rec activityRecord
-				if err := json.Unmarshal([]byte(line), &rec); err != nil {
-					continue
-				}
-				if eventType != "" && rec.Type != eventType {
-					continue
-				}
-				if !sinceTime.IsZero() && !rec.Timestamp.After(sinceTime) {
-					continue
-				}
-				fmt.Printf("%s  %-30s  %s  %s\n", rec.Timestamp.Format(time.RFC3339), rec.Type, rec.SessionID, rec.Data)
-				count++
-				if limit > 0 && count >= limit {
-					break
-				}
-			}
-			if count == 0 {
-				fmt.Println("No matching activity.")
+			for _, rec := range records {
+				fmt.Printf("%s  %-30s  %s  %s\n",
+					rec.Timestamp.Format(time.RFC3339), rec.Type, rec.SessionID, rec.Data)
 			}
 			return nil
 		},
@@ -152,5 +108,6 @@ func newActivityQueryCmd() *cobra.Command {
 	cmd.Flags().StringVar(&eventType, "type", "", "Filter by event type")
 	cmd.Flags().StringVar(&since, "since", "", "Only show events after this timestamp (RFC3339)")
 	cmd.Flags().IntVar(&limit, "limit", 50, "Maximum number of entries")
+	cmd.Flags().BoolVarP(&follow, "follow", "f", false, "Stream live activity (requires --agent-url)")
 	return cmd
 }
