@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"strings"
-	"time"
 
 	"github.com/quarkloop/agent/pkg/agentcore"
 	llmctx "github.com/quarkloop/agent/pkg/context"
@@ -87,9 +86,9 @@ func processAsk(
 
 		// Execute the tool call.
 		log.Printf("ask: tool call %s (iter %d)", toolCall.ToolName, iter)
-		emitActivity(res.EventBus, req.SessionKey, eventbus.KindToolCalled, execution.BuildToolCalledActivityData("ask", toolCall))
+		agentcore.EmitActivity(res.EventBus, req.SessionKey, eventbus.KindToolCalled, execution.BuildToolCalledActivityData("ask", toolCall))
 		toolResult := execution.InvokeTool(ctx, res.GetDispatcher(), "ask", toolCall)
-		emitActivity(res.EventBus, req.SessionKey, eventbus.KindToolCompleted, execution.BuildToolCompletedActivityData("ask", toolResult))
+		agentcore.EmitActivity(res.EventBus, req.SessionKey, eventbus.KindToolCompleted, execution.BuildToolCompletedActivityData("ask", toolResult))
 
 		// Store tool output as artifact.
 		if !toolResult.IsError {
@@ -166,18 +165,4 @@ func collectStrings(v any, out *[]string) {
 			collectStrings(child, out)
 		}
 	}
-}
-
-func emitActivity(bus *eventbus.Bus, sessionKey string, kind eventbus.EventKind, data interface{}) {
-	if bus == nil {
-		return
-	}
-	now := time.Now()
-	bus.Emit(eventbus.Event{
-		ID:        fmt.Sprintf("%s-%d", kind, now.UnixNano()),
-		SessionID: sessionKey,
-		Kind:      kind,
-		Timestamp: now.UTC(),
-		Data:      data,
-	})
 }
