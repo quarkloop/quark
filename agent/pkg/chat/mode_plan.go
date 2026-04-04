@@ -59,7 +59,7 @@ func processPlan(
 		return cr, nil
 	}
 
-	planData, err := extractJSON(cr.Reply)
+	planData, err := agentcore.ExtractJSON(cr.Reply)
 	if err != nil {
 		cr.Warning = fmt.Sprintf("plan was not stored: %v", err)
 		log.Printf("chat: plan JSON extraction failed: %v reply=%q", err, execution.Truncate(cr.Reply, 512))
@@ -67,7 +67,7 @@ func processPlan(
 		cr.Warning = fmt.Sprintf("plan was not stored: %v", err)
 		log.Printf("chat: failed to store plan: %v raw=%q", err, execution.Truncate(string(planData), 512))
 	} else {
-		emitActivity(res.EventBus, req.SessionKey, eventbus.KindPlanCreated, map[string]string{"mode": "plan"})
+		agentcore.EmitActivity(res.EventBus, req.SessionKey, eventbus.KindPlanCreated, map[string]string{"mode": "plan"})
 	}
 
 	return cr, nil
