@@ -455,7 +455,9 @@ func (a *Agent) Intervene(sessionKey, content string, priority int) (string, int
 	if state.Interventions == nil {
 		return "", 0, fmt.Errorf("session %q has no intervention queue", sessionKey)
 	}
+	id, _ := a.res.IDGen.Next()
 	msg := intervention.Message{
+		ID:        id.String(),
 		SessionID: sessionKey,
 		Content:   content,
 		Priority:  priority,
@@ -481,7 +483,9 @@ func (a *Agent) BroadcastIntervene(content string, priority int) int {
 		if s.Interventions == nil {
 			continue
 		}
+		id, _ := a.res.IDGen.Next()
 		msg := intervention.Message{
+			ID:        id.String(),
 			SessionID: s.Session.Key,
 			Content:   content,
 			Priority:  priority,
