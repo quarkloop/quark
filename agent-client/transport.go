@@ -71,10 +71,6 @@ func (t *Transport) Delete(ctx context.Context, path string, in, out any) error 
 	return t.doRequest(ctx, http.MethodDelete, path, in, out)
 }
 
-func (t *Transport) Head(ctx context.Context, path string) error {
-	return t.doRequest(ctx, http.MethodHead, path, nil, nil)
-}
-
 func (t *Transport) doRequest(ctx context.Context, method, path string, in, out any) error {
 	fullURL := fmt.Sprintf("%s/%s", t.baseURL, strings.TrimLeft(path, "/"))
 
