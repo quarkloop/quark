@@ -225,7 +225,7 @@ func isPathUnder(path, root string) bool {
 	return !strings.HasPrefix(rel, "..")
 }
 
-func extractFilePath(args map[string]interface{}) string {
+func extractFilePath(args map[string]any) string {
 	for _, key := range []string{"path", "file", "filepath", "target"} {
 		if v, ok := args[key]; ok {
 			if s, ok := v.(string); ok {
@@ -237,8 +237,13 @@ func extractFilePath(args map[string]interface{}) string {
 	if cmd, ok := args["command"].(string); ok {
 		parts := strings.Fields(cmd)
 		for _, p := range parts {
-			if strings.HasPrefix(p, "/") || strings.HasPrefix(p, "./") {
-				return strings.Trim(p, "\"'")
+			clean := strings.Trim(p, "\"'")
+			if strings.HasPrefix(clean, "/") || strings.HasPrefix(clean, "./") || strings.HasPrefix(clean, "../") {
+				return clean
+			}
+			// Bare relative paths: tokens containing "/" that aren't shell flags.
+			if !strings.HasPrefix(clean, "-") && strings.Contains(clean, "/") {
+				return clean
 			}
 		}
 	}
