@@ -182,6 +182,51 @@ func (m *Manager) Get(pluginsDir, name string) (*Plugin, error) {
 	return nil, fmt.Errorf("plugin %q not found", name)
 }
 
+// Update removes and re-installs a plugin from the registry.
+func (m *Manager) Update(pluginsDir, registryRoot, pluginName string) (*Manifest, error) {
+	p, err := m.Get(pluginsDir, pluginName)
+	if err != nil {
+		return nil, err
+	}
+	if p.Manifest.Repository == "" {
+		return nil, fmt.Errorf("plugin %q has no remote source — no update available", pluginName)
+	}
+
+	// Remove the installed copy.
+	if err := m.Uninstall(pluginsDir, pluginName); err != nil {
+		return nil, err
+	}
+
+	// Re-clone from the registry.
+	tmpDir, err := os.MkdirTemp(pluginsDir, ".temp-")
+	if err != nil {
+		return nil, fmt.Errorf("create temp dir: %w", err)
+	}
+
+	url := fmt.Sprintf("https://github.com/%s/%s.git", registryOwner, registryRepo)
+	if err := GitClone(url, tmpDir); err != nil {
+		os.RemoveAll(tmpDir)
+		return nil, fmt.Errorf("clone registry: %w", err)
+	}
+	if err := FixFileModes(tmpDir); err != nil {
+		os.RemoveAll(tmpDir)
+		return nil, fmt.Errorf("set file modes: %w", err)
+	}
+
+	srcDir := filepath.Join(tmpDir, registryRoot, pluginName)
+	if _, err := os.Stat(srcDir); err != nil {
+		os.RemoveAll(tmpDir)
+		return nil, fmt.Errorf("plugin %q not found in registry", pluginName)
+	}
+
+	man, err := m.Install(srcDir, pluginsDir)
+	defer os.RemoveAll(tmpDir)
+	if err != nil {
+		return nil, err
+	}
+	return man, nil
+}
+
 func copyDir(src, dest string) error {
 	entries, err := os.ReadDir(src)
 	if err != nil {

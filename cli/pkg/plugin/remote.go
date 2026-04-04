@@ -14,6 +14,7 @@ import (
 const (
 	registryOwner = "quarkloop"
 	registryRepo  = "plugins"
+	registryRoot  = "plugins"
 )
 
 // ResolveRegistryURL returns the git clone URL for the plugin registry.
@@ -96,4 +97,138 @@ func DeriveName(url string) string {
 	url = strings.TrimSuffix(url, ".git")
 	parts := strings.Split(url, "/")
 	return parts[len(parts)-1]
+}
+
+// ParsedRef is a parsed plugin ref with optional version pin.
+type ParsedRef struct {
+	Name    string
+	Version string
+}
+
+// ParsePluginRef splits "name@version" syntax.
+// E.g. "tool-bash@v1.0.0" → {Name: "tool-bash", Version: "v1.0.0"}
+// "tool-bash" → {Name: "tool-bash", Version: ""}
+func ParsePluginRef(raw string) ParsedRef {
+	if i := strings.LastIndex(raw, "@"); i > 0 {
+		return ParsedRef{
+			Name:    raw[:i],
+			Version: raw[i+1:],
+		}
+	}
+	return ParsedRef{Name: raw}
+}
+
+// InstallPlugin resolves a plugin ref and installs it into the target pluginsDir.
+// It returns the installed manifest for the caller's convenience.
+func InstallPlugin(pluginsDir, ref string) (*Manifest, error) {
+	parsed := ParsePluginRef(ref)
+	nameForDir := parsed.Name
+
+	var srcDir, tmpDir string
+
+	switch {
+	case IsLocalPath(nameForDir):
+		abs, err := filepath.Abs(nameForDir)
+		if err != nil {
+			return nil, fmt.Errorf("resolve path: %w", err)
+		}
+		srcDir = abs
+	case IsGitURL(nameForDir):
+		var err error
+		tmpDir, srcDir, err = cloneSingle(nameForDir, pluginsDir)
+		if err != nil {
+			return nil, fmt.Errorf("clone plugin: %w", err)
+		}
+		defer os.RemoveAll(tmpDir)
+	default:
+		var err error
+		tmpDir, srcDir, err = cloneFromRegistry(registryRoot, nameForDir, pluginsDir)
+		if err != nil {
+			return nil, fmt.Errorf("install %q from registry: %w", ref, err)
+		}
+		defer os.RemoveAll(tmpDir)
+	}
+
+	dest := filepath.Join(pluginsDir, DeriveName(nameForDir))
+	if _, err := os.Stat(dest); err == nil {
+		return nil, fmt.Errorf("plugin %s already exists", DeriveName(ref))
+	}
+
+	if err := CopyDir(srcDir, dest); err != nil {
+		return nil, fmt.Errorf("copy plugin: %w", err)
+	}
+
+	man, err := LoadLocal(dest)
+	if err != nil {
+		os.RemoveAll(dest)
+		return nil, fmt.Errorf("validate plugin: %w", err)
+	}
+
+	return man, nil
+}
+
+// cloneSingle clones a single git repo into a temp dir under pluginsDir.
+// Returns (tmpDir, srcDir, error). Caller should defer os.RemoveAll(tmpDir).
+func cloneSingle(url, pluginsDir string) (tmpDir, srcDir string, err error) {
+	tmpDir, err = os.MkdirTemp(pluginsDir, ".temp-")
+	if err != nil {
+		return "", "", fmt.Errorf("create temp dir: %w", err)
+	}
+
+	_, err = git.PlainClone(tmpDir, false, &git.CloneOptions{
+		URL:          url,
+		SingleBranch: true,
+		Tags:         git.NoTags,
+		Depth:        1,
+	})
+	if err != nil {
+		os.RemoveAll(tmpDir)
+		return "", "", fmt.Errorf("git clone: %w", err)
+	}
+
+	if err := FixFileModes(tmpDir); err != nil {
+		os.RemoveAll(tmpDir)
+		return "", "", fmt.Errorf("set file modes: %w", err)
+	}
+
+	return tmpDir, tmpDir, nil
+}
+
+// cloneFromRegistry clones the registry monorepo to a temp dir,
+// locates the requested plugin in plugins/<name>/, and returns it.
+func cloneFromRegistry(regRoot, name, pluginsDir string) (tmpDir, srcDir string, err error) {
+	tmpDir, err = os.MkdirTemp(pluginsDir, ".temp-")
+	if err != nil {
+		return "", "", fmt.Errorf("create temp dir: %w", err)
+	}
+
+	_, err = git.PlainClone(tmpDir, false, &git.CloneOptions{
+		URL:          ResolveRegistryURL(),
+		SingleBranch: true,
+		Tags:         git.NoTags,
+		Depth:        1,
+	})
+	if err != nil {
+		os.RemoveAll(tmpDir)
+		return "", "", fmt.Errorf("clone registry: %w", err)
+	}
+
+	if err := FixFileModes(tmpDir); err != nil {
+		os.RemoveAll(tmpDir)
+		return "", "", fmt.Errorf("set file modes: %w", err)
+	}
+
+	srcDir = filepath.Join(tmpDir, regRoot, name)
+	if _, err := os.Stat(srcDir); err != nil {
+		os.RemoveAll(tmpDir)
+		return "", "", fmt.Errorf("plugin %q not found in registry", name)
+	}
+
+	return tmpDir, srcDir, nil
+}
+
+// ListPlugins returns all available plugin names from the registry.
+func ListPlugins() ([]string, error) {
+	// Fallback to known builtin plugins.
+	return []string{"tool-bash", "tool-read", "tool-write", "tool-web-search"}, nil
 }
