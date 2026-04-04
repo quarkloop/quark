@@ -76,12 +76,20 @@ func (c *Client) Mode(ctx context.Context) (*agentapi.ModeResponse, error) {
 	return &resp, nil
 }
 
-func (c *Client) Stats(ctx context.Context) (agentapi.StatsResponse, error) {
+func (c *Client) SetMode(ctx context.Context, mode string) (*agentapi.ModeResponse, error) {
+	var resp agentapi.ModeResponse
+	if err := c.transport.Post(ctx, c.path(agentapi.PathMode), agentapi.SetModeRequest{Mode: mode}, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (c *Client) Stats(ctx context.Context) (*agentapi.StatsResponse, error) {
 	var resp agentapi.StatsResponse
 	if err := c.transport.Get(ctx, c.path(agentapi.PathStats), &resp); err != nil {
 		return nil, err
 	}
-	return resp, nil
+	return &resp, nil
 }
 
 func (c *Client) Chat(ctx context.Context, req agentapi.ChatRequest) (*agentapi.ChatResponse, error) {
@@ -158,16 +166,16 @@ func (c *Client) DeleteSession(ctx context.Context, sessionKey string) error {
 	return c.transport.Delete(ctx, path, nil, nil)
 }
 
-func (c *Client) ApprovePlan(ctx context.Context) (*agentapi.Plan, error) {
+func (c *Client) ApprovePlan(ctx context.Context, planID string) (*agentapi.Plan, error) {
 	var resp agentapi.Plan
-	if err := c.transport.Post(ctx, c.path(agentapi.PathPlanApprove), nil, &resp); err != nil {
+	if err := c.transport.Post(ctx, c.path(agentapi.PathPlanApprove), agentapi.PlanActionRequest{PlanID: planID}, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
 }
 
-func (c *Client) RejectPlan(ctx context.Context) error {
-	return c.transport.Post(ctx, c.path(agentapi.PathPlanReject), nil, nil)
+func (c *Client) RejectPlan(ctx context.Context, planID string) error {
+	return c.transport.Post(ctx, c.path(agentapi.PathPlanReject), agentapi.PlanActionRequest{PlanID: planID}, nil)
 }
 
 func (c *Client) SessionBudget(ctx context.Context, sessionKey string) (*agentapi.BudgetResponse, error) {
@@ -197,7 +205,7 @@ func (c *Client) path(suffix string) string {
 	return agentapi.JoinPath(c.basePath, suffix)
 }
 
-func mustRawJSON(v interface{}) json.RawMessage {
+func mustRawJSON(v any) json.RawMessage {
 	data, err := json.Marshal(v)
 	if err != nil {
 		return json.RawMessage(`{"error":"marshal failure"}`)
