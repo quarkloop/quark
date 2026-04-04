@@ -1,5 +1,5 @@
 // Package doctor provides CLI commands for diagnosing space health.
-package doctor
+package doctorcmd
 
 import (
 	"fmt"
