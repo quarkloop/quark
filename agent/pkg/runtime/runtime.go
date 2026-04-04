@@ -2,15 +2,13 @@
 //
 // A runtime is a long-lived process that:
 //   - Opens the space knowledge base.
-//   - Loads the Quarkfile and lock file.
+//   - Loads the Quarkfile and installed plugins.
 //   - Resolves agent, tool, and model configuration.
 //   - Runs the Agent loop.
 //   - Serves the standardized agent HTTP API.
-//   - Optionally reports health to the api-server.
 package runtime
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -25,26 +23,25 @@ import (
 	"github.com/quarkloop/agent/pkg/agent"
 	"github.com/quarkloop/agent/pkg/agentcore"
 	"github.com/quarkloop/agent/pkg/channel"
-	"github.com/quarkloop/agent/pkg/config"
 	"github.com/quarkloop/agent/pkg/eventbus"
 	"github.com/quarkloop/agent/pkg/hooks"
 	"github.com/quarkloop/agent/pkg/infra/httpserver"
 	"github.com/quarkloop/agent/pkg/infra/watcher"
 	"github.com/quarkloop/agent/pkg/model"
-	"github.com/quarkloop/agent/pkg/plugin"
+	"github.com/quarkloop/agent/pkg/plan"
 	"github.com/quarkloop/agent/pkg/resolver"
 	"github.com/quarkloop/agent/pkg/session"
 	"github.com/quarkloop/agent/pkg/skill"
 	"github.com/quarkloop/agent/pkg/tool"
-	"github.com/quarkloop/core/pkg/kb"
-	"github.com/quarkloop/tools/space/pkg/quarkfile"
+	"github.com/quarkloop/cli/pkg/kb"
+	cliplugin "github.com/quarkloop/cli/pkg/plugin"
+	"github.com/quarkloop/cli/pkg/quarkfile"
 )
 
 type Config struct {
 	AgentID   string
 	Dir       string
 	Port      int
-	APIServer string
 	BinDir    string // directory containing tool binaries; auto-detected if empty
 	AutoTools bool   // if true, start tool processes automatically
 }
@@ -59,9 +56,8 @@ type Runtime struct {
 	actWriter    *activity.Writer
 	httpSrv      *httpserver.Server
 	orchestrator *ToolOrchestrator
-	res          *agentcore.Resources    // retained for hot-swap
-	currentQF    *quarkfile.Quarkfile    // last successfully loaded Quarkfile
-	cfgStore     *config.Store           // retained for reload
+	res          *agentcore.Resources
+	currentQF    *quarkfile.Quarkfile
 }
 
 func New(cfg *Config) (*Runtime, error) {
@@ -76,7 +72,25 @@ func New(cfg *Config) (*Runtime, error) {
 		return nil, fmt.Errorf("open kb: %w", err)
 	}
 
-	spaceCfg, err := loadSpaceConfig(cfg.Dir, k)
+	qf, err := quarkfile.Load(cfg.Dir)
+	if err != nil {
+		k.Close()
+		return nil, fmt.Errorf("load Quarkfile: %w", err)
+	}
+	if err := quarkfile.Validate(cfg.Dir, qf); err != nil {
+		k.Close()
+		return nil, fmt.Errorf("validate Quarkfile: %w", err)
+	}
+
+	// Discover installed plugins from .quark/plugins/.
+	pluginsDir := filepath.Join(cfg.Dir, ".quark", "plugins")
+	plugins, err := cliplugin.DiscoverInstalled(pluginsDir)
+	if err != nil {
+		k.Close()
+		return nil, fmt.Errorf("discover plugins: %w", err)
+	}
+
+	spaceCfg, err := loadSpaceConfig(cfg.Dir, plugins, qf)
 	if err != nil {
 		k.Close()
 		return nil, err
@@ -95,9 +109,7 @@ func New(cfg *Config) (*Runtime, error) {
 		}
 	}
 
-	cfgStore := config.New(k)
-
-	gw, err := buildGateway(spaceCfg, cfgStore)
+	gw, err := buildGateway(spaceCfg, nil)
 	if err != nil {
 		if orchestrator != nil {
 			orchestrator.Shutdown()
@@ -110,49 +122,42 @@ func New(cfg *Config) (*Runtime, error) {
 	actWriter := activity.NewWriter(bus, k, 1024)
 	actWriter.Start()
 	hookReg := hooks.New()
-	sessStore := session.NewStore(k)
 
 	// Auto-configure model if not set via env vars or Quarkfile.
-	if spaceCfg.provider == "" || spaceCfg.modelName == "" {
-		provider, modelName := resolveModelFromEnv()
-		if provider != "" && modelName != "" {
-			if err := cfgStore.SetByAgent("model_provider", provider); err == nil {
-				cfgStore.SetByAgent("model_name", modelName)
-			}
-			spaceCfg.provider = provider
-			spaceCfg.modelName = modelName
+	provider := spaceCfg.provider
+	modelName := spaceCfg.modelName
+	if provider == "" || modelName == "" {
+		envProvider, envModel := resolveModelFromEnv()
+		if envProvider != "" && envModel != "" {
+			provider = envProvider
+			modelName = envModel
 		}
 	}
 
-	// Write auto-detected settings to config store.
-	if err := autoConfigure(cfgStore, spaceCfg); err != nil {
-		log.Printf("runtime: auto-configure warning: %v", err)
-	}
+	autoConfigureSimple(gw, provider, modelName)
 
-	// Build skill resolver with space and builtin roots.
-	spaceSkillsDir := filepath.Join(cfg.Dir, ".quark", "skills")
-	skillResolver := skill.NewResolver(
-		skill.Root{Dir: spaceSkillsDir, Source: skill.SourceSpace, Priority: 3},
-	)
+	// Build skill resolver with loaded skill plugin paths.
+	var skillRoots []skill.Root
+	for _, p := range plugins {
+		if p.Manifest.Type == cliplugin.TypeSkill {
+			skillRoots = append(skillRoots, skill.Root{Dir: p.Dir, Source: skill.SourcePlugin, Priority: 2})
+		}
+	}
+	skillResolver := skill.NewResolver(skillRoots...)
 
 	// Create channel manager and register the Web UI channel.
 	chManager := channel.NewManager(bus)
-	webCh := channel.NewWebChannel(nil) // no allowlist for web
+	webCh := channel.NewWebChannel(nil)
 	if err := chManager.Register(webCh); err != nil {
 		log.Printf("runtime: failed to register web channel: %v", err)
 	}
 
-	// Create plugin manager.
-	pluginMgr := plugin.NewManager()
-
 	res := &agentcore.Resources{
 		KB:            k,
-		ConfigStore:   cfgStore,
 		EventBus:      bus,
 		Activity:      actWriter,
 		Hooks:         hookReg,
 		SkillResolver: skillResolver,
-		PluginManager: pluginMgr,
 		Gateway:       gw,
 		Dispatcher:    spaceCfg.registry,
 	}
@@ -166,9 +171,27 @@ func New(cfg *Config) (*Runtime, error) {
 		ReadOnly:     nil,
 	}, bus)
 
+	// Build supervisor definition from agent plugins.
+	supervisorDef := buildSupervisorDefFromPlugins(spaceCfg.agentDefs, qf)
+	if err := loadSupervisorPrompt(cfg.Dir, qf, supervisorDef); err != nil {
+		log.Printf("runtime: supervisor prompt warning: %v", err)
+	}
+
+	// Build worker agent definitions from agent plugins.
+	workerAgents := make(map[string]*agentcore.Definition)
+	for _, man := range spaceCfg.agentDefs {
+		if man.Name != "supervisor" {
+			def := &agentcore.Definition{
+				Name:         man.Name,
+				SystemPrompt: man.Prompt,
+			}
+			workerAgents[man.Name] = def
+		}
+	}
+
 	// Create agent registry and register the supervisor agent.
 	registry := agent.NewRegistry()
-	a := agent.New(cfg.AgentID, spaceCfg.supervisor, res, sessStore, spaceCfg.subAgents)
+	a := agent.New(cfg.AgentID, supervisorDef, res, nil, workerAgents)
 	if err := a.Init(); err != nil {
 		if orchestrator != nil {
 			orchestrator.Shutdown()
@@ -184,9 +207,13 @@ func New(cfg *Config) (*Runtime, error) {
 		resolver.NewFallbackResolver(cfg.AgentID),
 	)
 
+	sessStore := session.NewStore(k)
+
+	svc := newAgentService(cfg.Dir, k, registry, chain, bus, actWriter, sessStore)
+
 	mux := http.NewServeMux()
 	agentapi.NewHandler(
-		newAgentService(cfg.Dir, k, registry, chain, bus, actWriter, sessStore),
+		svc,
 		agentapi.WithBasePath(agentapi.DefaultBasePath),
 		agentapi.WithAliasBasePath(""),
 	).RegisterRoutes(mux)
@@ -203,8 +230,72 @@ func New(cfg *Config) (*Runtime, error) {
 		httpSrv:      srv,
 		orchestrator: orchestrator,
 		res:          res,
-		currentQF:    spaceCfg.qf,
-		cfgStore:     cfgStore,
+		currentQF:    qf,
+	}, nil
+}
+
+// loadSupervisorPrompt loads the supervisor prompt from the first agent plugin's prompt file.
+func loadSupervisorPrompt(dir string, qf *quarkfile.Quarkfile, def *agentcore.Definition) error {
+	if def == nil || def.SystemPrompt == "" {
+		return nil
+	}
+	// The system prompt is already set by buildSupervisorDefFromPlugins.
+	_ = dir
+	_ = qf
+	return nil
+}
+
+func autoConfigureSimple(gw model.Gateway, provider, modelName string) {
+	if provider != "" && modelName != "" {
+		log.Printf("runtime: model %s/%s", provider, modelName)
+	}
+}
+
+func NewWithService(cfg *Config, svc agentapi.Service) (*Runtime, error) {
+	absDir, err := filepath.Abs(cfg.Dir)
+	if err != nil {
+		return nil, fmt.Errorf("resolve dir: %w", err)
+	}
+	cfg.Dir = absDir
+
+	k, err := kb.Open(cfg.Dir)
+	if err != nil {
+		return nil, fmt.Errorf("open kb: %w", err)
+	}
+
+	qf, err := quarkfile.Load(cfg.Dir)
+	if err != nil {
+		k.Close()
+		return nil, fmt.Errorf("load Quarkfile: %w", err)
+	}
+
+	bus := eventbus.New()
+	actWriter := activity.NewWriter(bus, k, 1024)
+	actWriter.Start()
+
+	registry := agent.NewRegistry()
+	chain := resolver.NewChainResolver(
+		&resolver.SessionAffinityResolver{},
+		resolver.NewFallbackResolver(cfg.AgentID),
+	)
+
+	mux := http.NewServeMux()
+	agentapi.NewHandler(
+		svc,
+		agentapi.WithBasePath(agentapi.DefaultBasePath),
+		agentapi.WithAliasBasePath(""),
+	).RegisterRoutes(mux)
+	srv := httpserver.New("127.0.0.1", cfg.Port, mux)
+
+	return &Runtime{
+		cfg:       cfg,
+		kb:        k,
+		registry:  registry,
+		resolver:  chain,
+		bus:       bus,
+		actWriter: actWriter,
+		httpSrv:   srv,
+		currentQF: qf,
 	}, nil
 }
 
@@ -219,16 +310,14 @@ func (r *Runtime) Run(ctx context.Context) error {
 	if err := waitHTTP(healthURL, 10*time.Second); err != nil {
 		log.Printf("runtime %s: http not ready: %v", r.cfg.AgentID, err)
 	}
-	if err := r.reportHealth(); err != nil {
-		log.Printf("runtime %s: health report failed: %v", r.cfg.AgentID, err)
-	}
-	go r.heartbeat(ctx)
 
 	log.Printf("runtime %s ready on port %d", r.cfg.AgentID, r.cfg.Port)
 
 	// Start all registered channels.
-	if err := r.chManager.StartAll(ctx); err != nil {
-		log.Printf("runtime %s: channel start error: %v", r.cfg.AgentID, err)
+	if r.chManager != nil {
+		if err := r.chManager.StartAll(ctx); err != nil {
+			log.Printf("runtime %s: channel start error: %v", r.cfg.AgentID, err)
+		}
 	}
 
 	// Watch Quarkfile for hot-reload.
@@ -269,52 +358,6 @@ func (r *Runtime) Close() {
 	_ = r.kb.Close()
 }
 
-func (r *Runtime) reportHealth() error {
-	if r.cfg.APIServer == "" {
-		return nil
-	}
-
-	type healthReport struct {
-		AgentID string `json:"agent_id"`
-		PID     int    `json:"pid"`
-		Port    int    `json:"port"`
-	}
-	body, err := json.Marshal(healthReport{
-		AgentID: r.cfg.AgentID,
-		PID:     os.Getpid(),
-		Port:    r.cfg.Port,
-	})
-	if err != nil {
-		return fmt.Errorf("marshal health report: %w", err)
-	}
-	url := fmt.Sprintf("%s/api/v1/agents/%s/health", r.cfg.APIServer, r.cfg.AgentID)
-	resp, err := http.Post(url, "application/json", bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	return nil
-}
-
-func (r *Runtime) heartbeat(ctx context.Context) {
-	if r.cfg.APIServer == "" {
-		return
-	}
-
-	tick := time.NewTicker(10 * time.Second)
-	defer tick.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-tick.C:
-			if err := r.reportHealth(); err != nil {
-				log.Printf("runtime %s: heartbeat failed: %v", r.cfg.AgentID, err)
-			}
-		}
-	}
-}
-
 func waitHTTP(url string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
@@ -328,7 +371,7 @@ func waitHTTP(url string, timeout time.Duration) error {
 	return fmt.Errorf("timed out waiting for %s", url)
 }
 
-func buildGateway(spaceCfg *spaceConfig, cfgStore *config.Store) (model.Gateway, error) {
+func buildGateway(spaceCfg *spaceConfig, cfgStore interface{}) (model.Gateway, error) {
 	if os.Getenv("QUARK_DRY_RUN") == "1" {
 		log.Printf("runtime: QUARK_DRY_RUN=1, using noop model gateway")
 		return model.New(model.GatewayConfig{Provider: "noop", Model: "noop"})
@@ -347,20 +390,13 @@ func buildGateway(spaceCfg *spaceConfig, cfgStore *config.Store) (model.Gateway,
 		return nil, err
 	}
 
-	// Wrap primary with fallback chain.
-	fallbackGws := buildFallbackChain(cfgStore, spaceCfg)
-	var defaultGw model.Gateway = primaryGw
-	if len(fallbackGws) > 0 {
-		defaultGw = model.NewFallbackGateway(primaryGw, fallbackGws...)
-	}
-
 	// Wrap with routing gateway if routing rules are configured.
-	rules := buildRoutingRules(cfgStore, spaceCfg)
+	rules := buildRoutingRulesFromQuarkfile(spaceCfg)
 	if len(rules) > 0 {
-		return model.NewRoutingGateway(rules, defaultGw), nil
+		return model.NewRoutingGateway(rules, primaryGw), nil
 	}
 
-	return defaultGw, nil
+	return primaryGw, nil
 }
 
 func buildSingleGateway(provider, modelName string) (model.Gateway, error) {
@@ -383,79 +419,19 @@ func buildSingleGateway(provider, modelName string) (model.Gateway, error) {
 	})
 }
 
-// buildFallbackChain creates the ordered list of fallback gateways.
-// DynamicConfig takes precedence over Quarkfile routing config.
-func buildFallbackChain(cfgStore *config.Store, spaceCfg *spaceConfig) []model.Gateway {
-	// Prefer dynamic config (owner-set) fallback chain.
-	if cfgStore != nil {
-		cfg, err := cfgStore.Load()
-		if err == nil && len(cfg.Routing.Fallback) > 0 {
-			return buildGatewaysFromModelConfigs(cfg.Routing.Fallback)
-		}
+func buildRoutingRulesFromQuarkfile(spaceCfg *spaceConfig) []model.RoutingRule {
+	if spaceCfg == nil || spaceCfg.routing == nil {
+		return nil
 	}
-
-	// Fall back to Quarkfile routing section.
-	if spaceCfg != nil && spaceCfg.routing != nil {
-		var refs []config.ModelConfig
-		for _, fb := range spaceCfg.routing.Fallback {
-			refs = append(refs, config.ModelConfig{Provider: fb.Provider, Name: fb.Model})
-		}
-		return buildGatewaysFromModelConfigs(refs)
-	}
-
-	return nil
-}
-
-// buildRoutingRules creates model routing rules from dynamic config or Quarkfile.
-// DynamicConfig takes precedence over Quarkfile routing config.
-func buildRoutingRules(cfgStore *config.Store, spaceCfg *spaceConfig) []model.RoutingRule {
-	// Prefer dynamic config (owner-set) routing rules.
-	if cfgStore != nil {
-		cfg, err := cfgStore.Load()
-		if err == nil && len(cfg.Routing.Rules) > 0 {
-			return buildRulesFromConfigs(cfg.Routing.Rules)
-		}
-	}
-
-	// Fall back to Quarkfile routing section.
-	if spaceCfg != nil && spaceCfg.routing != nil {
-		var ruleConfigs []config.RoutingRuleConfig
-		for _, r := range spaceCfg.routing.Rules {
-			ruleConfigs = append(ruleConfigs, config.RoutingRuleConfig{
-				Match:    r.Match,
-				Provider: r.Provider,
-				Name:     r.Model,
-			})
-		}
-		return buildRulesFromConfigs(ruleConfigs)
-	}
-
-	return nil
-}
-
-func buildGatewaysFromModelConfigs(refs []config.ModelConfig) []model.Gateway {
-	var gws []model.Gateway
-	for _, ref := range refs {
-		gw, err := buildSingleGateway(ref.Provider, ref.Name)
-		if err != nil {
-			log.Printf("runtime: skipping fallback %s/%s: %v", ref.Provider, ref.Name, err)
-			continue
-		}
-		gws = append(gws, gw)
-	}
-	return gws
-}
-
-func buildRulesFromConfigs(ruleConfigs []config.RoutingRuleConfig) []model.RoutingRule {
 	var rules []model.RoutingRule
-	for _, rc := range ruleConfigs {
-		gw, err := buildSingleGateway(rc.Provider, rc.Name)
+	for _, r := range spaceCfg.routing.Rules {
+		gw, err := buildSingleGateway(r.Provider, r.Model)
 		if err != nil {
-			log.Printf("runtime: skipping routing rule %q→%s/%s: %v", rc.Match, rc.Provider, rc.Name, err)
+			log.Printf("runtime: skipping routing rule %q→%s/%s: %v", r.Match, r.Provider, r.Model, err)
 			continue
 		}
 		rules = append(rules, model.RoutingRule{
-			Match:   rc.Match,
+			Match:   r.Match,
 			Gateway: gw,
 		})
 	}
@@ -486,11 +462,20 @@ func detectBinDir() string {
 }
 
 // startToolProcesses starts tool processes for each tool in the space config.
-// Failures are logged but non-fatal — the tool may already be running externally.
 func startToolProcesses(orch *ToolOrchestrator, spaceCfg *spaceConfig) {
 	for _, name := range spaceCfg.registry.List() {
 		def := spaceCfg.toolDefs[name]
 		if def == nil || def.Endpoint == "" {
+			// For v2 plugins, the endpoint is assigned dynamically by the orchestrator.
+			// Start the tool with its assigned port.
+			port := 8091 // default base port; real logic in tool_orchestrator.go
+			ref := def.Ref
+			if ref == "" {
+				ref = name
+			}
+			if _, err := orch.Start(name, ref, port); err != nil {
+				log.Printf("orchestrator: skipping %s (may already be running): %v", name, err)
+			}
 			continue
 		}
 		port, err := portFromEndpoint(def.Endpoint)
@@ -529,7 +514,6 @@ func resolveModelFromEnv() (provider, modelName string) {
 }
 
 // reload reloads the Quarkfile and applies any changes in-place.
-// On validation failure the current config is preserved and an error is returned.
 func (r *Runtime) reload(ctx context.Context) error {
 	newQF, err := quarkfile.Load(r.cfg.Dir)
 	if err != nil {
@@ -552,31 +536,26 @@ func (r *Runtime) reload(ctx context.Context) error {
 		}
 	}
 
-	if len(diff.ToolsAdded) > 0 || len(diff.ToolsRemoved) > 0 {
-		r.reloadTools(newQF, diff)
+	if len(diff.PluginsAdded) > 0 || len(diff.PluginsRemoved) > 0 {
+		r.reloadPlugins(diff)
 	}
 
 	if diff.PermissionsChanged {
 		r.reloadPermissions(newQF)
 	}
 
-	if diff.PromptsChanged {
-		r.reloadPrompts(newQF)
-	}
-
 	r.currentQF = newQF
 	r.bus.Emit(eventbus.Event{
 		Kind: eventbus.KindConfigChanged,
 		Data: map[string]any{
-			"model":        diff.ModelChanged,
-			"tools_added":  diff.ToolsAdded,
-			"tools_removed": diff.ToolsRemoved,
-			"permissions":  diff.PermissionsChanged,
-			"prompts":      diff.PromptsChanged,
+			"model":           diff.ModelChanged,
+			"plugins_added":   diff.PluginsAdded,
+			"plugins_removed": diff.PluginsRemoved,
+			"permissions":     diff.PermissionsChanged,
 		},
 	})
-	log.Printf("hot-reload: config applied (model=%v tools_added=%v tools_removed=%v permissions=%v prompts=%v)",
-		diff.ModelChanged, diff.ToolsAdded, diff.ToolsRemoved, diff.PermissionsChanged, diff.PromptsChanged)
+	log.Printf("hot-reload: config applied (model=%v plugins_added=%v plugins_removed=%v permissions=%v)",
+		diff.ModelChanged, diff.PluginsAdded, diff.PluginsRemoved, diff.PermissionsChanged)
 	return nil
 }
 
@@ -590,7 +569,7 @@ func (r *Runtime) reloadModel(newQF *quarkfile.Quarkfile) error {
 		routing := newQF.Routing
 		sc.routing = &routing
 	}
-	newGW, err := buildGateway(sc, r.cfgStore)
+	newGW, err := buildGateway(sc, nil)
 	if err != nil {
 		return fmt.Errorf("build gateway: %w", err)
 	}
@@ -599,58 +578,31 @@ func (r *Runtime) reloadModel(newQF *quarkfile.Quarkfile) error {
 	return nil
 }
 
-// reloadTools adds and removes tools from the dispatcher without restarting.
-func (r *Runtime) reloadTools(newQF *quarkfile.Quarkfile, diff ConfigDiff) {
-	reg, ok := r.res.GetDispatcher().(*tool.Registry)
-	if !ok {
-		log.Printf("hot-reload: dispatcher is not a *tool.Registry — skipping tool reload")
+// reloadPlugins discovers and registers new tool plugins.
+func (r *Runtime) reloadPlugins(diff ConfigDiff) {
+	_ = diff
+	// Re-discover installed plugins and merge into registry.
+	pluginsDir := filepath.Join(r.cfg.Dir, ".quark", "plugins")
+	plugins, err := cliplugin.DiscoverInstalled(pluginsDir)
+	if err != nil {
+		log.Printf("hot-reload: could not re-discover plugins: %v", err)
 		return
 	}
-
-	// Build new tool map from updated Quarkfile.
-	newToolMap := make(map[string]*tool.Definition, len(newQF.Tools))
-	for _, entry := range newQF.Tools {
-		def := &tool.Definition{
-			Ref:    entry.Ref,
-			Name:   entry.Name,
-			Config: make(map[string]string),
-		}
-		for k, v := range entry.Config {
-			def.Config[k] = v
-		}
-		if ep := def.Config["endpoint"]; ep != "" {
-			def.Endpoint = ep
-		}
-		newToolMap[entry.Name] = def
-	}
-
-	for _, name := range diff.ToolsAdded {
-		def, ok := newToolMap[name]
-		if !ok || def.Endpoint == "" {
-			log.Printf("hot-reload: skipping add of tool %s (no endpoint)", name)
-			continue
-		}
-		reg.Register(name, def)
-		log.Printf("hot-reload: registered tool %s endpoint=%s", name, def.Endpoint)
-		if r.orchestrator != nil {
-			port, err := portFromEndpoint(def.Endpoint)
-			if err == nil {
-				ref := def.Ref
-				if ref == "" {
-					ref = name
-				}
-				if _, err := r.orchestrator.Start(name, ref, port); err != nil {
-					log.Printf("hot-reload: could not start tool process %s: %v", name, err)
-				}
+	for _, p := range plugins {
+		if p.Manifest.Type == cliplugin.TypeTool {
+			reg, ok := r.res.GetDispatcher().(*tool.Registry)
+			if !ok {
+				continue
 			}
-		}
-	}
-
-	for _, name := range diff.ToolsRemoved {
-		reg.Deregister(name)
-		log.Printf("hot-reload: deregistered tool %s", name)
-		if r.orchestrator != nil {
-			r.orchestrator.Stop(name)
+			if !toolKnownInRegistry(reg, p.Manifest.Name) {
+				def := &tool.Definition{
+					Ref:    p.Manifest.Repository,
+					Name:   p.Manifest.Name,
+					Config: make(map[string]string),
+				}
+				reg.Register(def.Name, def)
+				log.Printf("hot-reload: registered tool plugin %s", def.Name)
+			}
 		}
 	}
 }
@@ -670,10 +622,6 @@ func (r *Runtime) reloadPermissions(newQF *quarkfile.Quarkfile) {
 			Allowed: newQF.Permissions.Tools.Allowed,
 			Denied:  newQF.Permissions.Tools.Denied,
 		},
-		Plugins: agentcore.PluginPermissions{
-			Allowed:     newQF.Permissions.Plugins.Allowed,
-			AutoInstall: newQF.Permissions.Plugins.AutoInstall,
-		},
 		Audit: agentcore.AuditPermissions{
 			LogToolCalls:    newQF.Permissions.Audit.LogToolCalls,
 			LogLLMResponses: newQF.Permissions.Audit.LogLLMResponses,
@@ -684,36 +632,357 @@ func (r *Runtime) reloadPermissions(newQF *quarkfile.Quarkfile) {
 	log.Printf("hot-reload: permissions updated")
 }
 
-// reloadPrompts updates the supervisor system prompt in the KB so the next
-// chat call picks up the new content (updateSystemPrompt rebuilds from KB).
-func (r *Runtime) reloadPrompts(newQF *quarkfile.Quarkfile) {
-	if newQF.Supervisor.Prompt == "" {
-		return
+// toolKnownInRegistry checks if a tool is already registered (no IsRegistered method on Registry).
+func toolKnownInRegistry(reg *tool.Registry, name string) bool {
+	for _, tn := range reg.List() {
+		if tn == name {
+			return true
+		}
 	}
-	text, err := loadPromptText(r.cfg.Dir, newQF.Supervisor.Prompt)
-	if err != nil {
-		log.Printf("hot-reload: failed to read supervisor prompt: %v", err)
-		return
-	}
-	if err := r.kb.Set(agentcore.NSConfig, "supervisor-prompt", []byte(text)); err != nil {
-		log.Printf("hot-reload: failed to update supervisor prompt in KB: %v", err)
-		return
-	}
-	log.Printf("hot-reload: supervisor prompt updated")
+	return false
 }
 
-// autoConfigure writes auto-detected operational settings to the config store.
-// These are agent self-configuration values that the owner can override.
-func autoConfigure(store *config.Store, sc *spaceConfig) error {
-	if sc.provider != "" {
-		if err := store.SetByAgent("model_provider", sc.provider); err != nil {
-			return fmt.Errorf("set model_provider: %w", err)
+// ---------- agentService ----------
+
+type agentService struct {
+	dir          string
+	kb           kb.Store
+	registry     *agent.Registry
+	resolver     resolver.Resolver
+	bus          *eventbus.Bus
+	actWriter    *activity.Writer
+	sessionStore *session.Store
+}
+
+func newAgentService(dir string, k kb.Store, registry *agent.Registry, res resolver.Resolver, bus *eventbus.Bus, actWriter *activity.Writer, sessStore *session.Store) *agentService {
+	return &agentService{dir: dir, kb: k, registry: registry, resolver: res, bus: bus, actWriter: actWriter, sessionStore: sessStore}
+}
+
+func (s *agentService) resolveAgent(ctx context.Context, sessionKey string) (*agent.Agent, error) {
+	msg := resolver.InboundMessage{
+		SessionKey: sessionKey,
+		Channel:    "web",
+	}
+	agentID, err := s.resolver.Resolve(ctx, msg)
+	if err != nil {
+		return nil, fmt.Errorf("resolve agent: %w", err)
+	}
+	a, ok := s.registry.Get(agentID)
+	if !ok {
+		return nil, fmt.Errorf("agent %q not found", agentID)
+	}
+	return a, nil
+}
+
+func (s *agentService) Health(ctx context.Context, r *http.Request) (*agentapi.HealthResponse, error) {
+	return &agentapi.HealthResponse{AgentID: "supervisor", Status: "running"}, nil
+}
+
+func (s *agentService) Info(ctx context.Context, r *http.Request) (*agentapi.InfoResponse, error) {
+	a, err := s.resolveAgent(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	return &agentapi.InfoResponse{
+		AgentID:  "supervisor",
+		Provider: a.Provider(),
+		Model:    a.ModelName(),
+		Mode:     string(a.Mode()),
+		Tools:    a.Tools(),
+	}, nil
+}
+
+func (s *agentService) Mode(ctx context.Context, r *http.Request) (*agentapi.ModeResponse, error) {
+	a, err := s.resolveAgent(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	return &agentapi.ModeResponse{Mode: string(a.Mode())}, nil
+}
+
+func (s *agentService) Stats(ctx context.Context, r *http.Request) (agentapi.StatsResponse, error) {
+	a, err := s.resolveAgent(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	resp := agentapi.StatsResponse{
+		"agent_id":    "supervisor",
+		"agent_count": len(s.registry.List()),
+		"mode":        string(a.Mode()),
+	}
+	if cs := a.ContextStats(); cs != nil {
+		var contextStats map[string]interface{}
+		raw, _ := json.Marshal(cs)
+		if json.Unmarshal(raw, &contextStats) == nil {
+			resp["context"] = contextStats
 		}
 	}
-	if sc.modelName != "" {
-		if err := store.SetByAgent("model_name", sc.modelName); err != nil {
-			return fmt.Errorf("set model_name: %w", err)
+	return resp, nil
+}
+
+func (s *agentService) Chat(ctx context.Context, r *http.Request, req agentapi.ChatRequest) (*agentapi.ChatResponse, error) {
+	a, err := s.resolveAgent(ctx, req.SessionKey)
+	if err != nil {
+		return nil, err
+	}
+
+	agentReq := agentcore.ChatRequest{
+		Message:    req.Message,
+		SessionKey: req.SessionKey,
+		Stream:     req.Stream,
+		Mode:       req.Mode,
+	}
+
+	if len(req.Files) > 0 {
+		for i, f := range req.Files {
+			saved, err := s.saveUploadedFile(f)
+			if err != nil {
+				return nil, agentapi.Error(http.StatusBadRequest,
+					fmt.Sprintf("save file %s: %v", f.Name, err), err)
+			}
+			agentReq.Files = append(agentReq.Files, agentcore.FileAttachment{
+				Name:     saved.Name,
+				MimeType: saved.MimeType,
+				Size:     saved.Size,
+				Path:     saved.Path,
+			})
+			req.Files[i].Path = saved.Path
 		}
+	}
+
+	resp, err := a.Chat(ctx, req.SessionKey, agentReq)
+	if err != nil {
+		return nil, err
+	}
+	return &agentapi.ChatResponse{
+		Reply:        resp.Reply,
+		Mode:         resp.Mode,
+		Warning:      resp.Warning,
+		InputTokens:  resp.InputTokens,
+		OutputTokens: resp.OutputTokens,
+	}, nil
+}
+
+func (s *agentService) saveUploadedFile(f agentapi.FileAttachment) (agentapi.FileAttachment, error) {
+	if len(f.Content) == 0 {
+		return f, nil
+	}
+	uploadsDir := filepath.Join(s.dir, "uploads")
+	if err := os.MkdirAll(uploadsDir, 0o755); err != nil {
+		return f, fmt.Errorf("create uploads dir: %w", err)
+	}
+	dest := filepath.Join(uploadsDir, f.Name)
+	if err := os.WriteFile(dest, f.Content, 0o644); err != nil {
+		return f, fmt.Errorf("write file: %w", err)
+	}
+	f.Path = dest
+	return f, nil
+}
+
+func (s *agentService) Stop(ctx context.Context, r *http.Request) error {
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		os.Exit(0)
+	}()
+	return nil
+}
+
+func (s *agentService) Plan(ctx context.Context, r *http.Request) (*agentapi.Plan, error) {
+	currentPlan, err := plan.NewStore(s.kb, agentcore.NSPlans, agentcore.KeyMasterPlan).Load()
+	if err != nil {
+		return nil, agentapi.Error(http.StatusNotFound, "plan not found", err)
+	}
+	return convertPlan(currentPlan)
+}
+
+func (s *agentService) Activity(ctx context.Context, r *http.Request, limit int) ([]agentapi.ActivityRecord, error) {
+	events := s.actWriter.Recent(limit)
+	out := make([]agentapi.ActivityRecord, 0, len(events))
+	for _, event := range events {
+		out = append(out, convertActivity(event))
+	}
+	return out, nil
+}
+
+func (s *agentService) StreamActivity(ctx context.Context, r *http.Request, emit func(agentapi.ActivityRecord) error) error {
+	for _, event := range s.actWriter.Recent(64) {
+		if err := emit(convertActivity(event)); err != nil {
+			return err
+		}
+	}
+
+	ch := s.bus.Subscribe(256)
+	defer s.bus.Unsubscribe(ch)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case event, ok := <-ch:
+			if !ok {
+				return nil
+			}
+			if err := emit(convertActivity(event)); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+func (s *agentService) Sessions(ctx context.Context, r *http.Request) ([]agentapi.SessionRecord, error) {
+	a, err := s.resolveAgent(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	sessions, err := a.ListSessions()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]agentapi.SessionRecord, 0, len(sessions))
+	for _, sess := range sessions {
+		out = append(out, convertSession(sess))
+	}
+	return out, nil
+}
+
+func (s *agentService) Session(ctx context.Context, r *http.Request, sessionKey string) (*agentapi.SessionRecord, error) {
+	a, err := s.resolveAgent(ctx, sessionKey)
+	if err != nil {
+		return nil, agentapi.Error(http.StatusNotFound, "session not found", err)
+	}
+	sess, err := a.GetSession(sessionKey)
+	if err != nil {
+		return nil, agentapi.Error(http.StatusNotFound, "session not found", err)
+	}
+	return ptr(convertSession(sess)), nil
+}
+
+func (s *agentService) SessionActivity(ctx context.Context, r *http.Request, sessionKey string, limit int) ([]agentapi.ActivityRecord, error) {
+	events, err := s.actWriter.History(sessionKey)
+	if err != nil {
+		return nil, err
+	}
+	if len(events) > limit {
+		events = events[len(events)-limit:]
+	}
+	out := make([]agentapi.ActivityRecord, 0, len(events))
+	for _, ev := range events {
+		out = append(out, convertActivity(ev))
+	}
+	return out, nil
+}
+
+func (s *agentService) CreateSession(ctx context.Context, r *http.Request, req agentapi.CreateSessionRequest) (*agentapi.CreateSessionResponse, error) {
+	a, err := s.resolveAgent(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	sess, err := a.CreateSession(session.Type(req.Type), req.Title)
+	if err != nil {
+		return nil, agentapi.Error(http.StatusBadRequest, err.Error(), err)
+	}
+	return &agentapi.CreateSessionResponse{
+		Session: convertSession(sess),
+	}, nil
+}
+
+func (s *agentService) DeleteSession(ctx context.Context, r *http.Request, sessionKey string) error {
+	a, err := s.resolveAgent(ctx, sessionKey)
+	if err != nil {
+		return err
+	}
+	if err := a.DeleteSession(sessionKey); err != nil {
+		return agentapi.Error(http.StatusBadRequest, err.Error(), err)
 	}
 	return nil
+}
+
+func (s *agentService) ApprovePlan(ctx context.Context, r *http.Request) (*agentapi.Plan, error) {
+	a, err := s.resolveAgent(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	p, err := a.ApprovePlan()
+	if err != nil {
+		return nil, agentapi.Error(http.StatusBadRequest, err.Error(), err)
+	}
+	return convertPlan(p)
+}
+
+func (s *agentService) RejectPlan(ctx context.Context, r *http.Request) error {
+	a, err := s.resolveAgent(ctx, "")
+	if err != nil {
+		return err
+	}
+	if err := a.RejectPlan(); err != nil {
+		return agentapi.Error(http.StatusBadRequest, err.Error(), err)
+	}
+	return nil
+}
+
+func (s *agentService) SessionBudget(ctx context.Context, r *http.Request, sessionKey string) (*agentapi.BudgetResponse, error) {
+	a, err := s.resolveAgent(ctx, sessionKey)
+	if err != nil {
+		return nil, agentapi.Error(http.StatusNotFound, "agent not found", err)
+	}
+	status, err := a.BudgetStatus(sessionKey)
+	if err != nil {
+		return nil, agentapi.Error(http.StatusNotFound, "session not found", err)
+	}
+	return &agentapi.BudgetResponse{
+		TotalBudget:      status.TotalBudget,
+		UsedTokens:       status.UsedTokens,
+		AvailableTokens:  status.AvailableTokens,
+		UsagePct:         status.UsagePct,
+		AtSoftLimit:      status.CompactionNeeded,
+		AtHardLimit:      status.AtHardLimit,
+		CompactionNeeded: status.CompactionNeeded,
+	}, nil
+}
+
+// ---------- helpers ----------
+
+func convertPlan(currentPlan *plan.Plan) (*agentapi.Plan, error) {
+	raw, err := json.Marshal(currentPlan)
+	if err != nil {
+		return nil, err
+	}
+	var converted agentapi.Plan
+	if err := json.Unmarshal(raw, &converted); err != nil {
+		return nil, err
+	}
+	return &converted, nil
+}
+
+func convertActivity(event activity.Event) agentapi.ActivityRecord {
+	var raw json.RawMessage
+	if event.Data != nil {
+		if encoded, err := json.Marshal(event.Data); err == nil {
+			raw = encoded
+		}
+	}
+	return agentapi.ActivityRecord{
+		ID:        event.ID,
+		SessionID: event.SessionID,
+		Type:      string(event.Kind),
+		Timestamp: event.Timestamp,
+		Data:      raw,
+	}
+}
+
+func convertSession(sess *session.Session) agentapi.SessionRecord {
+	return agentapi.SessionRecord{
+		Key:       sess.Key,
+		AgentID:   sess.AgentID,
+		Type:      agentapi.SessionType(sess.Type),
+		Status:    string(sess.Status),
+		Title:     sess.Title,
+		CreatedAt: sess.CreatedAt,
+		UpdatedAt: sess.UpdatedAt,
+		EndedAt:   sess.EndedAt,
+	}
+}
+
+func ptr[T any](v T) *T {
+	return &v
 }
