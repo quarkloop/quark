@@ -31,6 +31,9 @@ type Service interface {
 	// Mode returns the agent's current working mode (ask/plan/masterplan/auto).
 	Mode(ctx context.Context, r *http.Request) (*ModeResponse, error)
 
+	// SetMode changes the agent's working mode.
+	SetMode(ctx context.Context, r *http.Request, mode string) (*ModeResponse, error)
+
 	// Stats returns detailed agent statistics including context window
 	// metrics, token consumption, and compaction history.
 	Stats(ctx context.Context, r *http.Request) (StatsResponse, error)
@@ -69,10 +72,10 @@ type Service interface {
 	DeleteSession(ctx context.Context, r *http.Request, sessionKey string) error
 
 	// ApprovePlan sets the current plan's status to "approved".
-	ApprovePlan(ctx context.Context, r *http.Request) (*Plan, error)
+	ApprovePlan(ctx context.Context, r *http.Request, planID string) (*Plan, error)
 
 	// RejectPlan removes the current draft plan.
-	RejectPlan(ctx context.Context, r *http.Request) error
+	RejectPlan(ctx context.Context, r *http.Request, planID string) error
 
 	// SessionBudget returns the token budget status for a session.
 	SessionBudget(ctx context.Context, r *http.Request, sessionKey string) (*BudgetResponse, error)
@@ -170,6 +173,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 		mux.HandleFunc("GET "+JoinPath(basePath, PathHealth), h.handleHealth)
 		mux.HandleFunc("GET "+JoinPath(basePath, PathInfo), h.handleInfo)
 		mux.HandleFunc("GET "+JoinPath(basePath, PathMode), h.handleMode)
+		mux.HandleFunc("POST "+JoinPath(basePath, PathMode), h.handleSetMode)
 		mux.HandleFunc("GET "+JoinPath(basePath, PathStats), h.handleStats)
 		mux.HandleFunc("POST "+JoinPath(basePath, PathChat), h.handleChat)
 		mux.HandleFunc("POST "+JoinPath(basePath, PathStop), h.handleStop)
@@ -213,6 +217,25 @@ func (h *Handler) handleInfo(w http.ResponseWriter, r *http.Request) {
 // (ask, plan, masterplan, or auto).
 func (h *Handler) handleMode(w http.ResponseWriter, r *http.Request) {
 	resp, err := h.service.Mode(r.Context(), r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// handleSetMode serves POST /mode — sets the agent's working mode.
+func (h *Handler) handleSetMode(w http.ResponseWriter, r *http.Request) {
+	var req SetModeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, Error(http.StatusBadRequest, "invalid request body", err))
+		return
+	}
+	if req.Mode == "" {
+		writeError(w, Error(http.StatusBadRequest, "mode is required", nil))
+		return
+	}
+	resp, err := h.service.SetMode(r.Context(), r, req.Mode)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -471,7 +494,11 @@ func (h *Handler) handleSessionBudget(w http.ResponseWriter, r *http.Request) {
 
 // handlePlanApprove serves POST /plan/approve — sets the plan status to approved.
 func (h *Handler) handlePlanApprove(w http.ResponseWriter, r *http.Request) {
-	resp, err := h.service.ApprovePlan(r.Context(), r)
+	var req PlanActionRequest
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&req)
+	}
+	resp, err := h.service.ApprovePlan(r.Context(), r, req.PlanID)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -481,7 +508,11 @@ func (h *Handler) handlePlanApprove(w http.ResponseWriter, r *http.Request) {
 
 // handlePlanReject serves POST /plan/reject — removes the current draft plan.
 func (h *Handler) handlePlanReject(w http.ResponseWriter, r *http.Request) {
-	if err := h.service.RejectPlan(r.Context(), r); err != nil {
+	var req PlanActionRequest
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&req)
+	}
+	if err := h.service.RejectPlan(r.Context(), r, req.PlanID); err != nil {
 		writeError(w, err)
 		return
 	}
