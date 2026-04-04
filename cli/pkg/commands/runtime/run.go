@@ -1,8 +1,9 @@
-package runtime
+package runtimecmd
 
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,24 +15,27 @@ import (
 	agentclient "github.com/quarkloop/agent-client"
 	"github.com/quarkloop/agent/pkg/infra/idgen"
 	"github.com/quarkloop/agent/pkg/infra/term"
+	"github.com/quarkloop/cli/pkg/plugin"
 	"github.com/quarkloop/cli/pkg/quarkfile"
 )
 
 const (
-	defaultAgentPort = 7100
-	waitPollInterval = 500 * time.Millisecond
+	defaultAgentPort          = 7100
+	waitPollInterval          = 500 * time.Millisecond
+	defaultAutoInstallPlugins = true
 )
 
 // RunCLI returns the "run" command.
 func RunCLI() *cobra.Command {
 	var flags struct {
-		name    string
-		envFile string
-		restart string
-		detach  bool
-		dryRun  bool
-		port    int
-		timeout time.Duration
+		name               string
+		envFile            string
+		restart            string
+		detach             bool
+		dryRun             bool
+		port               int
+		timeout            time.Duration
+		autoInstallPlugins bool
 	}
 
 	cmd := &cobra.Command{
@@ -60,6 +64,13 @@ Use --dry-run to start with the noop model gateway (no API key needed).`,
 			qf, err := quarkfile.Load(absDir)
 			if err != nil {
 				return err
+			}
+
+			// Auto-install missing plugins.
+			if flags.autoInstallPlugins {
+				if err := autoInstallPlugins(absDir, qf); err != nil {
+					_, _ = fmt.Fprintf(os.Stderr, "Warning: auto-install failed: %v\n", err)
+				}
 			}
 
 			name := flags.name
@@ -157,6 +168,8 @@ Use --dry-run to start with the noop model gateway (no API key needed).`,
 		"Port for the agent HTTP API")
 	cmd.Flags().DurationVar(&flags.timeout, "timeout", 30*time.Second,
 		"Maximum time to wait for agent to become ready")
+	cmd.Flags().BoolVar(&flags.autoInstallPlugins, "auto-install-plugins", defaultAutoInstallPlugins,
+		"Auto-install missing plugins declared in the Quarkfile before starting the agent")
 	return cmd
 }
 
@@ -190,6 +203,40 @@ func resolveAgentBin() (string, error) {
 		return path, nil
 	}
 	return "", fmt.Errorf("agent binary not found next to quark or in PATH")
+}
+
+// autoInstallPlugins ensures all plugins declared in the Quarkfile are installed
+// into the space's .quark/plugins/ directory before the agent starts.
+func autoInstallPlugins(spaceDir string, qf *quarkfile.Quarkfile) error {
+	pluginsDir := filepath.Join(spaceDir, ".quark", "plugins")
+	if err := os.MkdirAll(pluginsDir, 0755); err != nil {
+		return fmt.Errorf("create plugins dir: %w", err)
+	}
+
+	installed, err := plugin.DiscoverInstalled(pluginsDir)
+	if err != nil {
+		return fmt.Errorf("discover installed plugins: %w", err)
+	}
+	installedSet := make(map[string]bool, len(installed))
+	for _, p := range installed {
+		installedSet[p.Manifest.Name] = true
+	}
+
+	for _, pRef := range qf.Plugins {
+		expectedName := plugin.DeriveName(pRef.Ref)
+		if installedSet[expectedName] {
+			continue
+		}
+
+		log.Printf("Auto-installing plugin: %s", pRef.Ref)
+		_, err := plugin.InstallPlugin(pluginsDir, pRef.Ref)
+		if err != nil {
+			return fmt.Errorf("auto-install %s: %w", pRef.Ref, err)
+		}
+		fmt.Printf("Auto-installed %s\n", pRef.Ref)
+	}
+
+	return nil
 }
 
 func parseEnvFile(path string) (map[string]string, error) {
