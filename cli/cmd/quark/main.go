@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/quarkloop/cli/pkg/cli"
+	"github.com/quarkloop/cli/pkg"
 )
 
 func main() {
-	root := cli.Root()
+	root := pkg.Root()
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
