@@ -53,7 +53,7 @@ func (r *Registry) Deregister(name string) {
 }
 
 // Invoke calls the tool, tracks stats, and returns the result.
-func (r *Registry) Invoke(ctx context.Context, name string, input map[string]interface{}) (map[string]interface{}, error) {
+func (r *Registry) Invoke(ctx context.Context, name string, input map[string]any) (map[string]any, error) {
 	r.mu.Lock()
 	rt, ok := r.tools[name]
 	if !ok {
@@ -208,7 +208,7 @@ func (r *Registry) Schemas() []*Definition {
 	return defs
 }
 
-func (r *Registry) httpInvoke(ctx context.Context, def *Definition, input map[string]interface{}) (map[string]interface{}, error) {
+func (r *Registry) httpInvoke(ctx context.Context, def *Definition, input map[string]any) (map[string]any, error) {
 	body, err := json.Marshal(input)
 	if err != nil {
 		return nil, fmt.Errorf("marshal tool input: %w", err)
@@ -235,7 +235,7 @@ func (r *Registry) httpInvoke(ctx context.Context, def *Definition, input map[st
 		return nil, fmt.Errorf("tool %q returned %d: %s", def.Name, resp.StatusCode, string(data))
 	}
 
-	var result map[string]interface{}
+	var result map[string]any
 	if err := json.Unmarshal(data, &result); err != nil {
 		return nil, fmt.Errorf("decoding tool %q response: %w", def.Name, err)
 	}
