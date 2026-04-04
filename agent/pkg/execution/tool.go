@@ -230,7 +230,7 @@ func BuildToolCalledActivityData(stepID string, call msg.ToolCallPayload) map[st
 		"args": SanitizeActivityText(string(call.Arguments), 1024),
 	}
 
-	var input map[string]interface{}
+	var input map[string]any
 	if err := json.Unmarshal(call.Arguments, &input); err == nil {
 		if cmd, ok := input["cmd"].(string); ok {
 			data["cmd"] = SanitizeActivityText(cmd, 512)
@@ -262,7 +262,7 @@ func BuildToolCompletedActivityData(stepID string, result msg.ToolResultPayload)
 		"is_error": fmt.Sprintf("%t", result.IsError),
 	}
 
-	var out map[string]interface{}
+	var out map[string]any
 	if err := json.Unmarshal([]byte(result.Content), &out); err == nil {
 		if exitCode, ok := exitCodeFromOutput(out); ok {
 			data["exit_code"] = strconv.Itoa(exitCode)
@@ -331,7 +331,7 @@ func SanitizeActivityText(s string, maxLen int) string {
 	return s
 }
 
-func exitCodeFromOutput(out map[string]interface{}) (int, bool) {
+func exitCodeFromOutput(out map[string]any) (int, bool) {
 	v, ok := out["exit_code"]
 	if !ok {
 		return 0, false
@@ -339,7 +339,7 @@ func exitCodeFromOutput(out map[string]interface{}) (int, bool) {
 	return intValue(v)
 }
 
-func intValue(v interface{}) (int, bool) {
+func intValue(v any) (int, bool) {
 	switch n := v.(type) {
 	case float64:
 		return int(n), true
@@ -363,7 +363,7 @@ func intValue(v interface{}) (int, bool) {
 	return 0, false
 }
 
-func toolErrorMessage(out map[string]interface{}) (string, bool) {
+func toolErrorMessage(out map[string]any) (string, bool) {
 	if isError, ok := out["is_error"].(bool); ok && isError {
 		if msg, ok := out["error"].(string); ok {
 			msg = SanitizeActivityText(msg, 256)
@@ -382,7 +382,7 @@ func toolErrorMessage(out map[string]interface{}) (string, bool) {
 	return "", false
 }
 
-func toolExitErrorMessage(toolName string, exitCode int, out map[string]interface{}) string {
+func toolExitErrorMessage(toolName string, exitCode int, out map[string]any) string {
 	msg := fmt.Sprintf("%s exit code %d", toolName, exitCode)
 	if output, ok := out["output"].(string); ok {
 		output = SanitizeActivityText(output, 256)
@@ -401,8 +401,8 @@ func Truncate(s string, n int) string {
 	return s[:n] + "…"
 }
 
-func rawToMap(raw json.RawMessage) map[string]interface{} {
-	var m map[string]interface{}
+func rawToMap(raw json.RawMessage) map[string]any {
+	var m map[string]any
 	_ = json.Unmarshal(raw, &m)
 	return m
 }
