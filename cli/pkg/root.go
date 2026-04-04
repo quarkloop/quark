@@ -28,6 +28,8 @@ func Root() *cobra.Command {
 		Title: "Management Commands:",
 	})
 
+	root.PersistentFlags().String("agent-url", "", "Agent HTTP URL (omit for local mode)")
+
 	commands.RegisterCommands(root)
 
 	return root
