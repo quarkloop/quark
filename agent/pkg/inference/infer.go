@@ -73,13 +73,3 @@ func Infer(
 
 	return resp, nil
 }
-
-// InferWithRetry wraps Infer — retry logic is now handled by FallbackGateway.
-func InferWithRetry(
-	ctx context.Context,
-	ac *llmctx.AgentContext,
-	res *agentcore.Resources,
-	userMsg string,
-) (*model.RawResponse, error) {
-	return Infer(ctx, ac, res, userMsg)
-}
