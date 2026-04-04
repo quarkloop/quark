@@ -56,7 +56,7 @@ func processMasterPlan(
 		return cr, nil
 	}
 
-	mpData, err := extractJSON(cr.Reply)
+	mpData, err := agentcore.ExtractJSON(cr.Reply)
 	if err != nil {
 		cr.Warning = fmt.Sprintf("masterplan was not stored: %v", err)
 		log.Printf("chat: masterplan JSON extraction failed: %v", err)
@@ -64,7 +64,7 @@ func processMasterPlan(
 		cr.Warning = fmt.Sprintf("masterplan was not stored: %v", err)
 		log.Printf("chat: failed to store masterplan: %v", err)
 	} else {
-		emitActivity(res.EventBus, req.SessionKey, eventbus.KindMasterPlanCreated, map[string]string{"mode": "masterplan"})
+		agentcore.EmitActivity(res.EventBus, req.SessionKey, eventbus.KindMasterPlanCreated, map[string]string{"mode": "masterplan"})
 	}
 
 	return cr, nil
