@@ -1,0 +1,16 @@
+name: tool-web-search
+version: "1.0.0"
+type: tool
+description: "Web search via Brave/SerpAPI with stub fallback"
+author: quarkloop
+license: Apache-2.0
+repository: github.com/quarkloop/quark/plugins/tool-web-search
+
+permissions:
+  filesystem: []
+  network: true
+
+interface:
+  mode: [cli, http]
+  commands: [search]
+  endpoint: "/search"

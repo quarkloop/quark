@@ -1,0 +1,16 @@
+name: tool-bash
+version: "1.0.0"
+type: tool
+description: "Shell command execution with sandboxing support"
+author: quarkloop
+license: Apache-2.0
+repository: github.com/quarkloop/quark/plugins/tool-bash
+
+permissions:
+  filesystem: ["*"]
+  network: false
+
+interface:
+  mode: [cli, http]
+  commands: [run]
+  endpoint: "/run"

@@ -1,0 +1,16 @@
+name: tool-write
+version: "1.0.0"
+type: tool
+description: "Write and edit regular text files"
+author: quarkloop
+license: Apache-2.0
+repository: github.com/quarkloop/quark/plugins/tool-write
+
+permissions:
+  filesystem: ["*"]
+  network: false
+
+interface:
+  mode: [cli, http]
+  commands: [edit]
+  endpoint: "/edit"
