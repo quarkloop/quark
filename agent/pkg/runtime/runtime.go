@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	agentapi "github.com/quarkloop/agent-api"
@@ -191,7 +192,8 @@ func New(cfg *Config) (*Runtime, error) {
 
 	// Create agent registry and register the supervisor agent.
 	registry := agent.NewRegistry()
-	a := agent.New(cfg.AgentID, supervisorDef, res, nil, workerAgents)
+	sessStore := session.NewStore(k)
+	a := agent.New(cfg.AgentID, supervisorDef, res, sessStore, workerAgents)
 	if err := a.Init(); err != nil {
 		if orchestrator != nil {
 			orchestrator.Shutdown()
@@ -206,8 +208,6 @@ func New(cfg *Config) (*Runtime, error) {
 		&resolver.SessionAffinityResolver{},
 		resolver.NewFallbackResolver(cfg.AgentID),
 	)
-
-	sessStore := session.NewStore(k)
 
 	svc := newAgentService(cfg.Dir, k, registry, chain, bus, actWriter, sessStore)
 
@@ -308,7 +308,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 
 	healthURL := fmt.Sprintf("http://127.0.0.1:%d%s", r.cfg.Port, agentapi.JoinPath(agentapi.DefaultBasePath, agentapi.PathHealth))
 	if err := waitHTTP(healthURL, 10*time.Second); err != nil {
-		log.Printf("runtime %s: http not ready: %v", r.cfg.AgentID, err)
+		return fmt.Errorf("runtime %s: health check timed out: %w", r.cfg.AgentID, err)
 	}
 
 	log.Printf("runtime %s ready on port %d", r.cfg.AgentID, r.cfg.Port)
@@ -371,7 +371,7 @@ func waitHTTP(url string, timeout time.Duration) error {
 	return fmt.Errorf("timed out waiting for %s", url)
 }
 
-func buildGateway(spaceCfg *spaceConfig, cfgStore interface{}) (model.Gateway, error) {
+func buildGateway(spaceCfg *spaceConfig, cfgStore any) (model.Gateway, error) {
 	if os.Getenv("QUARK_DRY_RUN") == "1" {
 		log.Printf("runtime: QUARK_DRY_RUN=1, using noop model gateway")
 		return model.New(model.GatewayConfig{Provider: "noop", Model: "noop"})
@@ -461,14 +461,16 @@ func detectBinDir() string {
 	return filepath.Dir(exe)
 }
 
-// startToolProcesses starts tool processes for each tool in the space config.
+// startToolProcesses starts tool processes for each tool in the space config,
+// assigning unique ports starting from the default base port.
 func startToolProcesses(orch *ToolOrchestrator, spaceCfg *spaceConfig) {
+	nextPort := 8091
 	for _, name := range spaceCfg.registry.List() {
 		def := spaceCfg.toolDefs[name]
 		if def == nil || def.Endpoint == "" {
-			// For v2 plugins, the endpoint is assigned dynamically by the orchestrator.
-			// Start the tool with its assigned port.
-			port := 8091 // default base port; real logic in tool_orchestrator.go
+			// Assign a unique port for each tool without a configured endpoint.
+			port := nextPort
+			nextPort++
 			ref := def.Ref
 			if ref == "" {
 				ref = name
@@ -495,20 +497,22 @@ func startToolProcesses(orch *ToolOrchestrator, spaceCfg *spaceConfig) {
 
 var _ tool.Invoker = (*tool.Registry)(nil)
 
-// resolveModelFromEnv checks which API keys are available and returns the best
-// provider/model pair. Resolution order: ANTHROPIC → OPENAI → OPENROUTER → ZHIPU.
+// resolveModelFromEnv checks which API keys are available and returns the
+// best provider/model pair. Resolution order: ANTHROPIC → OPENAI → OPENROUTER → ZHIPU.
+// The model name is read from the corresponding <PROVIDER>_MODEL env var or left
+// empty for the gateway to use its default.
 func resolveModelFromEnv() (provider, modelName string) {
 	if os.Getenv("ANTHROPIC_API_KEY") != "" {
-		return "anthropic", "claude-sonnet-4-20250514"
+		return "anthropic", os.Getenv("ANTHROPIC_MODEL")
 	}
 	if os.Getenv("OPENAI_API_KEY") != "" {
-		return "openai", "gpt-4o"
+		return "openai", os.Getenv("OPENAI_MODEL")
 	}
 	if os.Getenv("OPENROUTER_API_KEY") != "" {
-		return "openrouter", "anthropic/claude-sonnet-4"
+		return "openrouter", os.Getenv("OPENROUTER_MODEL")
 	}
 	if os.Getenv("ZHIPU_API_KEY") != "" {
-		return "zhipu", "GLM-4"
+		return "zhipu", os.Getenv("ZHIPU_MODEL")
 	}
 	return "", ""
 }
@@ -578,22 +582,26 @@ func (r *Runtime) reloadModel(newQF *quarkfile.Quarkfile) error {
 	return nil
 }
 
-// reloadPlugins discovers and registers new tool plugins.
+// reloadPlugins discovers new tool plugins and deregisters removed ones.
 func (r *Runtime) reloadPlugins(diff ConfigDiff) {
 	_ = diff
-	// Re-discover installed plugins and merge into registry.
 	pluginsDir := filepath.Join(r.cfg.Dir, ".quark", "plugins")
 	plugins, err := cliplugin.DiscoverInstalled(pluginsDir)
 	if err != nil {
 		log.Printf("hot-reload: could not re-discover plugins: %v", err)
 		return
 	}
+
+	reg, ok := r.res.GetDispatcher().(*tool.Registry)
+	if !ok {
+		return
+	}
+
+	// Build set of discovered tool names.
+	newTools := make(map[string]bool)
 	for _, p := range plugins {
 		if p.Manifest.Type == cliplugin.TypeTool {
-			reg, ok := r.res.GetDispatcher().(*tool.Registry)
-			if !ok {
-				continue
-			}
+			newTools[p.Manifest.Name] = true
 			if !toolKnownInRegistry(reg, p.Manifest.Name) {
 				def := &tool.Definition{
 					Ref:    p.Manifest.Repository,
@@ -602,6 +610,23 @@ func (r *Runtime) reloadPlugins(diff ConfigDiff) {
 				}
 				reg.Register(def.Name, def)
 				log.Printf("hot-reload: registered tool plugin %s", def.Name)
+			}
+		}
+	}
+
+	// Deregister tools that no longer exist on disk.
+	for _, name := range reg.ListAll() {
+		if !newTools[name] {
+			reg.Deregister(name)
+			log.Printf("hot-reload: deregistered tool %s", name)
+		}
+	}
+
+	// Shut down orchestrator processes for removed tools.
+	if r.orchestrator != nil {
+		for _, name := range reg.ListAll() {
+			if !newTools[name] {
+				r.orchestrator.Stop(name)
 			}
 		}
 	}
@@ -634,12 +659,7 @@ func (r *Runtime) reloadPermissions(newQF *quarkfile.Quarkfile) {
 
 // toolKnownInRegistry checks if a tool is already registered (no IsRegistered method on Registry).
 func toolKnownInRegistry(reg *tool.Registry, name string) bool {
-	for _, tn := range reg.List() {
-		if tn == name {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(reg.List(), name)
 }
 
 // ---------- agentService ----------
@@ -700,6 +720,15 @@ func (s *agentService) Mode(ctx context.Context, r *http.Request) (*agentapi.Mod
 	return &agentapi.ModeResponse{Mode: string(a.Mode())}, nil
 }
 
+func (s *agentService) SetMode(ctx context.Context, r *http.Request, mode string) (*agentapi.ModeResponse, error) {
+	a, err := s.resolveAgent(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	a.SetMode(agentcore.Mode(mode))
+	return &agentapi.ModeResponse{Mode: mode}, nil
+}
+
 func (s *agentService) Stats(ctx context.Context, r *http.Request) (agentapi.StatsResponse, error) {
 	a, err := s.resolveAgent(ctx, "")
 	if err != nil {
@@ -711,7 +740,7 @@ func (s *agentService) Stats(ctx context.Context, r *http.Request) (agentapi.Sta
 		"mode":        string(a.Mode()),
 	}
 	if cs := a.ContextStats(); cs != nil {
-		var contextStats map[string]interface{}
+		var contextStats map[string]any
 		raw, _ := json.Marshal(cs)
 		if json.Unmarshal(raw, &contextStats) == nil {
 			resp["context"] = contextStats
@@ -897,11 +926,13 @@ func (s *agentService) DeleteSession(ctx context.Context, r *http.Request, sessi
 	return nil
 }
 
-func (s *agentService) ApprovePlan(ctx context.Context, r *http.Request) (*agentapi.Plan, error) {
+func (s *agentService) ApprovePlan(ctx context.Context, r *http.Request, planID string) (*agentapi.Plan, error) {
 	a, err := s.resolveAgent(ctx, "")
 	if err != nil {
 		return nil, err
 	}
+	// planID is reserved for future multi-plan support; currently ignored (agent tracks one active plan).
+	_ = planID
 	p, err := a.ApprovePlan()
 	if err != nil {
 		return nil, agentapi.Error(http.StatusBadRequest, err.Error(), err)
@@ -909,11 +940,13 @@ func (s *agentService) ApprovePlan(ctx context.Context, r *http.Request) (*agent
 	return convertPlan(p)
 }
 
-func (s *agentService) RejectPlan(ctx context.Context, r *http.Request) error {
+func (s *agentService) RejectPlan(ctx context.Context, r *http.Request, planID string) error {
 	a, err := s.resolveAgent(ctx, "")
 	if err != nil {
 		return err
 	}
+	// planID is reserved for future multi-plan support; currently ignored (agent tracks one active plan).
+	_ = planID
 	if err := a.RejectPlan(); err != nil {
 		return agentapi.Error(http.StatusBadRequest, err.Error(), err)
 	}
