@@ -1,6 +1,9 @@
 package store
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 // NotFoundError is returned by Get and Delete when the requested id is absent.
 type NotFoundError struct {
@@ -16,8 +19,8 @@ func ErrNotFound(id string) *NotFoundError {
 	return &NotFoundError{ID: id}
 }
 
-// IsNotFound reports whether err is a *NotFoundError.
+// IsNotFound reports whether err is or wraps a *NotFoundError.
 func IsNotFound(err error) bool {
-	_, ok := err.(*NotFoundError)
-	return ok
+	var nf *NotFoundError
+	return errors.As(err, &nf)
 }
