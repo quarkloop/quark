@@ -56,11 +56,11 @@ const (
 // HookResult is returned by a hook invocation.
 type HookResult struct {
 	Decision Decision
-	Payload  interface{} // mutated payload for Shape; reason string for Block/Halt
+	Payload  any // mutated payload for Shape; reason string for Block/Halt
 }
 
 // HookFunc is the signature for in-process hooks.
-type HookFunc func(ctx context.Context, point HookPoint, payload interface{}) HookResult
+type HookFunc func(ctx context.Context, point HookPoint, payload any) HookResult
 
 // Hook is a single registered hook.
 type Hook struct {
@@ -112,7 +112,7 @@ func (r *Registry) Register(h *Hook) {
 //
 // Execution order: Observers (fire-and-forget) → Modifiers (sequential) → Gates (sequential).
 // First Block/Halt/Collapse from any hook stops further execution.
-func (r *Registry) Execute(ctx context.Context, point HookPoint, payload interface{}) (interface{}, Decision, error) {
+func (r *Registry) Execute(ctx context.Context, point HookPoint, payload any) (any, Decision, error) {
 	r.mu.RLock()
 	hs := r.hooks[point]
 	r.mu.RUnlock()
@@ -176,7 +176,7 @@ func (r *Registry) Execute(ctx context.Context, point HookPoint, payload interfa
 	return currentPayload, Pass, nil
 }
 
-func invokeHook(ctx context.Context, h *Hook, point HookPoint, payload interface{}) (HookResult, error) {
+func invokeHook(ctx context.Context, h *Hook, point HookPoint, payload any) (HookResult, error) {
 	tctx, cancel := context.WithTimeout(ctx, h.Timeout)
 	defer cancel()
 
@@ -189,8 +189,8 @@ func invokeHook(ctx context.Context, h *Hook, point HookPoint, payload interface
 	return HookResult{Decision: Pass}, nil
 }
 
-func callRemoteHook(ctx context.Context, endpoint string, point HookPoint, payload interface{}) (HookResult, error) {
-	body, err := json.Marshal(map[string]interface{}{
+func callRemoteHook(ctx context.Context, endpoint string, point HookPoint, payload any) (HookResult, error) {
+	body, err := json.Marshal(map[string]any{
 		"point":   string(point),
 		"payload": payload,
 	})
