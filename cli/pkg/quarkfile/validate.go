@@ -41,7 +41,7 @@ func Validate(dir string, qf *Quarkfile) error {
 		if qf.Model.Name == "" {
 			return fmt.Errorf("model section present but missing name")
 		}
-		validProviders := map[string]bool{"anthropic": true, "openai": true, "zhipu": true, "noop": true}
+		validProviders := map[string]bool{"anthropic": true, "openai": true, "openrouter": true, "zhipu": true, "noop": true}
 		if !validProviders[qf.Model.Provider] {
 			return fmt.Errorf("invalid model provider %q (supported: anthropic, openai, zhipu, noop)", qf.Model.Provider)
 		}
