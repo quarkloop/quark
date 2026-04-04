@@ -71,6 +71,19 @@ type ModeResponse struct {
 	Mode string `json:"mode"`
 }
 
+// SetModeRequest is the wire type for POST /mode. It sets the agent's
+// working mode.
+type SetModeRequest struct {
+	Mode string `json:"mode"`
+}
+
+// PlanActionRequest is the wire type for POST /plan/approve and
+// POST /plan/reject. The plan_id field is optional — when omitted the
+// single active plan is targeted.
+type PlanActionRequest struct {
+	PlanID string `json:"plan_id,omitempty"`
+}
+
 // StatsResponse is the wire type for GET /stats. It returns a free-form
 // map of agent statistics including context window metrics, token counts,
 // and compaction history.
@@ -84,6 +97,14 @@ const (
 	PlanDraft PlanStatus = "draft"
 	// PlanApproved indicates a plan cleared for execution.
 	PlanApproved PlanStatus = "approved"
+	// PlanRejected indicates a plan has been rejected.
+	PlanRejected PlanStatus = "rejected"
+	// PlanExecuting indicates a plan is currently being executed.
+	PlanExecuting PlanStatus = "executing"
+	// PlanSucceeded indicates a plan completed successfully.
+	PlanSucceeded PlanStatus = "succeeded"
+	// PlanFailed indicates a plan terminated with errors.
+	PlanFailed PlanStatus = "failed"
 )
 
 // StepStatus represents the execution state of a single plan step.
