@@ -22,10 +22,10 @@ import (
 	"github.com/quarkloop/agent/pkg/model"
 	"github.com/quarkloop/agent/pkg/plan"
 	"github.com/quarkloop/agent/pkg/tool"
-	"github.com/quarkloop/core/pkg/kb"
-	bashtool "github.com/quarkloop/tools/bash/pkg/bash"
-	readtool "github.com/quarkloop/tools/read/pkg/read"
-	writetool "github.com/quarkloop/tools/write/pkg/write"
+	"github.com/quarkloop/cli/pkg/kb"
+	bashtool "github.com/quarkloop/plugins/tool-bash/pkg/bash"
+	readtool "github.com/quarkloop/plugins/tool-read/pkg/read"
+	writetool "github.com/quarkloop/plugins/tool-write/pkg/write"
 )
 
 // loadDotEnv reads KEY=VALUE pairs from a .env file and sets them as

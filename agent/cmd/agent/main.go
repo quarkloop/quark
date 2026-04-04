@@ -26,10 +26,9 @@ func main() {
 
 func runCmd() *cobra.Command {
 	var (
-		agentID   string
-		dir       string
-		port      int
-		apiServer string
+		agentID string
+		dir     string
+		port    int
 	)
 
 	cmd := &cobra.Command{
@@ -47,10 +46,9 @@ func runCmd() *cobra.Command {
 			defer cancel()
 
 			cfg := &runtime.Config{
-				AgentID:   agentID,
-				Dir:       dir,
-				Port:      port,
-				APIServer: apiServer,
+				AgentID: agentID,
+				Dir:     dir,
+				Port:    port,
 			}
 
 			r, err := runtime.New(cfg)
@@ -63,10 +61,9 @@ func runCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&agentID, "id", "", "Agent ID assigned by the api-server (required)")
+	cmd.Flags().StringVar(&agentID, "id", "", "Agent ID (required)")
 	cmd.Flags().StringVar(&dir, "dir", ".", "Space project directory containing the Quarkfile")
 	cmd.Flags().IntVar(&port, "port", 7100, "Port for this agent's HTTP API")
-	cmd.Flags().StringVar(&apiServer, "api-server", "", "optional api-server base URL for agent health reports")
 
 	return cmd
 }

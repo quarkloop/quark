@@ -1,31 +1,25 @@
-go 1.22
+go 1.24.0
 
 use (
-	./core
 	./agent
 	./agent-api
 	./agent-client
-	./api-server
 	./cli
-	./tools/bash
-	./tools/kb
-	./tools/read
-	./tools/space
-	./tools/write
-	./tools/web-search
+	./core
+	./plugins/tool-bash
+	./plugins/tool-read
+	./plugins/tool-web-search
+	./plugins/tool-write
 )
 
 replace (
-	github.com/quarkloop/core v0.0.0 => ./core
 	github.com/quarkloop/agent v0.0.0 => ./agent
 	github.com/quarkloop/agent-api v0.0.0 => ./agent-api
 	github.com/quarkloop/agent-client v0.0.0 => ./agent-client
-	github.com/quarkloop/api-server v0.0.0 => ./api-server
 	github.com/quarkloop/cli v0.0.0 => ./cli
-	github.com/quarkloop/tools/bash v0.0.0 => ./tools/bash
-	github.com/quarkloop/tools/kb v0.0.0 => ./tools/kb
-	github.com/quarkloop/tools/read v0.0.0 => ./tools/read
-	github.com/quarkloop/tools/space v0.0.0 => ./tools/space
-	github.com/quarkloop/tools/write v0.0.0 => ./tools/write
-	github.com/quarkloop/tools/web-search v0.0.0 => ./tools/web-search
+	github.com/quarkloop/core v0.0.0 => ./core
+	github.com/quarkloop/plugins/tool-bash v0.0.0 => ./plugins/tool-bash
+	github.com/quarkloop/plugins/tool-read v0.0.0 => ./plugins/tool-read
+	github.com/quarkloop/plugins/tool-web-search v0.0.0 => ./plugins/tool-web-search
+	github.com/quarkloop/plugins/tool-write v0.0.0 => ./plugins/tool-write
 )

@@ -16,8 +16,8 @@ import (
 
 	agentapi "github.com/quarkloop/agent-api"
 	agentclient "github.com/quarkloop/agent-client"
-	"github.com/quarkloop/tools/space/pkg/quarkfile"
-	"github.com/quarkloop/tools/space/pkg/repo"
+	"github.com/quarkloop/cli/pkg/quarkfile"
+	"github.com/quarkloop/cli/pkg/repo"
 )
 
 type builtBinaries struct {
