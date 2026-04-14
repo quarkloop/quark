@@ -1,12 +1,12 @@
 # Quark
 
-[![CI](https://github.com/quarkloop/quark/actions/workflows/ci.yml/badge.svg)](https://github.com/quarkloop/quark/actions/workflows/ci.yml)
+<!-- [![CI](https://github.com/quarkloop/quark/actions/workflows/ci.yml/badge.svg)](https://github.com/quarkloop/quark/actions/workflows/ci.yml) -->
 [![Go 1.22+](https://img.shields.io/badge/go-1.22+-00ADD8.svg)](https://go.dev/dl/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-> Your agents. Your machine. Fully Autonomous.
+> Autonomous AI Agents for Everyday Work — Your Agents. Your Machine. Your Control.
 
-**Quark** is a local runtime for autonomous multi-agent AI spaces. A space is a self-contained directory with a `Quarkfile` and `.quark/` runtime state — copy it, share it via Git, and run it anywhere.
+**Quark** is an autonomous multi-agent runtime. A space is a self-contained directory with a `Quarkfile` and `.quark/` runtime state — copy it, share it via Git, and run it anywhere.
 
 ```
 quark init my-research    # scaffold a space
