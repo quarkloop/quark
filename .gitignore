@@ -18,3 +18,10 @@ vendor/
 .DS_Store
 Thumbs.db
 .vercel
+
+# Plugin binaries
+*.so
+plugins/tools/*/bash
+plugins/tools/*/read
+plugins/tools/*/write
+plugins/tools/*/web-search
