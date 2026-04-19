@@ -1,26 +1,30 @@
-go 1.24.0
+go 1.25.0
 
 use (
 	./agent
-	./agent-api
-	./agent-client
 	./cli
-	./core
 	./e2e
-	./plugins/tool-bash
-	./plugins/tool-read
-	./plugins/tool-web-search
-	./plugins/tool-write
+	./supervisor
+	./pkg/plugin
+	./plugins/tools/bash
+	./plugins/tools/read
+	./plugins/tools/write
+	./plugins/tools/web-search
+	./plugins/providers/openrouter
+	./plugins/providers/openai
+	./plugins/providers/anthropic
 )
 
 replace (
 	github.com/quarkloop/agent v0.0.0 => ./agent
-	github.com/quarkloop/agent-api v0.0.0 => ./agent-api
-	github.com/quarkloop/agent-client v0.0.0 => ./agent-client
 	github.com/quarkloop/cli v0.0.0 => ./cli
-	github.com/quarkloop/core v0.0.0 => ./core
-	github.com/quarkloop/plugins/tool-bash v0.0.0 => ./plugins/tool-bash
-	github.com/quarkloop/plugins/tool-read v0.0.0 => ./plugins/tool-read
-	github.com/quarkloop/plugins/tool-web-search v0.0.0 => ./plugins/tool-web-search
-	github.com/quarkloop/plugins/tool-write v0.0.0 => ./plugins/tool-write
+	github.com/quarkloop/supervisor v0.0.0 => ./supervisor
+	github.com/quarkloop/pkg/plugin v0.0.0 => ./pkg/plugin
+	github.com/quarkloop/plugins/tools/bash v0.0.0 => ./plugins/tools/bash
+	github.com/quarkloop/plugins/tools/read v0.0.0 => ./plugins/tools/read
+	github.com/quarkloop/plugins/tools/write v0.0.0 => ./plugins/tools/write
+	github.com/quarkloop/plugins/tools/web-search v0.0.0 => ./plugins/tools/web-search
+	github.com/quarkloop/plugins/providers/openrouter v0.0.0 => ./plugins/providers/openrouter
+	github.com/quarkloop/plugins/providers/openai v0.0.0 => ./plugins/providers/openai
+	github.com/quarkloop/plugins/providers/anthropic v0.0.0 => ./plugins/providers/anthropic
 )
