@@ -14,17 +14,6 @@ builds:
       - amd64
       - arm64
 
-  - id: api-server
-    dir: api-server
-    main: ./cmd/api-server
-    binary: api-server
-    goos:
-      - linux
-      - darwin
-    goarch:
-      - amd64
-      - arm64
-
   - id: quark
     dir: cli
     main: ./cmd/quark
@@ -36,10 +25,10 @@ builds:
       - amd64
       - arm64
     ldflags:
-      - -s -w -X github.com/quarkloop/cli/pkg/cli/config.Version={{.Version}}
+      - -s -w -X github.com/quarkloop/cli/pkg/buildinfo.Version={{.Version}}
 
   - id: bash
-    dir: tools/bash
+    dir: plugins/tools/bash
     main: ./cmd/bash
     binary: bash
     goos:
@@ -49,19 +38,8 @@ builds:
       - amd64
       - arm64
 
-  - id: kb
-    dir: tools/kb
-    main: ./cmd/kb
-    binary: kb
-    goos:
-      - linux
-      - darwin
-    goarch:
-      - amd64
-      - arm64
-
   - id: read
-    dir: tools/read
+    dir: plugins/tools/read
     main: ./cmd/read
     binary: read
     goos:
@@ -71,19 +49,8 @@ builds:
       - amd64
       - arm64
 
-  - id: space
-    dir: tools/space
-    main: ./cmd/space
-    binary: space
-    goos:
-      - linux
-      - darwin
-    goarch:
-      - amd64
-      - arm64
-
   - id: write
-    dir: tools/write
+    dir: plugins/tools/write
     main: ./cmd/write
     binary: write
     goos:
@@ -94,7 +61,7 @@ builds:
       - arm64
 
   - id: web-search
-    dir: tools/web-search
+    dir: plugins/tools/web-search
     main: ./cmd/web-search
     binary: web-search
     goos:
