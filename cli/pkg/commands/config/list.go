@@ -1,4 +1,4 @@
-package kbcmd
+package configcmd
 
 import (
 	"fmt"
@@ -9,22 +9,22 @@ import (
 	supclient "github.com/quarkloop/supervisor/pkg/client"
 )
 
-func newKBListCmd() *cobra.Command {
+func newConfigListCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "list <namespace>",
-		Short: "List all keys in a KB namespace",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		Use:   "list",
+		Short: "List all configuration keys",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			name, err := quarkfile.CurrentName()
 			if err != nil {
 				return err
 			}
-			keys, err := supclient.New().KBList(cmd.Context(), name, args[0])
+			keys, err := supclient.New().KBList(cmd.Context(), name, configNamespace)
 			if err != nil {
 				return err
 			}
 			if len(keys) == 0 {
-				fmt.Printf("No keys in namespace %s\n", args[0])
+				fmt.Println("No configuration values set")
 				return nil
 			}
 			for _, k := range keys {

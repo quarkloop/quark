@@ -1,4 +1,6 @@
-// Package session provides CLI commands for managing agent sessions.
+// Package sessioncmd provides CLI commands for managing supervisor-owned
+// sessions. Sessions live in the supervisor — the agent is notified of
+// create/delete events through the space SSE stream.
 package sessioncmd
 
 import (
@@ -7,19 +9,21 @@ import (
 
 	"github.com/spf13/cobra"
 
-	agentapi "github.com/quarkloop/agent-api"
-	"github.com/quarkloop/cli/pkg/middleware"
-	"github.com/quarkloop/cli/pkg/resolve"
-	sessioncli "github.com/quarkloop/cli/pkg/session"
+	"github.com/quarkloop/cli/pkg/quarkfile"
+	"github.com/quarkloop/supervisor/pkg/api"
+	supclient "github.com/quarkloop/supervisor/pkg/client"
 )
+
+// currentSpace returns the space name from the Quarkfile in the current
+// working directory. Session commands operate on this space.
+func currentSpace() (string, error) {
+	return quarkfile.CurrentName()
+}
 
 func NewSessionCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "session",
-		Short: "Manage agent sessions",
-		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
-			return middleware.RequireSpace()
-		},
+		Short: "Manage sessions",
 	}
 	cmd.AddCommand(newSessionCreateCmd())
 	cmd.AddCommand(newSessionGetCmd())
@@ -28,37 +32,25 @@ func NewSessionCommand() *cobra.Command {
 	return cmd
 }
 
-func resolveClient(cmd *cobra.Command) (*sessioncli.Client, error) {
-	if url := resolve.AgentURL(cmd); url != "" {
-		return sessioncli.NewHTTP(url), nil
-	}
-	dir, err := resolve.SpaceDir()
-	if err != nil {
-		return nil, err
-	}
-	return sessioncli.NewLocal(dir)
-}
-
 func newSessionCreateCmd() *cobra.Command {
 	var sessType, title string
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new session",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			c, err := resolveClient(cmd)
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			space, err := currentSpace()
 			if err != nil {
 				return err
 			}
-			defer c.Close()
-			req := agentapi.CreateSessionRequest{
-				Type:  agentapi.SessionType(sessType),
+			c := supclient.New()
+			sess, err := c.CreateSession(cmd.Context(), space, api.CreateSessionRequest{
+				Type:  api.SessionType(sessType),
 				Title: title,
-			}
-			resp, err := c.Create(cmd.Context(), req)
+			})
 			if err != nil {
 				return fmt.Errorf("create session: %w", err)
 			}
-			fmt.Printf("Session created: %s\n", resp.Session.Key)
+			fmt.Printf("Session created: %s\n", sess.ID)
 			return nil
 		},
 	}
@@ -69,16 +61,16 @@ func newSessionCreateCmd() *cobra.Command {
 
 func newSessionGetCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "get <session-key>",
+		Use:   "get <session-id>",
 		Short: "Get a session",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			c, err := resolveClient(cmd)
+			space, err := currentSpace()
 			if err != nil {
 				return err
 			}
-			defer c.Close()
-			sess, err := c.Get(cmd.Context(), args[0])
+			c := supclient.New()
+			sess, err := c.GetSession(cmd.Context(), space, args[0])
 			if err != nil {
 				return fmt.Errorf("get session: %w", err)
 			}
@@ -91,16 +83,16 @@ func newSessionGetCmd() *cobra.Command {
 
 func newSessionDeleteCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "delete <session-key>",
-		Short: "Delete a session (cannot delete main)",
+		Use:   "delete <session-id>",
+		Short: "Delete a session",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			c, err := resolveClient(cmd)
+			space, err := currentSpace()
 			if err != nil {
 				return err
 			}
-			defer c.Close()
-			if err := c.Delete(cmd.Context(), args[0]); err != nil {
+			c := supclient.New()
+			if err := c.DeleteSession(cmd.Context(), space, args[0]); err != nil {
 				return fmt.Errorf("delete session: %w", err)
 			}
 			fmt.Printf("Session deleted: %s\n", args[0])
@@ -112,14 +104,14 @@ func newSessionDeleteCmd() *cobra.Command {
 func newSessionListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
-		Short: "List all sessions",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			c, err := resolveClient(cmd)
+		Short: "List sessions for the current space",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			space, err := currentSpace()
 			if err != nil {
 				return err
 			}
-			defer c.Close()
-			sessions, err := c.List(cmd.Context())
+			c := supclient.New()
+			sessions, err := c.ListSessions(cmd.Context(), space)
 			if err != nil {
 				return fmt.Errorf("list sessions: %w", err)
 			}
@@ -128,7 +120,7 @@ func newSessionListCmd() *cobra.Command {
 				return nil
 			}
 			for _, s := range sessions {
-				fmt.Printf("%-12s %s  %s\n", s.Type, s.Key, s.Title)
+				fmt.Printf("%-10s %s  %s\n", s.Type, s.ID, s.Title)
 			}
 			return nil
 		},

@@ -1,4 +1,5 @@
-// Package kbcmd provides CLI commands for managing the agent knowledge base.
+// Package kbcmd provides CLI commands for the per-space knowledge base.
+// All operations are HTTP calls against the supervisor.
 package kbcmd
 
 import (
@@ -6,38 +7,21 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-
-	"github.com/quarkloop/cli/pkg/kb"
-	"github.com/quarkloop/cli/pkg/middleware"
-	"github.com/quarkloop/cli/pkg/resolve"
 )
 
 func NewKBCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "kb",
 		Short: "Manage the agent knowledge base",
-		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
-			return middleware.RequireSpace()
-		},
 	}
-	cmd.AddCommand(kbGetCmd())
-	cmd.AddCommand(kbSetCmd())
-	cmd.AddCommand(kbDeleteCmd())
-	cmd.AddCommand(kbListCmd())
+	cmd.AddCommand(newKBGetCmd())
+	cmd.AddCommand(newKBSetCmd())
+	cmd.AddCommand(newKBDeleteCmd())
+	cmd.AddCommand(newKBListCmd())
 	return cmd
 }
 
-func resolveClient(cmd *cobra.Command) (*kb.Client, error) {
-	if url := resolve.AgentURL(cmd); url != "" {
-		return kb.NewHTTP(url, nil), nil
-	}
-	dir, err := resolve.SpaceDir()
-	if err != nil {
-		return nil, err
-	}
-	return kb.NewLocal(dir)
-}
-
+// parseKey splits "namespace/key" into its parts.
 func parseKey(s string) (string, string, error) {
 	parts := strings.SplitN(s, "/", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {

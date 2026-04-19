@@ -1,121 +1,75 @@
+// Package initcmd provides the `quark init` command.
 package initcmd
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 
 	"github.com/spf13/cobra"
 
-	"github.com/quarkloop/cli/pkg/space"
+	"github.com/quarkloop/cli/pkg/quarkfile"
+	supclient "github.com/quarkloop/supervisor/pkg/client"
 )
 
-// InitCLI returns the "init" command.
+// InitCLI returns the "init" command. It writes a Quarkfile to the user's
+// working directory (if missing) and registers the space with the
+// supervisor.
 func InitCLI() *cobra.Command {
-	var withPlugins bool
-
+	var name string
 	cmd := &cobra.Command{
 		Use:   "init [dir]",
-		Short: "Scaffold a new space directory with Quarkfile and default structure",
+		Short: "Scaffold a Quarkfile and register the space with the supervisor",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := "."
 			if len(args) > 0 {
 				dir = args[0]
 			}
-			absDir, err := filepath.Abs(dir)
+			abs, err := filepath.Abs(dir)
 			if err != nil {
 				return err
 			}
-			if err := space.Init(absDir); err != nil {
-				return err
+			if err := os.MkdirAll(abs, 0o755); err != nil {
+				return fmt.Errorf("create dir: %w", err)
 			}
-			if withPlugins {
-				if err := installBuiltinPlugins(absDir); err != nil {
-					return fmt.Errorf("install builtin plugins: %w", err)
+
+			if !quarkfile.Exists(abs) {
+				spaceName := name
+				if spaceName == "" {
+					spaceName = filepath.Base(abs)
+				}
+				if err := quarkfile.Write(abs, quarkfile.DefaultTemplate(spaceName)); err != nil {
+					return err
 				}
 			}
-			msg := "Space initialised in %s\n"
-			if withPlugins {
-				msg += "Builtin plugins installed (tool-bash, tool-read, tool-write, tool-web-search)\n"
+
+			data, err := quarkfile.Read(abs)
+			if err != nil {
+				return err
 			}
-			fmt.Printf(msg+"Next steps:\n  1. Edit Quarkfile\n  2. quark run\n", absDir)
+			spaceName, err := quarkfile.Name(data)
+			if err != nil {
+				return err
+			}
+
+			sup := supclient.New()
+			info, err := sup.CreateSpace(cmd.Context(), spaceName, data)
+			if err != nil {
+				if supclient.IsConflict(err) {
+					fmt.Printf("Space %q is already registered.\n", spaceName)
+					return nil
+				}
+				return err
+			}
+			fmt.Printf("Space initialised: %s (v%d)\n", info.Name, info.Version)
+			fmt.Println("Next steps:")
+			fmt.Println("  1. Edit Quarkfile")
+			fmt.Println("  2. quark plugin install <ref>")
+			fmt.Println("  3. quark run")
 			return nil
 		},
 	}
-
-	cmd.Flags().BoolVar(&withPlugins, "with-plugins", false, "Install builtin plugins into .quark/plugins/")
+	cmd.Flags().StringVar(&name, "name", "", "Space name (defaults to directory name)")
 	return cmd
-}
-
-// installBuiltinPlugins copies builtin plugin directories from the quark repo
-// into the space's .quark/plugins/ directory.
-func installBuiltinPlugins(spaceDir string) error {
-	_, srcFile, _, _ := runtime.Caller(0)
-	// cli/pkg/commands/init/init.go → go up 4 levels to workspace root
-	workspace := findWorkspace(srcFile)
-	srcDir := filepath.Join(workspace, "plugins")
-
-	entries, err := os.ReadDir(srcDir)
-	if err != nil {
-		return fmt.Errorf("read builtin plugins: %w", err)
-	}
-	destDir := filepath.Join(spaceDir, ".quark", "plugins")
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		dest := filepath.Join(destDir, e.Name())
-		if _, err := os.Stat(dest); err == nil {
-			continue
-		}
-		if err := copyDir(filepath.Join(srcDir, e.Name()), dest); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// findWorkspace walks up from the current file until it finds a directory with go.work.
-func findWorkspace(start string) string {
-	dir := filepath.Dir(start)
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.work")); err == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return dir
-		}
-		dir = parent
-	}
-}
-
-func copyDir(src, dst string) error {
-	if err := os.MkdirAll(dst, 0755); err != nil {
-		return err
-	}
-	entries, err := os.ReadDir(src)
-	if err != nil {
-		return err
-	}
-	for _, e := range entries {
-		s := filepath.Join(src, e.Name())
-		d := filepath.Join(dst, e.Name())
-		if e.IsDir() {
-			if err := copyDir(s, d); err != nil {
-				return err
-			}
-		} else {
-			data, err := os.ReadFile(s)
-			if err != nil {
-				return err
-			}
-			if err := os.WriteFile(d, data, 0644); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
 }

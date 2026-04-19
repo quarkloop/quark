@@ -1,4 +1,4 @@
-package kbcmd
+package configcmd
 
 import (
 	"github.com/spf13/cobra"
@@ -7,21 +7,17 @@ import (
 	supclient "github.com/quarkloop/supervisor/pkg/client"
 )
 
-func newKBGetCmd() *cobra.Command {
+func newConfigGetCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "get <namespace/key>",
-		Short: "Read a KB entry",
+		Use:   "get <key>",
+		Short: "Read a configuration value",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ns, key, err := parseKey(args[0])
-			if err != nil {
-				return err
-			}
 			name, err := quarkfile.CurrentName()
 			if err != nil {
 				return err
 			}
-			val, err := supclient.New().KBGet(cmd.Context(), name, ns, key)
+			val, err := supclient.New().KBGet(cmd.Context(), name, configNamespace, args[0])
 			if err != nil {
 				return err
 			}

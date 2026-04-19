@@ -1,4 +1,4 @@
-package kbcmd
+package configcmd
 
 import (
 	"github.com/spf13/cobra"
@@ -7,21 +7,17 @@ import (
 	supclient "github.com/quarkloop/supervisor/pkg/client"
 )
 
-func newKBDeleteCmd() *cobra.Command {
+func newConfigSetCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "delete <namespace/key>",
-		Short: "Delete a KB entry",
-		Args:  cobra.ExactArgs(1),
+		Use:   "set <key> <value>",
+		Short: "Write a configuration value",
+		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ns, key, err := parseKey(args[0])
-			if err != nil {
-				return err
-			}
 			name, err := quarkfile.CurrentName()
 			if err != nil {
 				return err
 			}
-			return supclient.New().KBDelete(cmd.Context(), name, ns, key)
+			return supclient.New().KBSet(cmd.Context(), name, configNamespace, args[0], []byte(args[1]))
 		},
 	}
 }
