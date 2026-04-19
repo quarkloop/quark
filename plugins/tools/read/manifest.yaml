@@ -1,0 +1,37 @@
+name: read
+version: "1.0.0"
+type: tool
+description: "Read regular text files with line range support"
+author: quarkloop
+license: Apache-2.0
+repository: github.com/quarkloop/quark/plugins/tools/read
+
+mode: lib
+
+build:
+  lib_target: plugin.so
+  binary_target: read
+  entry_point: ./cmd/read
+
+tool:
+  schema:
+    name: read
+    description: "Read a text file with optional line range"
+    parameters:
+      type: object
+      properties:
+        path:
+          type: string
+          description: "Path to the file to read"
+        start_line:
+          type: integer
+          description: "Starting line number (1-based, optional)"
+        end_line:
+          type: integer
+          description: "Ending line number (1-based, optional)"
+      required:
+        - path
+  permissions:
+    filesystem:
+      - "*"
+    network: false
