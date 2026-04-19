@@ -7,45 +7,33 @@ import (
 	"testing"
 	"time"
 
-	agentapi "github.com/quarkloop/agent-api"
-	_ "github.com/quarkloop/agent-client"
+	"github.com/quarkloop/supervisor/pkg/api"
+
+	"github.com/quarkloop/e2e/utils"
 )
 
+// TestAskMode drives a full supervisor → agent chat flow: supervisor creates
+// a chat session (agent mirrors it via SSE), then the test POSTs a user
+// message to the agent's SSE endpoint and asserts a non-empty streamed reply.
 func TestAskMode(t *testing.T) {
-	if _, ok := cfgForTest(t, "OPENROUTER_API_KEY"); !ok {
-		t.Skip("no provider configured")
-	}
-	t.Logf("provider configured, starting agent")
-	client, stop := startAgentWithTools(t)
-	defer stop()
+	env := utils.StartE2E(t, true)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	t.Log("sending chat request")
 
-	var resp *agentapi.ChatResponse
-	var err error
-	for i := 0; i < 5; i++ {
-		resp, err = client.Chat(ctx, agentapi.ChatRequest{
-			Message: "What is 2+2? Reply with just the number.",
-			Mode:    "ask",
-		})
-		if err != nil && isRateLimit(err) {
-			t.Logf("rate limited, retry %d/5", i+1)
-			time.Sleep(3 * time.Second)
-			continue
-		}
-		break
-	}
+	sess, err := env.Sup.CreateSession(ctx, env.Space, api.CreateSessionRequest{
+		Type:  api.SessionTypeChat,
+		Title: "ask-test",
+	})
 	if err != nil {
-		t.Fatalf("chat error: %v", err)
+		t.Fatalf("create session: %v", err)
 	}
-	t.Logf("reply: %q", resp.Reply)
-	t.Logf("mode: %q", resp.Mode)
-	if resp.Reply == "" {
+
+	utils.WaitForAgentSession(t, env, sess.ID, 10*time.Second)
+
+	reply := utils.PostMessage(t, ctx, env, sess.ID, "What is 2+2? Reply with just the number.")
+	t.Logf("reply: %q", reply)
+	if reply == "" {
 		t.Fatal("expected non-empty reply")
-	}
-	if resp.Mode != "ask" {
-		t.Errorf("expected mode=ask, got: %s", resp.Mode)
 	}
 }
