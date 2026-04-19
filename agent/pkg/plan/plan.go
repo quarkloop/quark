@@ -1,0 +1,220 @@
+// Package plan manages the agent's autonomous work plan and execution.
+package plan
+
+import (
+	"context"
+	"fmt"
+	"sync"
+
+	"github.com/quarkloop/agent/pkg/message"
+	"github.com/quarkloop/agent/pkg/provider"
+)
+
+// Inferrer is a function that calls the LLM. Injected by the agent to avoid
+// plan importing the llm package directly.
+type Inferrer func(ctx context.Context, messages []provider.Message, resp chan<- string) (string, error)
+
+// Step is a single unit of work in a plan.
+type Step struct {
+	Description string `json:"description"`
+	Status      string `json:"status"` // pending, active, completed, failed
+	Result      string `json:"result,omitempty"`
+}
+
+// WorkContext holds accumulated history from autonomous work execution.
+type WorkContext struct {
+	mu      sync.RWMutex
+	History []message.Message
+}
+
+// AddEntry appends an entry to the work history.
+func (wc *WorkContext) AddEntry(role, content string) {
+	wc.mu.Lock()
+	defer wc.mu.Unlock()
+	wc.History = append(wc.History, message.Message{Role: role, Content: content})
+}
+
+// GetHistory returns a copy of the work history.
+func (wc *WorkContext) GetHistory() []message.Message {
+	wc.mu.RLock()
+	defer wc.mu.RUnlock()
+	out := make([]message.Message, len(wc.History))
+	copy(out, wc.History)
+	return out
+}
+
+// Plan holds the agent's autonomous work state and execution logic.
+type Plan struct {
+	mu       sync.RWMutex
+	Steps    []Step `json:"steps"`
+	Status   string `json:"status"` // idle, active, paused, completed
+	workCtx  WorkContext
+	nextStep chan struct{}
+}
+
+// New creates a new idle Plan.
+func New() *Plan {
+	return &Plan{
+		Status:   "idle",
+		nextStep: make(chan struct{}, 1),
+	}
+}
+
+// NextStep returns a channel that signals when a work step is ready.
+func (p *Plan) NextStep() <-chan struct{} {
+	return p.nextStep
+}
+
+// SetSteps replaces the current steps and activates the plan.
+func (p *Plan) SetSteps(steps []Step) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.Steps = steps
+	p.Status = "active"
+	p.workCtx = WorkContext{} // reset work context for new plan
+	if len(steps) > 0 {
+		select {
+		case p.nextStep <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// Pause pauses plan execution.
+func (p *Plan) Pause() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.Status = "paused"
+}
+
+// Resume resumes a paused plan.
+func (p *Plan) Resume() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.Status == "paused" {
+		p.Status = "active"
+		select {
+		case p.nextStep <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// GetStatus returns the plan status.
+func (p *Plan) GetStatus() string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.Status
+}
+
+// GetSteps returns a copy of the current steps.
+func (p *Plan) GetSteps() []Step {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	out := make([]Step, len(p.Steps))
+	copy(out, p.Steps)
+	return out
+}
+
+// GetSummary returns a one-line status for injection into session prompts.
+func (p *Plan) GetSummary() string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	if p.Status == "idle" {
+		return "No active work."
+	}
+	if p.Status == "paused" {
+		return "Work paused."
+	}
+	for i, s := range p.Steps {
+		if s.Status == "pending" || s.Status == "active" {
+			return fmt.Sprintf("executing step %d/%d — %q", i+1, len(p.Steps), s.Description)
+		}
+	}
+	return "All steps completed."
+}
+
+// ExecuteStep runs the current pending step using the provided infer function.
+func (p *Plan) ExecuteStep(ctx context.Context, infer Inferrer, systemPrompt string) error {
+	step := p.currentStep()
+	if step == nil {
+		return nil
+	}
+
+	p.mu.Lock()
+	step.Status = "active"
+	p.mu.Unlock()
+
+	// Build work context messages
+	var msgs []provider.Message
+	msgs = append(msgs, provider.Message{
+		Role:    "system",
+		Content: systemPrompt + "\n\nYou are executing your autonomous work plan. Focus on the current step.",
+	})
+
+	for _, m := range p.workCtx.GetHistory() {
+		msgs = append(msgs, provider.Message{Role: m.Role, Content: m.Content})
+	}
+
+	msgs = append(msgs, provider.Message{
+		Role:    "user",
+		Content: fmt.Sprintf("Execute this step: %s", step.Description),
+	})
+
+	// Call LLM (drain response — no user stream for work execution)
+	resp := make(chan string, 64)
+	go func() {
+		for range resp {
+		}
+	}()
+
+	result, err := infer(ctx, msgs, resp)
+	if err != nil {
+		p.mu.Lock()
+		step.Status = "failed"
+		step.Result = err.Error()
+		p.mu.Unlock()
+		return err
+	}
+
+	p.mu.Lock()
+	step.Status = "completed"
+	step.Result = result
+	p.mu.Unlock()
+
+	// Store in work context
+	p.workCtx.AddEntry("user", fmt.Sprintf("Step: %s", step.Description))
+	p.workCtx.AddEntry("assistant", result)
+
+	// Advance to next step
+	p.advance()
+	return nil
+}
+
+// currentStep returns the first pending step.
+func (p *Plan) currentStep() *Step {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for i := range p.Steps {
+		if p.Steps[i].Status == "pending" {
+			return &p.Steps[i]
+		}
+	}
+	return nil
+}
+
+// advance signals the next step if one is available.
+func (p *Plan) advance() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, s := range p.Steps {
+		if s.Status == "pending" {
+			select {
+			case p.nextStep <- struct{}{}:
+			default:
+			}
+			return
+		}
+	}
+	p.Status = "completed"
+}
