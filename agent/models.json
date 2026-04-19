@@ -1,0 +1,9 @@
+[
+    {
+        "id": "stepfun/step-3.5-flash:free",
+        "provider": "openrouter",
+        "name": "StepFun 3.5 Flash",
+        "context_window": 32768,
+        "default": true
+    }
+]
