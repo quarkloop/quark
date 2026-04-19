@@ -6,7 +6,7 @@
 
 > Autonomous AI Agents for Everyday Work — Your Agents. Your Machine. Your Control.
 
-**Quark** is an autonomous multi-agent runtime. A space is a self-contained directory with a `Quarkfile` and `.quark/` runtime state — copy it, share it via Git, and run it anywhere.
+**Quark** is an autonomous multi-agent runtime. A space is a self-contained directory with a `Quarkfile` agit branchnd `.quark/` runtime state — copy it, share it via Git, and run it anywhere.
 
 ```
 quark-supervisor start    # long-running daemon (once per machine)
