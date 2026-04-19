@@ -4,40 +4,54 @@ package e2e
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
-	agentapi "github.com/quarkloop/agent-api"
+	"github.com/quarkloop/supervisor/pkg/api"
+
+	"github.com/quarkloop/e2e/utils"
 )
 
+// TestBashTool exercises the bash tool plugin end-to-end: supervisor creates
+// a session, the agent receives it via SSE, a user message instructs the LLM
+// to call the bash tool, and the final streamed reply must contain the
+// expected stdout. Tools load in lib mode (plugin.so shipped alongside the
+// binary).
 func TestBashTool(t *testing.T) {
-	if _, ok := cfgForTest(t, "OPENROUTER_API_KEY"); !ok {
-		t.Skip("no provider configured")
-	}
-	client, stop := startAgentWithTools(t)
-	defer stop()
+	runBashTool(t, false)
+}
+
+// TestBashToolBinaryMode runs the same flow as TestBashTool but with the
+// tool plugin.so stripped from the installed space, forcing the agent's
+// pluginmanager to fall back to binary-mode (HTTP daemon) loading.
+func TestBashToolBinaryMode(t *testing.T) {
+	runBashTool(t, true)
+}
+
+func runBashTool(t *testing.T, forceBinary bool) {
+	t.Helper()
+	env := utils.StartE2E(t, true, utils.StartOptions{ForceBinaryTools: forceBinary})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
-	var resp *agentapi.ChatResponse
-	var err error
-	for i := 0; i < 5; i++ {
-		resp, err = client.Chat(ctx, agentapi.ChatRequest{
-			Message: "Run echo hello and return the output.",
-			Mode:    "ask",
-		})
-		if err != nil && isRateLimit(err) {
-			t.Logf("rate limited, retry %d/5", i+1)
-			time.Sleep(3 * time.Second)
-			continue
-		}
-		break
-	}
+	sess, err := env.Sup.CreateSession(ctx, env.Space, api.CreateSessionRequest{
+		Type:  api.SessionTypeChat,
+		Title: "tools-test",
+	})
 	if err != nil {
-		t.Fatalf("chat: %v", err)
+		t.Fatalf("create session: %v", err)
 	}
-	if resp.Reply == "" {
+	utils.WaitForAgentSession(t, env, sess.ID, 10*time.Second)
+
+	reply := utils.PostMessage(t, ctx, env, sess.ID,
+		"Use the bash tool to run `echo quark-ok` and reply with the tool output verbatim.")
+	t.Logf("reply: %q", reply)
+	if reply == "" {
 		t.Fatal("expected non-empty reply")
+	}
+	if !strings.Contains(reply, "quark-ok") {
+		t.Fatalf("expected reply to contain %q, got %q", "quark-ok", reply)
 	}
 }
