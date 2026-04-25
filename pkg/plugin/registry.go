@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"os/exec"
 	"sync"
 	"time"
 )
@@ -22,8 +24,8 @@ type ToolRegistry struct {
 // LoadedTool represents a registered tool with its execution context.
 type LoadedTool struct {
 	*LoadedPlugin
-	ToolPlugin ToolPlugin // For lib mode (nil for binary mode)
-	Endpoint   string     // For binary mode HTTP endpoint
+	ToolPlugin ToolPlugin // For lib mode (nil for api/cli mode)
+	Endpoint   string     // For api mode HTTP endpoint
 }
 
 // NewToolRegistry creates a new tool registry.
@@ -46,20 +48,22 @@ func (r *ToolRegistry) Register(loaded *LoadedPlugin) error {
 
 	lt := &LoadedTool{LoadedPlugin: loaded}
 
-	if loaded.Mode == ModeLib {
+	switch loaded.Mode {
+	case ModeLib:
 		tp, ok := loaded.Plugin.(ToolPlugin)
 		if !ok {
 			return fmt.Errorf("plugin %s does not implement ToolPlugin", loaded.Manifest.Name)
 		}
 		lt.ToolPlugin = tp
-	} else {
-		// Binary mode - get endpoint from loader
-		endpoint, ok := r.loader.GetBinaryEndpoint(loaded.Manifest.Name)
+	case ModeAPI:
+		// API mode - get endpoint from loader
+		endpoint, ok := r.loader.GetAPIEndpoint(loaded.Manifest.Name)
 		if !ok {
-			return fmt.Errorf("no endpoint found for binary plugin %s", loaded.Manifest.Name)
+			return fmt.Errorf("no endpoint found for api plugin %s", loaded.Manifest.Name)
 		}
-		// Use the tool's schema name as the endpoint path
 		lt.Endpoint = endpoint + "/" + loaded.Manifest.Tool.Schema.Name
+	case ModeCLI:
+		// CLI mode - no endpoint, binary path resolved at execution time
 	}
 
 	r.tools[loaded.Manifest.Name] = lt
@@ -91,15 +95,19 @@ func (r *ToolRegistry) Execute(ctx context.Context, name string, args map[string
 		return ToolResult{IsError: true, Error: fmt.Sprintf("tool %q not found", name)}, nil
 	}
 
-	if tool.Mode == ModeLib {
+	switch tool.Mode {
+	case ModeLib:
 		return tool.ToolPlugin.Execute(ctx, args)
+	case ModeAPI:
+		return r.httpExecute(ctx, tool.Endpoint, args)
+	case ModeCLI:
+		return r.cliExecute(ctx, tool, args)
+	default:
+		return ToolResult{IsError: true, Error: fmt.Sprintf("unknown tool mode %q", tool.Mode)}, nil
 	}
-
-	// HTTP call for binary mode
-	return r.httpExecute(ctx, tool.Endpoint, args)
 }
 
-// httpExecute sends an HTTP POST request to a binary-mode tool.
+// httpExecute sends an HTTP POST request to an api-mode tool.
 func (r *ToolRegistry) httpExecute(ctx context.Context, endpoint string, args map[string]any) (ToolResult, error) {
 	body, err := json.Marshal(args)
 	if err != nil {
@@ -129,7 +137,6 @@ func (r *ToolRegistry) httpExecute(ctx context.Context, endpoint string, args ma
 
 	var result ToolResult
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		// Try to parse as simple output map
 		var output map[string]any
 		if err2 := json.Unmarshal(respBody, &output); err2 == nil {
 			result.Output = output
@@ -138,6 +145,35 @@ func (r *ToolRegistry) httpExecute(ctx context.Context, endpoint string, args ma
 		}
 	}
 
+	return result, nil
+}
+
+// cliExecute invokes a CLI-mode plugin as a subprocess with JSON args via stdin.
+func (r *ToolRegistry) cliExecute(ctx context.Context, tool *LoadedTool, args map[string]any) (ToolResult, error) {
+	binPath := tool.Manifest.APITargetPath(tool.Dir)
+	if _, err := os.Stat(binPath); err != nil {
+		return ToolResult{IsError: true, Error: fmt.Sprintf("cli binary not found: %s", binPath)}, nil
+	}
+
+	body, err := json.Marshal(args)
+	if err != nil {
+		return ToolResult{IsError: true, Error: fmt.Sprintf("marshal args: %v", err)}, nil
+	}
+
+	cmd := exec.CommandContext(ctx, binPath, "--pipe")
+	cmd.Dir = tool.Dir
+	cmd.Stdin = bytes.NewReader(body)
+	cmd.Env = os.Environ()
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return ToolResult{IsError: true, Error: fmt.Sprintf("cli execution: %v\n%s", err, string(out))}, nil
+	}
+
+	var result ToolResult
+	if err := json.Unmarshal(out, &result); err != nil {
+		return ToolResult{Output: map[string]any{"raw": string(out)}}, nil
+	}
 	return result, nil
 }
 
@@ -235,8 +271,5 @@ func (r *ProviderRegistry) List() []string {
 func (r *ProviderRegistry) ConfigureAll(getEnv func(string) string) error {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-
-	// Note: We need access to the manifest to get auth_env
-	// This should be called after loading, passing the env getter
 	return nil
 }
