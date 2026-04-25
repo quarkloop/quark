@@ -13,11 +13,11 @@ Go 1.22 workspace with 9 modules and 6 binaries. Each module is a standalone Go 
 | `agent` | Multi-agent execution engine: supervisor loop, subagent dispatch, context management. |
 | `cli` | `quark` CLI binary — user-facing entrypoint. Directly launches and connects to agent. |
 | `supervisor` | Supervisor process for managing agent lifecycle. |
-| `pkg/plugin` | Shared plugin interfaces, types, manifest parsing, and loader for lib/binary modes. |
-| `plugins/tools/bash` | Tool plugin: shell command execution (lib + binary). |
-| `plugins/tools/read` | Tool plugin: read regular text files (lib + binary). |
-| `plugins/tools/write` | Tool plugin: write and edit regular text files (lib + binary). |
-| `plugins/tools/web-search` | Tool plugin: web search via Brave/SerpAPI (lib + binary). |
+| `pkg/plugin` | Shared plugin interfaces, types, manifest parsing, and loader for lib/api modes. |
+| `plugins/tools/bash` | Tool plugin: shell command execution (lib + api). |
+| `plugins/tools/read` | Tool plugin: read regular text files (lib + api). |
+| `plugins/tools/write` | Tool plugin: write and edit regular text files (lib + api). |
+| `plugins/tools/web-search` | Tool plugin: web search via Brave/SerpAPI (lib + api). |
 | `plugins/providers/openrouter` | Provider plugin: OpenRouter API (lib mode .so). |
 | `plugins/providers/openai` | Provider plugin: OpenAI API (lib mode .so). |
 | `plugins/providers/anthropic` | Provider plugin: Anthropic Messages API (lib mode .so). |
@@ -28,7 +28,7 @@ Go 1.22 workspace with 9 modules and 6 binaries. Each module is a standalone Go 
 pkg/plugin (shared plugin interfaces and types)
   ↑
   ├── supervisor/pkg/pluginmanager  (plugin install/lookup per space)
-  ├── plugins/tools/*                (implement plugin.ToolPlugin, lib + binary modes)
+  ├── plugins/tools/*                (implement plugin.ToolPlugin, lib + api modes)
   └── plugins/providers/*            (implement plugin.ProviderPlugin, lib mode)
 
 supervisor (owns all persistent state)
@@ -49,7 +49,7 @@ agent (launched by supervisor; speaks HTTP)
 
 **Process model.** The supervisor is a long-running HTTP daemon that owns all persistent state. The CLI is a thin HTTP client — it never touches the filesystem except to read/write the `Quarkfile` in the current working directory. Agents are child processes launched by the supervisor on demand.
 
-Tool plugins support both modes: **lib mode** (Go `.so` loaded in-process via `plugin.Open()`) and **binary mode** (separate HTTP server process). The agent's pluginmanager prefers lib mode when the `.so` is shipped alongside the manifest and falls back to binary mode otherwise. Provider plugins are always lib mode.
+Tool plugins support both modes: **lib mode** (Go `.so` loaded in-process via `plugin.Open()`) and **api mode** (separate HTTP server process). The agent's pluginmanager prefers lib mode when the `.so` is shipped alongside the manifest and falls back to api mode otherwise. Provider plugins are always lib mode.
 
 ## CLI Package Structure
 
@@ -235,7 +235,7 @@ Everything is a plugin. Four types exist:
 
 | Type | Mode | What it contains | Examples |
 |------|------|-----------------|----------|
-| **tool** | lib + binary | `plugin.so` (lib) and/or executable (binary) + manifest.yaml + SKILL.md | `bash`, `read`, `write`, `web-search` |
+| **tool** | lib + api | `plugin.so` (lib) and/or executable (binary) + manifest.yaml + SKILL.md | `bash`, `read`, `write`, `web-search` |
 | **provider** | lib | .so plugin + manifest.yaml + SKILL.md | `openrouter`, `openai`, `anthropic` |
 | **agent** | - | System prompt + skill references + tool requirements | `supervisor`, `researcher` |
 | **skill** | - | Guidance files only, no binary | `code-review`, `debugging` |
@@ -243,9 +243,9 @@ Everything is a plugin. Four types exist:
 ### Plugin Modes
 
 - **Lib mode**: Plugin is a Go `.so` file loaded in-process via `plugin.Open()`. Requires CGO to build. Fastest dispatch (no HTTP). Used by all provider plugins and preferred for tool plugins.
-- **Binary mode**: Plugin runs as a separate HTTP server process. Tool plugins fall back to binary mode when `plugin.so` is not shipped next to the manifest; the tool binary exposes `POST /<toolName>` for dispatch.
+- **API mode**: Plugin runs as a separate HTTP server process. Tool plugins fall back to api mode when `plugin.so` is not shipped next to the manifest; the tool binary exposes `POST /<toolName>` for dispatch.
 
-Tools ship both artifacts by default: `make build-tools` produces the binary under `bin/`, and `make build-tools-lib` produces `plugin.so` in each tool's source directory. Installers lay both out next to `manifest.yaml` inside the space; the agent's pluginmanager tries lib mode first and falls back to binary on load failure.
+Tools ship both artifacts by default: `make build-tools` produces the binary under `bin/`, and `make build-tools-lib` produces `plugin.so` in each tool's source directory. Installers lay both out next to `manifest.yaml` inside the space; the agent's pluginmanager tries lib mode first and falls back to api on load failure.
 
 ### Source Directory Structure
 
@@ -256,7 +256,7 @@ plugins/
 │   │   ├── manifest.yaml
 │   │   ├── SKILL.md
 │   │   ├── plugin.go      # lib-mode export (build tag: plugin)
-│   │   ├── cmd/bash/      # binary-mode entry point
+│   │   ├── cmd/bash/      # api-mode entry point
 │   │   └── pkg/bash/      # shared implementation
 │   ├── read/
 │   ├── write/
@@ -277,7 +277,7 @@ plugins/
 name: bash
 version: "1.0.0"
 type: tool           # tool | provider | agent | skill
-mode: lib            # lib | binary
+mode: lib            # lib | api
 description: "Execute shell commands"
 
 # Type-specific config (nested)
@@ -303,7 +303,7 @@ provider:
 
 ## E2E Tests
 
-E2E tests live in `e2e/` and use the `//go:build e2e` build tag. They cover full agent flows against real providers, starting the real `supervisor`, `agent`, and tool processes, and exercise both plugin modes: tools ship with `plugin.so` by default (lib mode), and `TestBashToolBinaryMode` strips the `.so` to force binary-mode fallback.
+E2E tests live in `e2e/` and use the `//go:build e2e` build tag. They cover full agent flows against real providers, starting the real `supervisor`, `agent`, and tool processes, and exercise both plugin modes: tools ship with `plugin.so` by default (lib mode), and `TestBashToolAPIMode` strips the `.so` to force api-mode fallback.
 
 ```bash
 # From the workspace root:
