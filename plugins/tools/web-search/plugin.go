@@ -6,41 +6,46 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"os"
 
 	"github.com/quarkloop/pkg/plugin"
+	"github.com/quarkloop/pkg/toolkit"
 	"github.com/quarkloop/plugins/tools/web-search/pkg/websearch"
 )
+
+var (
+	manifest *plugin.Manifest
+)
+
+func init() {
+	var err error
+	manifest, err = toolkit.LoadManifest()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "web-search: %v\n", err)
+		os.Exit(1)
+	}
+}
 
 // QuarkPlugin is the exported plugin instance for lib-mode loading.
 var QuarkPlugin plugin.Plugin = &WebSearchTool{}
 
-// WebSearchTool implements the ToolPlugin interface for web search.
+// WebSearchTool implements the ToolPlugin interface, sourcing metadata from manifest.yaml.
 type WebSearchTool struct{}
 
-func (t *WebSearchTool) Name() string {
-	return "web-search"
-}
-
-func (t *WebSearchTool) Version() string {
-	return "1.0.0"
-}
-
-func (t *WebSearchTool) Type() plugin.PluginType {
-	return plugin.TypeTool
-}
-
-func (t *WebSearchTool) Initialize(ctx context.Context, config map[string]any) error {
-	return nil
-}
-
-func (t *WebSearchTool) Shutdown(ctx context.Context) error {
-	return nil
-}
+func (t *WebSearchTool) Name() string    { return manifest.Name }
+func (t *WebSearchTool) Version() string { return manifest.Version }
+func (t *WebSearchTool) Type() plugin.PluginType { return manifest.Type }
+func (t *WebSearchTool) Initialize(ctx context.Context, cfg map[string]any) error { return nil }
+func (t *WebSearchTool) Shutdown(ctx context.Context) error { return nil }
 
 func (t *WebSearchTool) Schema() plugin.ToolSchema {
+	if manifest.Tool != nil {
+		return manifest.Tool.Schema
+	}
 	return plugin.ToolSchema{
-		Name:        "search",
-		Description: "Search the web using Brave or SerpAPI",
+		Name:        manifest.Name,
+		Description: manifest.Description,
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -74,7 +79,6 @@ func (t *WebSearchTool) Execute(ctx context.Context, args map[string]any) (plugi
 		return plugin.ToolResult{IsError: true, Error: err.Error()}, nil
 	}
 
-	// Convert to []any for JSON serialization
 	resultsAny := make([]any, len(results))
 	for i, r := range results {
 		resultsAny[i] = map[string]any{
