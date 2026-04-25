@@ -1,8 +1,9 @@
 // Package plugin defines the unified plugin interfaces and types for Quark.
 //
-// Quark supports two plugin modes:
+// Quark supports three plugin modes:
 //   - lib mode: plugins compiled as .so files, loaded via Go's plugin system
-//   - binary mode: plugins run as separate HTTP server processes
+//   - api mode: plugins run as separate HTTP server processes
+//   - cli mode: plugins invoked as CLI subprocess per call
 //
 // All plugins implement the base Plugin interface. Type-specific interfaces
 // (ToolPlugin, ProviderPlugin) extend this for specialized functionality.
@@ -24,8 +25,9 @@ const (
 type PluginMode string
 
 const (
-	ModeLib    PluginMode = "lib"    // .so file loaded via plugin.Open()
-	ModeBinary PluginMode = "binary" // Separate HTTP server process
+	ModeLib PluginMode = "lib"  // .so file loaded via plugin.Open()
+	ModeAPI PluginMode = "api"  // Separate HTTP server process
+	ModeCLI PluginMode = "cli"  // Invoked as CLI subprocess per call
 )
 
 // Plugin is the base interface all plugins must implement.
@@ -51,7 +53,7 @@ type Plugin interface {
 // LoadedPlugin represents a successfully loaded plugin instance.
 type LoadedPlugin struct {
 	Manifest *Manifest  // Parsed manifest
-	Plugin   Plugin     // Plugin instance (nil for binary-only mode)
+	Plugin   Plugin     // Plugin instance (nil for api/cli mode)
 	Mode     PluginMode // How it was loaded
 	Dir      string     // Plugin directory path
 }
