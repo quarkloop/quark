@@ -31,9 +31,9 @@ type Manifest struct {
 
 // BuildConfig holds build-related configuration.
 type BuildConfig struct {
-	LibTarget    string `yaml:"lib_target,omitempty"`    // Output .so file name
-	BinaryTarget string `yaml:"binary_target,omitempty"` // Output binary name
-	EntryPoint   string `yaml:"entry_point,omitempty"`   // Main package for binary mode
+	LibTarget      string `yaml:"lib_target,omitempty"`       // Output .so file name
+	APITarget      string `yaml:"api_target,omitempty"`       // Output binary name (api mode)
+	APIEntryPoint  string `yaml:"api_entry_point,omitempty"`  // Main package for api mode
 }
 
 // AgentConfig holds agent-specific configuration from the manifest.
@@ -89,13 +89,13 @@ func (m *Manifest) Validate() error {
 
 	// Validate mode
 	if m.Mode == "" {
-		m.Mode = ModeBinary // default to binary mode for backward compatibility
+		m.Mode = ModeAPI // default to api mode for backward compatibility
 	}
 	switch m.Mode {
-	case ModeLib, ModeBinary:
+	case ModeLib, ModeAPI, ModeCLI:
 		// valid
 	default:
-		return fmt.Errorf("invalid mode: %s (must be lib or binary)", m.Mode)
+		return fmt.Errorf("invalid mode: %s (must be lib, api, or cli)", m.Mode)
 	}
 
 	// Validate type-specific config is present
@@ -137,19 +137,19 @@ func (m *Manifest) LibTargetPath(pluginDir string) string {
 	return filepath.Join(pluginDir, target)
 }
 
-// BinaryTargetPath returns the path to the binary for binary-mode plugins.
-func (m *Manifest) BinaryTargetPath(binDir string) string {
+// APITargetPath returns the path to the binary for api-mode plugins.
+func (m *Manifest) APITargetPath(binDir string) string {
 	target := m.Name
-	if m.Build != nil && m.Build.BinaryTarget != "" {
-		target = m.Build.BinaryTarget
+	if m.Build != nil && m.Build.APITarget != "" {
+		target = m.Build.APITarget
 	}
 	return filepath.Join(binDir, target)
 }
 
-// EntryPointPath returns the main package path for binary-mode builds.
-func (m *Manifest) EntryPointPath() string {
-	if m.Build != nil && m.Build.EntryPoint != "" {
-		return m.Build.EntryPoint
+// APIEntryPointPath returns the main package path for api-mode builds.
+func (m *Manifest) APIEntryPointPath() string {
+	if m.Build != nil && m.Build.APIEntryPoint != "" {
+		return m.Build.APIEntryPoint
 	}
 	return filepath.Join("cmd", m.Name)
 }
