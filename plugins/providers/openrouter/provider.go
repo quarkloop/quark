@@ -11,14 +11,27 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/quarkloop/pkg/plugin"
+	"github.com/quarkloop/pkg/toolkit"
 )
 
-const defaultBaseURL = "https://openrouter.ai/api/v1"
+var (
+	manifest *plugin.Manifest
+)
+
+func init() {
+	var err error
+	manifest, err = toolkit.LoadManifest()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "openrouter: %v\n", err)
+		os.Exit(1)
+	}
+}
 
 // OpenRouterProvider implements the ProviderPlugin interface for OpenRouter.
 type OpenRouterProvider struct {
@@ -27,25 +40,18 @@ type OpenRouterProvider struct {
 	client  *http.Client
 }
 
-func (p *OpenRouterProvider) Name() string {
-	return "openrouter"
-}
-
-func (p *OpenRouterProvider) Version() string {
-	return "1.0.0"
-}
-
-func (p *OpenRouterProvider) Type() plugin.PluginType {
-	return plugin.TypeProvider
-}
-
-func (p *OpenRouterProvider) ProviderID() string {
-	return "openrouter"
-}
+func (p *OpenRouterProvider) Name() string    { return manifest.Name }
+func (p *OpenRouterProvider) Version() string { return manifest.Version }
+func (p *OpenRouterProvider) Type() plugin.PluginType { return manifest.Type }
+func (p *OpenRouterProvider) ProviderID() string      { return manifest.Name }
 
 func (p *OpenRouterProvider) Initialize(ctx context.Context, config map[string]any) error {
 	p.client = &http.Client{}
-	p.baseURL = defaultBaseURL
+	if manifest.Provider != nil && manifest.Provider.APIBase != "" {
+		p.baseURL = manifest.Provider.APIBase
+	} else {
+		p.baseURL = "https://openrouter.ai/api/v1"
+	}
 	return nil
 }
 
@@ -62,20 +68,16 @@ func (p *OpenRouterProvider) Configure(config plugin.ProviderConfig) error {
 }
 
 func (p *OpenRouterProvider) ListModels(ctx context.Context) ([]plugin.ModelInfo, error) {
-	// OpenRouter provides many models - return a curated list
+	if manifest.Provider != nil && len(manifest.Provider.Models) > 0 {
+		return manifest.Provider.Models, nil
+	}
 	return []plugin.ModelInfo{
 		{ID: "openai/gpt-4o", Name: "GPT-4o", ContextWindow: 128000, Default: true},
-		{ID: "openai/gpt-4o-mini", Name: "GPT-4o Mini", ContextWindow: 128000},
-		{ID: "anthropic/claude-3.5-sonnet", Name: "Claude 3.5 Sonnet", ContextWindow: 200000},
-		{ID: "anthropic/claude-3-opus", Name: "Claude 3 Opus", ContextWindow: 200000},
-		{ID: "meta-llama/llama-3.1-405b-instruct", Name: "Llama 3.1 405B", ContextWindow: 131072},
-		{ID: "meta-llama/llama-3.1-70b-instruct", Name: "Llama 3.1 70B", ContextWindow: 131072},
 	}, nil
 }
 
 // ChatCompletionStream sends a streaming chat completion request to OpenRouter.
 func (p *OpenRouterProvider) ChatCompletionStream(ctx context.Context, req *plugin.ChatRequest) (<-chan plugin.StreamEvent, error) {
-	// Convert to OpenRouter format
 	orReq := &openRouterRequest{
 		Model:    req.Model,
 		Messages: convertMessages(req.Messages),
