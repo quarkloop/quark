@@ -29,7 +29,7 @@ type E2EEnv struct {
 
 // installSpacePlugins populates the space's data/plugins directory with the
 // plugin manifests and their pre-built artifacts (tool binaries and provider
-// .so files). The agent's binary-mode loader detects the co-located binary
+// .so files). The agent's api-mode loader detects the co-located binary
 // and runs it directly; there is no runtime `go build`.
 //
 // Pre-built artifacts come from BuildAllOnce (tool binaries) and the
@@ -42,7 +42,7 @@ func installSpacePlugins(t *testing.T, env *E2EEnv, bins BuiltBinaries) {
 	// installTool lays out a tool plugin exactly the way production installs
 	// do: manifest + the binary + (optionally) the lib-mode plugin.so. The
 	// agent's pluginmanager prefers lib mode when the .so is present and
-	// falls back to binary mode otherwise, so shipping both proves both
+	// falls back to api mode otherwise, so shipping both proves both
 	// code paths work.
 	installTool := func(name, binPath, libPath string) {
 		dst := filepath.Join(pluginsDir, "tools", name)
@@ -133,7 +133,7 @@ func startSupervisor(t *testing.T, bins BuiltBinaries) (*supclient.Client, strin
 type StartOptions struct {
 	// ForceBinaryTools, when true, omits the tool plugin.so files from the
 	// installed space so the agent's pluginmanager must fall back to
-	// binary-mode loading. Used to test binary fallback end-to-end.
+	// api-mode loading. Used to test binary fallback end-to-end.
 	ForceBinaryTools bool
 }
 
