@@ -24,7 +24,7 @@ func TestBashTool(t *testing.T) {
 
 // TestBashToolBinaryMode runs the same flow as TestBashTool but with the
 // tool plugin.so stripped from the installed space, forcing the agent's
-// pluginmanager to fall back to binary-mode (HTTP daemon) loading.
+// pluginmanager to fall back to api-mode (HTTP daemon) loading.
 func TestBashToolBinaryMode(t *testing.T) {
 	runBashTool(t, true)
 }
