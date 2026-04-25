@@ -11,19 +11,19 @@ import (
 	"time"
 )
 
-// Loader handles plugin discovery and loading for both lib and binary modes.
+// Loader handles plugin discovery and loading for lib, api, and cli modes.
 type Loader struct {
 	pluginsDir string
 	binDir     string // Directory for built binaries
 
 	mu       sync.RWMutex
 	libCache map[string]*goplugin.Plugin // Loaded .so files
-	binProcs map[string]*BinaryProcess   // Running binary processes
-	nextPort int                         // Next available port for binary plugins
+	apiProcs map[string]*APIProcess      // Running api-mode processes
+	nextPort int                         // Next available port for api plugins
 }
 
-// BinaryProcess tracks a running binary-mode plugin.
-type BinaryProcess struct {
+// APIProcess tracks a running api-mode plugin.
+type APIProcess struct {
 	Cmd      *exec.Cmd
 	Endpoint string // HTTP endpoint (e.g., "http://127.0.0.1:8096")
 	Port     int
@@ -35,8 +35,8 @@ func NewLoader(pluginsDir string) *Loader {
 		pluginsDir: pluginsDir,
 		binDir:     filepath.Join(pluginsDir, ".bin"),
 		libCache:   make(map[string]*goplugin.Plugin),
-		binProcs:   make(map[string]*BinaryProcess),
-		nextPort:   8100, // Start binary plugins at port 8100
+		apiProcs:   make(map[string]*APIProcess),
+		nextPort:   8100, // Start api plugins at port 8100
 	}
 }
 
@@ -134,8 +134,10 @@ func (l *Loader) Load(ctx context.Context, manifest *Manifest, dir string) (*Loa
 	switch manifest.Mode {
 	case ModeLib:
 		return l.loadLib(ctx, manifest, dir)
-	case ModeBinary:
-		return l.loadBinary(ctx, manifest, dir)
+	case ModeAPI:
+		return l.loadAPI(ctx, manifest, dir)
+	case ModeCLI:
+		return l.loadCLI(ctx, manifest, dir)
 	default:
 		return nil, fmt.Errorf("unknown plugin mode: %s", manifest.Mode)
 	}
@@ -214,19 +216,49 @@ func (l *Loader) loadLib(ctx context.Context, manifest *Manifest, dir string) (*
 	}, nil
 }
 
-// loadBinary builds (if needed) and starts a binary-mode plugin.
-func (l *Loader) loadBinary(ctx context.Context, manifest *Manifest, dir string) (*LoadedPlugin, error) {
+// loadCLI verifies a CLI-mode plugin binary exists.
+// CLI plugins are invoked as subprocess per call; no long-running process.
+func (l *Loader) loadCLI(ctx context.Context, manifest *Manifest, dir string) (*LoadedPlugin, error) {
 	// Ensure bin directory exists
 	if err := os.MkdirAll(l.binDir, 0755); err != nil {
 		return nil, fmt.Errorf("create bin dir: %w", err)
 	}
 
-	binPath := manifest.BinaryTargetPath(l.binDir)
+	binPath := manifest.APITargetPath(l.binDir)
+
+	// Check if binary needs to be built
+	if _, err := os.Stat(binPath); err != nil {
+		entryPoint := manifest.APIEntryPointPath()
+		buildCmd := exec.CommandContext(ctx, "go", "build", "-o", binPath, "./"+entryPoint)
+		buildCmd.Dir = dir
+		buildCmd.Stdout = os.Stdout
+		buildCmd.Stderr = os.Stderr
+		if err := buildCmd.Run(); err != nil {
+			return nil, fmt.Errorf("build plugin: %w", err)
+		}
+	}
+
+	return &LoadedPlugin{
+		Manifest: manifest,
+		Plugin:   nil,
+		Mode:     ModeCLI,
+		Dir:      dir,
+	}, nil
+}
+
+// loadAPI builds (if needed) and starts an api-mode plugin.
+func (l *Loader) loadAPI(ctx context.Context, manifest *Manifest, dir string) (*LoadedPlugin, error) {
+	// Ensure bin directory exists
+	if err := os.MkdirAll(l.binDir, 0755); err != nil {
+		return nil, fmt.Errorf("create bin dir: %w", err)
+	}
+
+	binPath := manifest.APITargetPath(l.binDir)
 
 	// Check if binary needs to be built
 	if _, err := os.Stat(binPath); err != nil {
 		// Build the binary
-		entryPoint := manifest.EntryPointPath()
+		entryPoint := manifest.APIEntryPointPath()
 		buildCmd := exec.CommandContext(ctx, "go", "build", "-o", binPath, "./"+entryPoint)
 		buildCmd.Dir = dir
 		buildCmd.Stdout = os.Stdout
@@ -255,7 +287,7 @@ func (l *Loader) loadBinary(ctx context.Context, manifest *Manifest, dir string)
 	time.Sleep(100 * time.Millisecond)
 
 	l.mu.Lock()
-	l.binProcs[manifest.Name] = &BinaryProcess{
+	l.apiProcs[manifest.Name] = &APIProcess{
 		Cmd:      daemonCmd,
 		Endpoint: fmt.Sprintf("http://%s", addr),
 		Port:     port,
@@ -264,17 +296,17 @@ func (l *Loader) loadBinary(ctx context.Context, manifest *Manifest, dir string)
 
 	return &LoadedPlugin{
 		Manifest: manifest,
-		Plugin:   nil, // Binary mode has no in-process Plugin
-		Mode:     ModeBinary,
+		Plugin:   nil, // API mode has no in-process Plugin
+		Mode:     ModeAPI,
 		Dir:      dir,
 	}, nil
 }
 
-// GetBinaryEndpoint returns the HTTP endpoint for a binary-mode plugin.
-func (l *Loader) GetBinaryEndpoint(name string) (string, bool) {
+// GetAPIEndpoint returns the HTTP endpoint for an api-mode plugin.
+func (l *Loader) GetAPIEndpoint(name string) (string, bool) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	proc, ok := l.binProcs[name]
+	proc, ok := l.apiProcs[name]
 	if !ok {
 		return "", false
 	}
@@ -286,13 +318,13 @@ func (l *Loader) Unload(name string) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	// Stop binary process if running
-	if proc, ok := l.binProcs[name]; ok {
+	// Stop api process if running
+	if proc, ok := l.apiProcs[name]; ok {
 		if proc.Cmd != nil && proc.Cmd.Process != nil {
 			proc.Cmd.Process.Kill()
 			proc.Cmd.Wait()
 		}
-		delete(l.binProcs, name)
+		delete(l.apiProcs, name)
 	}
 
 	// Remove from lib cache (Go doesn't support unloading plugins, but we track it)
@@ -306,12 +338,12 @@ func (l *Loader) ShutdownAll() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	for name, proc := range l.binProcs {
+	for name, proc := range l.apiProcs {
 		if proc.Cmd != nil && proc.Cmd.Process != nil {
 			proc.Cmd.Process.Kill()
 			proc.Cmd.Wait()
 		}
-		delete(l.binProcs, name)
+		delete(l.apiProcs, name)
 	}
 }
 
@@ -320,6 +352,6 @@ func (l *Loader) IsLoaded(name string) bool {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	_, libOK := l.libCache[name]
-	_, binOK := l.binProcs[name]
-	return libOK || binOK
+	_, apiOK := l.apiProcs[name]
+	return libOK || apiOK
 }
