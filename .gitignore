@@ -22,6 +22,8 @@ Thumbs.db
 # Plugin binaries
 *.so
 plugins/tools/*/bash
+plugins/tools/*/build-release
+plugins/tools/*/fs
 plugins/tools/*/read
 plugins/tools/*/write
 plugins/tools/*/web-search
