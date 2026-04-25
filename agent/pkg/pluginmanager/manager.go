@@ -25,7 +25,7 @@ import (
 
 // Manager loads tool and provider plugins from disk and dispatches calls to them.
 //
-// Tool plugins run as binary-mode HTTP servers or as lib-mode .so files loaded
+// Tool plugins run as api-mode HTTP servers or as lib-mode .so files loaded
 // in-process. Provider plugins are always lib-mode (.so) and are wrapped with
 // ProviderAdapter so the agent's LLM code can call them through the
 // provider.Provider interface.
@@ -35,7 +35,7 @@ type Manager struct {
 	binDir     string
 	loader     *plugin.Loader
 
-	// Binary-mode tool plugins
+	// API-mode tool plugins
 	processes  map[string]*exec.Cmd
 	endpoints  map[string]string
 	httpClient *http.Client
@@ -199,7 +199,7 @@ func (m *Manager) IsLoaded(name string) bool {
 }
 
 // ExecuteTool invokes a loaded tool. Lib-mode tools are called in-process;
-// binary-mode tools are invoked over HTTP.
+// api-mode tools are invoked over HTTP.
 func (m *Manager) ExecuteTool(ctx context.Context, name, arguments string) (string, error) {
 	m.mu.RLock()
 	libTool, isLib := m.libTools[name]
@@ -215,7 +215,7 @@ func (m *Manager) ExecuteTool(ctx context.Context, name, arguments string) (stri
 	return "", fmt.Errorf("tool %q not found or not running", name)
 }
 
-// Shutdown stops all binary-mode plugin processes.
+// Shutdown stops all api-mode plugin processes.
 func (m *Manager) Shutdown() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -291,7 +291,7 @@ func (m *Manager) loadToolLocked(ctx context.Context, manifest *plugin.Manifest,
 		if err := m.loadToolLibLocked(ctx, manifest, pluginDir); err == nil {
 			return nil
 		} else {
-			fmt.Printf("pluginmanager: lib mode failed for %s (%v), trying binary mode\n", manifest.Name, err)
+			fmt.Printf("pluginmanager: lib mode failed for %s (%v), trying api mode\n", manifest.Name, err)
 		}
 	}
 	return m.loadToolBinaryLocked(ctx, manifest, pluginDir)
@@ -331,14 +331,14 @@ func (m *Manager) loadToolLibLocked(ctx context.Context, manifest *plugin.Manife
 
 func (m *Manager) loadToolBinaryLocked(ctx context.Context, manifest *plugin.Manifest, pluginDir string) error {
 	binName := manifest.Name
-	if manifest.Build != nil && manifest.Build.BinaryTarget != "" {
-		binName = manifest.Build.BinaryTarget
+	if manifest.Build != nil && manifest.Build.APITarget != "" {
+		binName = manifest.Build.APITarget
 	}
 	outPath := filepath.Join(m.binDir, binName)
 
 	// Prefer a pre-built binary shipped alongside the manifest. Installers
 	// (including `make build-tools` + plugin install) drop the compiled
-	// binary at <pluginDir>/<binary_target>; when present, we skip the
+	// binary at <pluginDir>/<api_target>; when present, we skip the
 	// in-process `go build` step entirely.
 	prebuilt := filepath.Join(pluginDir, binName)
 	if info, err := os.Stat(prebuilt); err == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
