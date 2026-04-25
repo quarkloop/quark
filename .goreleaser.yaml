@@ -38,21 +38,10 @@ builds:
       - amd64
       - arm64
 
-  - id: read
-    dir: plugins/tools/read
-    main: ./cmd/read
-    binary: read
-    goos:
-      - linux
-      - darwin
-    goarch:
-      - amd64
-      - arm64
-
-  - id: write
-    dir: plugins/tools/write
-    main: ./cmd/write
-    binary: write
+  - id: fs
+    dir: plugins/tools/fs
+    main: ./cmd/fs
+    binary: fs
     goos:
       - linux
       - darwin

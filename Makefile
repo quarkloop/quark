@@ -4,7 +4,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev
 LDFLAGS := -X github.com/quarkloop/cli/pkg/buildinfo.Version=$(VERSION)
 
 # Tool plugins
-TOOLS := bash read write web-search
+TOOLS := bash fs web-search build-release
 
 # Provider plugins
 PROVIDERS := openrouter openai anthropic
@@ -15,10 +15,11 @@ MODULES := \
 	agent \
 	cli \
 	pkg/plugin \
+	pkg/toolkit \
 	plugins/tools/bash \
-	plugins/tools/read \
-	plugins/tools/write \
+	plugins/tools/fs \
 	plugins/tools/web-search \
+	plugins/tools/build-release \
 	plugins/providers/openrouter \
 	plugins/providers/openai \
 	plugins/providers/anthropic
