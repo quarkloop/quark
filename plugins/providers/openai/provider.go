@@ -11,12 +11,25 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/quarkloop/pkg/plugin"
+	"github.com/quarkloop/pkg/toolkit"
 )
 
-const defaultBaseURL = "https://api.openai.com/v1"
+var (
+	manifest *plugin.Manifest
+)
+
+func init() {
+	var err error
+	manifest, err = toolkit.LoadManifest()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "openai: %v\n", err)
+		os.Exit(1)
+	}
+}
 
 // OpenAIProvider implements the ProviderPlugin interface for OpenAI.
 type OpenAIProvider struct {
@@ -25,25 +38,18 @@ type OpenAIProvider struct {
 	client  *http.Client
 }
 
-func (p *OpenAIProvider) Name() string {
-	return "openai"
-}
-
-func (p *OpenAIProvider) Version() string {
-	return "1.0.0"
-}
-
-func (p *OpenAIProvider) Type() plugin.PluginType {
-	return plugin.TypeProvider
-}
-
-func (p *OpenAIProvider) ProviderID() string {
-	return "openai"
-}
+func (p *OpenAIProvider) Name() string    { return manifest.Name }
+func (p *OpenAIProvider) Version() string { return manifest.Version }
+func (p *OpenAIProvider) Type() plugin.PluginType { return manifest.Type }
+func (p *OpenAIProvider) ProviderID() string      { return manifest.Name }
 
 func (p *OpenAIProvider) Initialize(ctx context.Context, config map[string]any) error {
 	p.client = &http.Client{}
-	p.baseURL = defaultBaseURL
+	if manifest.Provider != nil && manifest.Provider.APIBase != "" {
+		p.baseURL = manifest.Provider.APIBase
+	} else {
+		p.baseURL = "https://api.openai.com/v1"
+	}
 	return nil
 }
 
@@ -60,12 +66,11 @@ func (p *OpenAIProvider) Configure(config plugin.ProviderConfig) error {
 }
 
 func (p *OpenAIProvider) ListModels(ctx context.Context) ([]plugin.ModelInfo, error) {
+	if manifest.Provider != nil && len(manifest.Provider.Models) > 0 {
+		return manifest.Provider.Models, nil
+	}
 	return []plugin.ModelInfo{
 		{ID: "gpt-4o", Name: "GPT-4o", ContextWindow: 128000, Default: true},
-		{ID: "gpt-4o-mini", Name: "GPT-4o Mini", ContextWindow: 128000},
-		{ID: "gpt-4-turbo", Name: "GPT-4 Turbo", ContextWindow: 128000},
-		{ID: "gpt-4", Name: "GPT-4", ContextWindow: 8192},
-		{ID: "gpt-3.5-turbo", Name: "GPT-3.5 Turbo", ContextWindow: 16385},
 	}, nil
 }
 
