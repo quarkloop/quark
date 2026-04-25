@@ -11,15 +11,25 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/quarkloop/pkg/plugin"
+	"github.com/quarkloop/pkg/toolkit"
 )
 
-const (
-	defaultBaseURL      = "https://api.anthropic.com/v1"
-	anthropicAPIVersion = "2023-06-01"
+var (
+	manifest *plugin.Manifest
 )
+
+func init() {
+	var err error
+	manifest, err = toolkit.LoadManifest()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "anthropic: %v\n", err)
+		os.Exit(1)
+	}
+}
 
 // AnthropicProvider implements the ProviderPlugin interface for Anthropic.
 type AnthropicProvider struct {
@@ -28,25 +38,18 @@ type AnthropicProvider struct {
 	client  *http.Client
 }
 
-func (p *AnthropicProvider) Name() string {
-	return "anthropic"
-}
-
-func (p *AnthropicProvider) Version() string {
-	return "1.0.0"
-}
-
-func (p *AnthropicProvider) Type() plugin.PluginType {
-	return plugin.TypeProvider
-}
-
-func (p *AnthropicProvider) ProviderID() string {
-	return "anthropic"
-}
+func (p *AnthropicProvider) Name() string    { return manifest.Name }
+func (p *AnthropicProvider) Version() string { return manifest.Version }
+func (p *AnthropicProvider) Type() plugin.PluginType { return manifest.Type }
+func (p *AnthropicProvider) ProviderID() string      { return manifest.Name }
 
 func (p *AnthropicProvider) Initialize(ctx context.Context, config map[string]any) error {
 	p.client = &http.Client{}
-	p.baseURL = defaultBaseURL
+	if manifest.Provider != nil && manifest.Provider.APIBase != "" {
+		p.baseURL = manifest.Provider.APIBase
+	} else {
+		p.baseURL = "https://api.anthropic.com/v1"
+	}
 	return nil
 }
 
@@ -63,25 +66,22 @@ func (p *AnthropicProvider) Configure(config plugin.ProviderConfig) error {
 }
 
 func (p *AnthropicProvider) ListModels(ctx context.Context) ([]plugin.ModelInfo, error) {
+	if manifest.Provider != nil && len(manifest.Provider.Models) > 0 {
+		return manifest.Provider.Models, nil
+	}
 	return []plugin.ModelInfo{
 		{ID: "claude-sonnet-4-20250514", Name: "Claude Sonnet 4", ContextWindow: 200000, Default: true},
-		{ID: "claude-opus-4-20250514", Name: "Claude Opus 4", ContextWindow: 200000},
-		{ID: "claude-3-5-sonnet-20241022", Name: "Claude 3.5 Sonnet", ContextWindow: 200000},
-		{ID: "claude-3-opus-20240229", Name: "Claude 3 Opus", ContextWindow: 200000},
-		{ID: "claude-3-haiku-20240307", Name: "Claude 3 Haiku", ContextWindow: 200000},
 	}, nil
 }
 
 // ChatCompletionStream sends a streaming chat completion request to Anthropic.
 func (p *AnthropicProvider) ChatCompletionStream(ctx context.Context, req *plugin.ChatRequest) (<-chan plugin.StreamEvent, error) {
-	// Convert to Anthropic Messages API format
 	antReq := &anthropicRequest{
 		Model:     req.Model,
-		MaxTokens: 8192, // Required field for Anthropic
+		MaxTokens: 8192,
 		Stream:    true,
 	}
 
-	// Extract system message and convert other messages
 	for _, m := range req.Messages {
 		if m.Role == "system" {
 			antReq.System = m.Content
@@ -108,7 +108,7 @@ func (p *AnthropicProvider) ChatCompletionStream(ctx context.Context, req *plugi
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("x-api-key", p.apiKey)
-	httpReq.Header.Set("anthropic-version", anthropicAPIVersion)
+	httpReq.Header.Set("anthropic-version", "2023-06-01")
 
 	resp, err := p.client.Do(httpReq)
 	if err != nil {
@@ -152,7 +152,6 @@ func (p *AnthropicProvider) readStream(body io.ReadCloser, ch chan<- plugin.Stre
 			if event.Delta.Type == "text_delta" {
 				ch <- plugin.StreamEvent{Delta: event.Delta.Text}
 			} else if event.Delta.Type == "input_json_delta" {
-				// Accumulate tool call arguments
 				if len(toolCalls) > 0 {
 					toolCalls[len(toolCalls)-1].Function.Arguments += event.Delta.PartialJSON
 				}
@@ -173,7 +172,6 @@ func (p *AnthropicProvider) readStream(body io.ReadCloser, ch chan<- plugin.Stre
 			}
 
 		case "content_block_stop":
-			// Send accumulated tool calls if any
 			if len(toolCalls) > 0 {
 				ch <- plugin.StreamEvent{ToolCalls: toolCalls}
 				toolCalls = nil
