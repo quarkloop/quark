@@ -35,7 +35,7 @@ ORIENT → PLAN → DISPATCH → MONITOR → ASSESS → (repeat)
 
 It reads the goal, produces an execution plan, fans out steps to subagents, invokes tools (`bash`, `read`, `write`, `web-search`), and iterates until complete.
 
-Everything is a **plugin** — tools, providers, agents, skills. Tool plugins support both **lib mode** (loaded in-process as Go `.so` files) and **binary mode** (run as separate HTTP server processes); the agent prefers lib mode and falls back to binary when the `.so` is absent. Provider plugins are always lib mode. All follow a standard contract: `manifest.yaml` + `SKILL.md` + executable and/or `.so`.
+Everything is a **plugin** — tools, providers, agents, skills. Tool plugins support both **lib mode** (loaded in-process as Go `.so` files) and **api mode** (run as separate HTTP server processes); the agent prefers lib mode and falls back to api when the `.so` is absent. Provider plugins are always lib mode. All follow a standard contract: `manifest.yaml` + `SKILL.md` + executable and/or `.so`.
 
 ### Sessions
 
@@ -59,8 +59,8 @@ Quark is a Go workspace. See [AGENTS.md](AGENTS.md) for the full package-level b
 | `supervisor`                       | Long-running daemon: space store, agent registry, plugin manager, HTTP API + Go SDK. |
 | `agent`                            | Agent runtime, planning loop, activity feed, subagent dispatch.                |
 | `cli`                              | `quark` CLI — HTTP-only client, reads and writes only the local Quarkfile.     |
-| `pkg/plugin`                       | Shared plugin interfaces, manifest parsing, lib/binary loader.                 |
-| `plugins/tools/{bash,read,write,web-search}` | Tool plugins (lib-mode `.so` + binary-mode HTTP daemon).             |
+| `pkg/plugin`                       | Shared plugin interfaces, manifest parsing, lib/api loader.                 |
+| `plugins/tools/{bash,read,write,web-search}` | Tool plugins (lib-mode `.so` + api-mode HTTP daemon).             |
 | `plugins/providers/{openrouter,openai,anthropic}` | Provider plugins (lib mode `.so`).                              |
 
 **Key layering:**
