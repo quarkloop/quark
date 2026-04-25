@@ -10,8 +10,8 @@ mode: lib
 
 build:
   lib_target: plugin.so
-  binary_target: bash
-  entry_point: ./cmd/bash
+  api_target: bash
+  api_entry_point: ./cmd/bash
 
 tool:
   schema:

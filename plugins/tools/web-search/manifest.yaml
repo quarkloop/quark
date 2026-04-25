@@ -10,8 +10,8 @@ mode: lib
 
 build:
   lib_target: plugin.so
-  binary_target: web-search
-  entry_point: ./cmd/web-search
+  api_target: web-search
+  api_entry_point: ./cmd/web-search
 
 tool:
   schema:
