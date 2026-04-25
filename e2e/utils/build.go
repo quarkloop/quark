@@ -18,14 +18,12 @@ type BuiltBinaries struct {
 	Supervisor string
 	Agent      string
 	Bash       string
-	Read       string
-	Write      string
+	FS         string
 
 	// Lib-mode tool .so paths. Empty if the build failed (e.g. no CGO);
-	// callers should fall back to binary-mode installation.
-	BashLib  string
-	ReadLib  string
-	WriteLib string
+	// callers should fall back to api-mode installation.
+	BashLib string
+	FSLib   string
 }
 
 var (
@@ -76,7 +74,7 @@ func BuildAllOnce(t *testing.T) BuiltBinaries {
 
 		// buildLib builds a tool as a Go plugin .so. Failures are tolerated
 		// and reported as empty paths; the caller will install the tool in
-		// binary mode instead.
+		// api mode instead.
 		buildLib := func(pkg, name string) string {
 			out := filepath.Join(binDir, name+".so")
 			cmd := exec.Command("go", "build", "-buildmode=plugin", "-tags", "plugin", "-o", out, pkg)
@@ -92,12 +90,10 @@ func BuildAllOnce(t *testing.T) BuiltBinaries {
 		buildRes.Supervisor = build("./supervisor/cmd/supervisor", "supervisor")
 		buildRes.Agent = build("./agent/cmd/agent", "agent")
 		buildRes.Bash = build("./plugins/tools/bash/cmd/bash", "bash")
-		buildRes.Read = build("./plugins/tools/read/cmd/read", "read")
-		buildRes.Write = build("./plugins/tools/write/cmd/write", "write")
+		buildRes.FS = build("./plugins/tools/fs/cmd/fs", "fs")
 
 		buildRes.BashLib = buildLib("./plugins/tools/bash", "bash")
-		buildRes.ReadLib = buildLib("./plugins/tools/read", "read")
-		buildRes.WriteLib = buildLib("./plugins/tools/write", "write")
+		buildRes.FSLib = buildLib("./plugins/tools/fs", "fs")
 	})
 	if buildErr != nil {
 		t.Fatal(buildErr)
