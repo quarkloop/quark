@@ -3,7 +3,7 @@ package configcmd
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/quarkloop/cli/pkg/quarkfile"
+	spacemodel "github.com/quarkloop/pkg/space"
 	supclient "github.com/quarkloop/supervisor/pkg/client"
 )
 
@@ -13,7 +13,7 @@ func newConfigGetCmd() *cobra.Command {
 		Short: "Read a configuration value",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			name, err := quarkfile.CurrentName()
+			name, err := spacemodel.CurrentName()
 			if err != nil {
 				return err
 			}
