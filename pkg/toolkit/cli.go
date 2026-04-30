@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -177,13 +178,17 @@ func runCommand(tool AgentTool, cmdDef Command, cmd *cobra.Command, args []strin
 	// Map flags
 	for _, f := range cmdDef.Flags {
 		var val any
+		var err error
 		switch f.Type {
 		case "int":
-			val, _ = cmd.Flags().GetInt(f.Name)
+			val, err = cmd.Flags().GetInt(f.Name)
 		case "bool":
-			val, _ = cmd.Flags().GetBool(f.Name)
+			val, err = cmd.Flags().GetBool(f.Name)
 		default:
-			val, _ = cmd.Flags().GetString(f.Name)
+			val, err = cmd.Flags().GetString(f.Name)
+		}
+		if err != nil {
+			slog.Error("flag parse error", "flag", f.Name, "error", err)
 		}
 		input.Flags[f.Name] = val
 	}
