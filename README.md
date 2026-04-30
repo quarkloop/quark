@@ -4,9 +4,9 @@
 [![Go 1.22+](https://img.shields.io/badge/go-1.22+-00ADD8.svg)](https://go.dev/dl/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-> Autonomous AI Agents for Everyday Work — Your Agents. Your Machine. Your Control.
+> Autonomous AI Agents for Everyday Work - Your Agents. Your Machine. Your Control.
 
-**Quark** is an autonomous multi-agent runtime. A space is a self-contained directory with a `Quarkfile` agit branchnd `.quark/` runtime state — copy it, share it via Git, and run it anywhere.
+**Quark** is an autonomous multi-agent runtime. Your working directory contains a single `Quarkfile`; the supervisor stores the latest space state under its own space directory.
 
 ```
 quark-supervisor start    # long-running daemon (once per machine)
@@ -21,9 +21,9 @@ quark activity query -f   # stream agent activity
 
 Quark has three processes:
 
-- **`quark-supervisor`** — a long-running local daemon. Owns every space's Quarkfile versions, KB, installed plugins, and the registry of running agents. Speaks HTTP.
-- **`agent`** — a child process launched by the supervisor for a specific space. Runs the LLM loop, handles chat and plans. Speaks HTTP.
-- **`quark`** — a thin CLI. Talks only to the supervisor (and, for chat/session/plan/activity, to the supervisor-resolved agent URL). The CLI reads and writes exactly one local file: the `Quarkfile` in the current directory.
+- **`quark-supervisor`** - a long-running local daemon. Owns every space's latest Quarkfile state, KB, installed plugins, sessions, and the registry of running agents. Speaks HTTP.
+- **`agent`** - a child process launched by the supervisor for a specific space. Runs the LLM loop, handles chat and plans. Speaks HTTP.
+- **`quark`** - a thin CLI. Talks only to the supervisor (and, for chat/session/plan/activity, to the supervisor-resolved agent URL). The CLI reads and writes exactly one local file: the `Quarkfile` in the current directory.
 
 A **space** is identified by its `meta.name` in the Quarkfile. The supervisor keeps the authoritative copy under `$QUARK_SPACES_ROOT` (default `~/.quarkloop/spaces/<name>/`); the Quarkfile you edit in your working directory is re-submitted to the supervisor when you update it.
 
@@ -35,7 +35,7 @@ ORIENT → PLAN → DISPATCH → MONITOR → ASSESS → (repeat)
 
 It reads the goal, produces an execution plan, fans out steps to subagents, invokes tools (`bash`, `read`, `write`, `web-search`), and iterates until complete.
 
-Everything is a **plugin** — tools, providers, agents, skills. Tool plugins support both **lib mode** (loaded in-process as Go `.so` files) and **api mode** (run as separate HTTP server processes); the agent prefers lib mode and falls back to api when the `.so` is absent. Provider plugins are always lib mode. All follow a standard contract: `manifest.yaml` + `SKILL.md` + executable and/or `.so`.
+Everything is a **plugin** - tools, providers, agents, skills. Tool plugins support both **lib mode** (loaded in-process as Go `.so` files) and **api mode** (run as separate HTTP server processes); the agent prefers lib mode and falls back to api when the `.so` is absent. Provider plugins are always lib mode. All follow a standard contract: `manifest.yaml` + `SKILL.md` + executable and/or `.so`.
 
 ### Sessions
 
@@ -43,7 +43,7 @@ A **session** is a communication channel between a user (or system) and an agent
 
 | Type       | Purpose                                                          |
 | ---------- | ---------------------------------------------------------------- |
-| `main`     | Persistent autonomous session — one per agent, survives restarts |
+| `main`     | Persistent autonomous session - one per agent, survives restarts |
 | `chat`     | User-created conversation thread with independent context        |
 | `subagent` | Worker session for plan step execution                           |
 | `cron`     | Session for scheduled task runs                                  |
@@ -58,7 +58,8 @@ Quark is a Go workspace. See [AGENTS.md](AGENTS.md) for the full package-level b
 | ---------------------------------- | ----------------------------------------------------------------------------- |
 | `supervisor`                       | Long-running daemon: space store, agent registry, plugin manager, HTTP API + Go SDK. |
 | `agent`                            | Agent runtime, planning loop, activity feed, subagent dispatch.                |
-| `cli`                              | `quark` CLI — HTTP-only client, reads and writes only the local Quarkfile.     |
+| `cli`                              | `quark` CLI - HTTP-only client, reads and writes only the local Quarkfile.     |
+| `pkg/space`                        | Shared space directory model and Quarkfile schema, validation, and I/O.        |
 | `pkg/plugin`                       | Shared plugin interfaces, manifest parsing, lib/api loader.                 |
 | `plugins/tools/{bash,read,write,web-search}` | Tool plugins (lib-mode `.so` + api-mode HTTP daemon).             |
 | `plugins/providers/{openrouter,openai,anthropic}` | Provider plugins (lib mode `.so`).                              |
@@ -71,14 +72,14 @@ supervisor ← cli (via supervisor/pkg/client)
 agent      ← cli (via agent/pkg/client, for session/plan/activity/chat)
 ```
 
-The CLI has no dependency on the `agent` module's internals — only on the public `agent/pkg/client` SDK. Plugins have no compile-time dependency on agent or cli.
+The CLI has no dependency on the `agent` module's internals - only on the public `agent/pkg/client` SDK. Plugins have no compile-time dependency on agent or cli.
 
 ### Binaries
 
 | Binary            | Module                              | Role                                                                |
 | ----------------- | ----------------------------------- | ------------------------------------------------------------------- |
 | `quark-supervisor`| `supervisor`                        | Long-running daemon managing all spaces and agent lifecycle         |
-| `agent`           | `agent`                             | Agent runtime process — launched on demand by the supervisor        |
+| `agent`           | `agent`                             | Agent runtime process - launched on demand by the supervisor        |
 | `quark`           | `cli`                               | CLI: init / run / stop / inspect / doctor / plugin / session / config / kb / plan / activity |
 | `bash`            | `plugins/tools/bash`                | Tool plugin: shell execution                                        |
 | `read`            | `plugins/tools/read`                | Tool plugin: read text files                                        |
@@ -90,7 +91,7 @@ The CLI has no dependency on the `agent` module's internals — only on the publ
 ## Requirements
 
 - **Go 1.22+**
-- An API key for your LLM provider — or use `--dry-run` to test without one
+- An API key for your LLM provider - or use `noop` provider settings to test without one
 
 ---
 
@@ -112,7 +113,7 @@ export PATH="$PWD/bin:$PATH"
 
 ## Quickstart
 
-**1. Start the supervisor** (once per machine — leave it running in a terminal or under systemd/launchd):
+**1. Start the supervisor** (once per machine - leave it running in a terminal or under systemd/launchd):
 
 ```bash
 quark-supervisor start
@@ -175,7 +176,7 @@ Your working directory contains **only** the Quarkfile:
 
 ```
 my-space/
-└── Quarkfile               # space definition — model, plugins, permissions
+└── Quarkfile               # space definition - model, plugins, permissions
 ```
 
 Everything else lives under the supervisor's storage root (`$QUARK_SPACES_ROOT`, default `~/.quarkloop/spaces/`):
@@ -183,37 +184,37 @@ Everything else lives under the supervisor's storage root (`$QUARK_SPACES_ROOT`,
 ```
 ~/.quarkloop/spaces/my-space/
 ├── meta.json               # space metadata (name, version, timestamps)
-├── quarkfiles/
-│   ├── v1.yaml             # every Quarkfile version ever submitted
-│   ├── v2.yaml
-│   └── ...
-└── data/
-    ├── kb/kb.jsonl         # knowledge base (sessions, plans, activity, user KB)
-    └── plugins/            # installed plugins
-        ├── tool-bash/      #   manifest.yaml + SKILL.md + bin/
-        ├── tool-read/
-        └── agent-researcher/
+├── Quarkfile               # latest Quarkfile state
+├── kb/                     # knowledge base
+├── plugins/                # installed plugins
+│   ├── tool-bash/          #   manifest.yaml + SKILL.md + bin/
+│   ├── tool-fs/
+│   └── agent-researcher/
+└── sessions/               # one JSONL file per session
 ```
 
-This layout is an implementation detail of the supervisor's `FSStore` and is not part of the stable contract — always operate on a space through the CLI or supervisor API.
+This layout is an implementation detail of the supervisor's `FSStore` and is not part of the stable contract - always operate on a space through the CLI or supervisor API.
 
 ---
 
 ## Quarkfile reference
 
-Minimal `Quarkfile` (model is optional — auto-detected from env keys):
+Minimal `Quarkfile`:
 
 ```yaml
 quark: "1.0"
 
 meta:
   name: my-space
+  version: "0.1.0"
 
-# model:                          # optional — auto-detected from env keys
-#   provider: anthropic
-#   name: claude-sonnet-4.6
+model:
+  provider: anthropic
+  name: claude-sonnet-4
+  env:
+    - ANTHROPIC_API_KEY
 
-# routing:                        # optional — model routing and fallbacks
+# routing:                        # optional - model routing and fallbacks
 #   fallback:
 #     - provider: openai
 #       model: gpt-5.4
@@ -251,9 +252,6 @@ capabilities:
   max_workers: 3
   create_plans: true
   approval_policy: auto         # required | auto
-
-env:
-  - ANTHROPIC_API_KEY
 
 gateway:
   token_budget_per_hour: 100000
