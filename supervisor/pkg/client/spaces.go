@@ -17,12 +17,14 @@ func (c *Client) ListSpaces(ctx context.Context) ([]api.SpaceInfo, error) {
 }
 
 // CreateSpace registers a new space. quarkfile is the raw bytes of the user's
-// Quarkfile; meta.name inside must match name.
-func (c *Client) CreateSpace(ctx context.Context, name string, quarkfile []byte) (api.SpaceInfo, error) {
+// Quarkfile; meta.name inside must match name. The supervisor writes the
+// Quarkfile to workingDir.
+func (c *Client) CreateSpace(ctx context.Context, name string, quarkfile []byte, workingDir string) (api.SpaceInfo, error) {
 	var out api.SpaceInfo
 	err := c.do(ctx, http.MethodPost, c.route.Spaces(), api.CreateSpaceRequest{
-		Name:      name,
-		Quarkfile: quarkfile,
+		Name:       name,
+		Quarkfile:  quarkfile,
+		WorkingDir: workingDir,
 	}, &out)
 	return out, err
 }
@@ -46,7 +48,7 @@ func (c *Client) Quarkfile(ctx context.Context, name string) (api.QuarkfileRespo
 	return out, err
 }
 
-// UpdateQuarkfile stores a new Quarkfile version for the space.
+// UpdateQuarkfile replaces the latest Quarkfile for the space.
 func (c *Client) UpdateQuarkfile(ctx context.Context, name string, quarkfile []byte) (api.SpaceInfo, error) {
 	var out api.SpaceInfo
 	err := c.do(ctx, http.MethodPut, c.route.SpaceQuarkfile(name),
