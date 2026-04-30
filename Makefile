@@ -15,6 +15,7 @@ MODULES := \
 	agent \
 	cli \
 	pkg/plugin \
+	pkg/space \
 	pkg/toolkit \
 	plugins/tools/bash \
 	plugins/tools/fs \
@@ -72,11 +73,15 @@ build-agent:
 build-cli:
 	go build -ldflags "$(LDFLAGS)" -o $(BINARY_DIR)/quark ./cli/cmd/quark
 
-## Run tests across all modules
+## Run tests across all modules (providers are tested under the `plugin` build
+## tag since all their sources are gated on it)
 test:
-	@for mod in $(MODULES); do \
+	@set -e; for mod in $(MODULES); do \
 		echo "--- Testing $$mod ---"; \
-		(cd $$mod && go test ./...); \
+		case $$mod in \
+			plugins/providers/*) (cd $$mod && go test -tags plugin ./...);; \
+			*) (cd $$mod && go test ./...);; \
+		esac; \
 	done
 
 ## Run E2E tests (requires OPENROUTER_API_KEY or ZHIPU_API_KEY; loads quark/.env when present)
