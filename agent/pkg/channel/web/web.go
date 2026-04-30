@@ -1,47 +1,52 @@
-// Package web provides the HTTP channel — manages the Gin server
+// Package web provides the HTTP channel — manages the Fiber server
 // and registers all API routes. No handler code lives here.
 package web
 
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"time"
 
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/recover"
 
 	"github.com/quarkloop/agent/pkg/agent"
+	"github.com/quarkloop/agent/pkg/api"
 	"github.com/quarkloop/agent/pkg/channel"
-	"github.com/quarkloop/agent/pkg/message"
-	"github.com/quarkloop/agent/pkg/system"
 )
 
 // WebChannel manages the HTTP server and registers API routes.
 type WebChannel struct {
-	engine *gin.Engine
-	addr   string
-	srv    *http.Server
+	app  *fiber.App
+	addr string
 }
 
 // New creates a new web channel with all API routes registered.
 func New(addr string, a *agent.Agent) *WebChannel {
-	gin.SetMode(gin.ReleaseMode)
-	r := gin.New()
-	r.Use(gin.Recovery())
+	app := fiber.New(fiber.Config{
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		ErrorHandler: errorHandler,
+	})
 
-	v1 := r.Group("/v1")
-	system.NewHandler().RegisterRoutes(r, v1)
-	agent.NewHandler(a).RegisterRoutes(v1)
+	app.Use(recover.New())
+
+	v1 := app.Group("/v1")
+	api.NewSystemHandler().RegisterRoutes(v1)
+	api.NewAgentHandler(a).RegisterRoutes(v1)
+
 	// Sessions are owned by the supervisor; the agent only exposes the
 	// operational message API for sessions created upstream.
-	message.NewHandler(a, a.Sessions).RegisterRoutes(v1.Group("/sessions/:session_id/messages"))
+	msgGroup := v1.Group("/sessions/:session_id/messages")
+	api.NewMessageHandler(a, a.Sessions).RegisterRoutes(msgGroup)
 
 	// Channel API — registered after bus is available via agent
 	if a.Bus != nil {
-		channel.NewHandler(a.Bus).RegisterRoutes(v1.Group("/channels"))
+		chGroup := v1.Group("/channels")
+		api.NewChannelHandler(a.Bus).RegisterRoutes(chGroup)
 	}
 
-	return &WebChannel{engine: r, addr: addr}
+	return &WebChannel{app: app, addr: addr}
 }
 
 // Type returns the channel type.
@@ -49,14 +54,9 @@ func (c *WebChannel) Type() channel.ChannelType { return channel.WebChannelType 
 
 // Start starts the HTTP server.
 func (c *WebChannel) Start(ctx context.Context) error {
-	c.srv = &http.Server{
-		Addr:              c.addr,
-		Handler:           c.engine,
-		ReadHeaderTimeout: 10 * time.Second,
-	}
 	go func() {
 		fmt.Printf("web channel listening on %s\n", c.addr)
-		if err := c.srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := c.app.Listen(c.addr); err != nil {
 			fmt.Printf("web channel error: %v\n", err)
 		}
 	}()
@@ -65,8 +65,14 @@ func (c *WebChannel) Start(ctx context.Context) error {
 
 // Stop gracefully shuts down the HTTP server.
 func (c *WebChannel) Stop(ctx context.Context) error {
-	if c.srv == nil {
-		return nil
+	return c.app.ShutdownWithContext(ctx)
+}
+
+// errorHandler is the Fiber custom error handler.
+func errorHandler(c *fiber.Ctx, err error) error {
+	code := fiber.StatusInternalServerError
+	if e, ok := err.(*fiber.Error); ok {
+		code = e.Code
 	}
-	return c.srv.Shutdown(ctx)
+	return c.Status(code).JSON(fiber.Map{"error": err.Error()})
 }
