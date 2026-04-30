@@ -31,8 +31,13 @@ pkg/plugin (shared plugin interfaces and types)
   ├── plugins/tools/*                (implement plugin.ToolPlugin, lib + api modes)
   └── plugins/providers/*            (implement plugin.ProviderPlugin, lib mode)
 
+pkg/space (shared space directory model + Quarkfile schema/validation)
+  ↑
+  ├── supervisor/pkg/space            (FSStore adapter and supervisor-owned operations)
+  └── cli/pkg/commands/*              (local Quarkfile reads for current-space resolution)
+
 supervisor (owns all persistent state)
-  ├── supervisor/pkg/space      (FSStore: space metadata, Quarkfile versions, data/)
+  ├── supervisor/pkg/space      (FSStore: metadata, latest Quarkfile, KB/plugins/sessions dirs)
   ├── supervisor/pkg/kb         (per-space KB store)
   ├── supervisor/pkg/registry   (in-memory agent process registry)
   ├── supervisor/pkg/runtime    (launches agent processes)
@@ -63,7 +68,7 @@ else to the supervisor or the agent.
 | `cli/pkg/root.go` | Root command definition with command groups. |
 | `cli/pkg/commands/` | Command implementations (init, run, stop, inspect, doctor, plugin, session, config, kb, plan, activity, version). |
 | `cli/pkg/commands/plugin/` | Plugin install/uninstall/list/info/search (all via supervisor). |
-| `cli/pkg/quarkfile/` | Local Quarkfile I/O: `Read`, `Write`, `Name`, `CurrentName`, `DefaultTemplate`. The only package that touches the user's filesystem. |
+| `pkg/space` | Shared space directory model and Quarkfile I/O/schema/validation. |
 | `cli/pkg/agentdial/` | Resolves the running agent for the current space (supervisor → agent URL → `agent/pkg/client`). Used by session, plan, activity commands. |
 | `cli/pkg/buildinfo/` | Build-time version info. |
 | `cli/pkg/util/` | Shared CLI helpers (formatted output). |
@@ -76,11 +81,10 @@ else to the supervisor or the agent.
 | `supervisor/pkg/api` | Wire types and `RouteBuilder` (shared between server and client). |
 | `supervisor/pkg/client` | Go SDK for the supervisor HTTP API — split by concern: `client.go` (transport + `HTTPError`, `IsNotFound`, `IsConflict`), `spaces.go`, `kb.go`, `plugins.go`, `agents.go`. |
 | `supervisor/pkg/commands` | `supervisor start` / `supervisor stop` cobra commands. |
-| `supervisor/pkg/server` | HTTP handlers (`space_handler.go`, `kb_handler.go`, `plugin_handler.go`, `agent_handler.go`) + routes. |
+| `supervisor/pkg/server` | HTTP handlers (`handler.go`, `space_handler.go`, `kb_handler.go`, `plugin_handler.go`, `agent_handler.go`, `session_handler.go`) + routes — Fiber v2. |
 | `supervisor/pkg/space` | `Store` interface, `FSStore` implementation, `Doctor` function. |
 | `supervisor/pkg/kb` | Per-space JSONL-backed KB. Opened via `store.KB(name)`. |
 | `supervisor/pkg/pluginmanager` | Per-space plugin install/list/uninstall. Opened via `store.Plugins(name)`. |
-| `supervisor/pkg/quarkfile` | Quarkfile struct + validation (server-side). |
 | `supervisor/pkg/registry` | In-memory registry of running `Agent` processes. |
 | `supervisor/pkg/runtime` | Launches and reaps agent child processes. |
 
@@ -91,13 +95,10 @@ Rooted at `$QUARK_SPACES_ROOT` or `$HOME/.quarkloop/spaces`:
 ```
 <root>/<name>/
 ├── meta.json                   # {name, version, created_at, updated_at}
-├── quarkfiles/
-│   ├── v1.yaml                 # every version ever stored
-│   ├── v2.yaml
-│   └── ...
-└── data/
-    ├── kb/kb.jsonl             # per-space knowledge base
-    └── plugins/                # installed plugins for this space
+├── Quarkfile                   # latest Quarkfile state only
+├── kb/                         # per-space knowledge base
+├── plugins/                    # installed plugins for this space
+└── sessions/                   # one JSONL file per session
 ```
 
 Spaces are keyed by `meta.name` from the Quarkfile — never by path.
@@ -139,6 +140,7 @@ The `agent` module is split into focused sub-packages with strict single respons
 | `agent/pkg/execution` | Tool invocation and plan step execution (LLM+tool loop). |
 | `agent/pkg/chat` | Chat mode routing: ask, plan, masterplan, auto. Prompt builders. |
 | `agent/pkg/cycle` | Supervisor loop: orient → plan → dispatch → monitor → assess. |
+| `agent/pkg/api` | Consolidated HTTP handlers (system, agent, message, channel) — Fiber v2. |
 | `agent/pkg/agent` | Thin orchestrator: session management, request routing, lifecycle glue. |
 | `agent/pkg/config` | KB-backed dynamic config store with owner-wins semantics. |
 | `agent/pkg/eventbus` | In-memory pub/sub with per-subscriber channels and typed event kinds. |
@@ -149,7 +151,7 @@ The `agent` module is split into focused sub-packages with strict single respons
 | `agent/pkg/activity` | Persisted event log — async subscriber to EventBus with ring buffer. |
 | `agent/pkg/tool` | HTTP tool dispatcher and tool definition types. |
 | `agent/pkg/plan` | Plan and step types, KB-backed stores, master plan support. |
-| `agent/pkg/runtime` | Agent lifecycle: process management, HTTP server. |
+| `agent/pkg/runtime` | Agent lifecycle: process management, HTTP server (Fiber v2). |
 | `agent/pkg/plugin` | Plugin manifest parsing, discovery from `.quark/plugins/`, hub client. |
 
 **Dependency graph** (no circular imports):
@@ -243,7 +245,7 @@ Everything is a plugin. Four types exist:
 ### Plugin Modes
 
 - **Lib mode**: Plugin is a Go `.so` file loaded in-process via `plugin.Open()`. Requires CGO to build. Fastest dispatch (no HTTP). Used by all provider plugins and preferred for tool plugins.
-- **API mode**: Plugin runs as a separate HTTP server process. Tool plugins fall back to api mode when `plugin.so` is not shipped next to the manifest; the tool binary exposes `POST /<toolName>` for dispatch.
+- **API mode**: Plugin runs as a separate Fiber v2 HTTP server process. Tool plugins fall back to api mode when `plugin.so` is not shipped next to the manifest; the tool binary exposes `POST /<toolName>` for dispatch (via `pkg/toolkit/server.go`).
 
 Tools ship both artifacts by default: `make build-tools` produces the binary under `bin/`, and `make build-tools-lib` produces `plugin.so` in each tool's source directory. Installers lay both out next to `manifest.yaml` inside the space; the agent's pluginmanager tries lib mode first and falls back to api on load failure.
 
@@ -255,20 +257,41 @@ plugins/
 │   ├── bash/
 │   │   ├── manifest.yaml
 │   │   ├── SKILL.md
-│   │   ├── plugin.go      # lib-mode export (build tag: plugin)
-│   │   ├── cmd/bash/      # api-mode entry point
-│   │   └── pkg/bash/      # shared implementation
+│   │   ├── plugin.go          # lib-mode export (build tag: plugin)
+│   │   ├── cmd/bash/          # api-mode entry point (Fiber v2)
+│   │   └── pkg/bash/          # shared implementation + RunHandler() (Fiber)
 │   ├── read/
 │   ├── write/
 │   └── web-search/
+│       ├── manifest.yaml
+│       ├── SKILL.md
+│       ├── cmd/web-search/   # api-mode entry point (Fiber v2)
+│       └── pkg/websearch/    # shared implementation + searchHandler() (Fiber)
 └── providers/
     ├── openrouter/
     │   ├── manifest.yaml
     │   ├── SKILL.md
-    │   ├── plugin.go      # lib-mode export
-    │   └── provider.go    # ProviderPlugin implementation
+    │   ├── plugin.go          # lib-mode export
+    │   └── provider.go        # ProviderPlugin implementation
     ├── openai/
     └── anthropic/
+```
+
+Agent HTTP handlers are consolidated in `agent/pkg/api/`:
+```
+agent/pkg/api/
+├── system.go     # Health, Stop handlers
+├── agent.go      # Info handler
+├── message.go    # List, Send, Stream, Edit handlers (SSE)
+└── channel.go    # ListChannels handler
+```
+
+Tool plugin api-mode servers use `pkg/toolkit/server.go` (Fiber v2):
+```
+pkg/toolkit/
+├── server.go     # BuildServer(), RunServer() — Fiber v2 HTTP server
+├── cli.go        # BuildCLI() — Cobra CLI with serve subcommand
+└── pipe.go       # RunPipe() — JSON pipe mode
 ```
 
 ### Manifest Schema
@@ -332,7 +355,7 @@ Provider resolution order: `OPENROUTER_API_KEY` first, then `ZHIPU_API_KEY`. The
 
 - Cobra for all CLI commands.
 - JSONL-backed key-value store for persistence.
-- The CLI is HTTP-only: `cli/pkg/quarkfile` is the *only* place it touches the local filesystem.
+- The CLI is HTTP-only: shared `pkg/space` helpers are the only code it uses for local Quarkfile reads.
 - Agents and supervisor never look up spaces by path — spaces are keyed by `meta.name`.
 - Agent plan types live in `agent/pkg/plan`.
 - Shared agent types (Definition, Mode, ApprovalPolicy, ChatRequest/Response) live in `agent/pkg/agentcore`.
