@@ -9,4 +9,24 @@ package space
 import spacemodel "github.com/quarkloop/pkg/space"
 
 // Space is the supervisor's view of a stored space.
-type Space = spacemodel.Metadata
+// It embeds spacemodel.Metadata to avoid a type alias and maintain
+// an explicit boundary between the supervisor domain and the shared model.
+// Fields of Metadata are promoted to Space (e.g., sp.Name, sp.Version).
+type Space struct {
+	spacemodel.Metadata
+}
+
+// ToModel converts Space to a spacemodel.Metadata value.
+func (s *Space) ToModel() spacemodel.Metadata {
+	return s.Metadata
+}
+
+// Meta returns a pointer to the embedded Metadata for calling spacemodel functions.
+func (s *Space) Meta() *spacemodel.Metadata {
+	return &s.Metadata
+}
+
+// FromModel creates a Space from a spacemodel.Metadata.
+func FromModel(m spacemodel.Metadata) *Space {
+	return &Space{Metadata: m}
+}

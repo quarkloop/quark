@@ -89,7 +89,7 @@ func (s *FSStore) readMeta(name string) (*space.Space, error) {
 	if err != nil {
 		return nil, err
 	}
-	return sp, nil
+	return space.FromModel(*sp), nil
 }
 
 // writeMeta persists the Space metadata atomically.
@@ -98,7 +98,7 @@ func (s *FSStore) writeMeta(sp *space.Space) error {
 	if err != nil {
 		return err
 	}
-	return spacemodel.WriteMetadata(l.MetaPath(), sp)
+	return spacemodel.WriteMetadata(l.MetaPath(), sp.Meta())
 }
 
 // Create registers a new space with the supervised layout and writes the
@@ -144,11 +144,13 @@ func (s *FSStore) Create(name string, quarkfileBytes []byte, workingDir string) 
 
 	now := time.Now().UTC()
 	sp := &space.Space{
-		Name:       name,
-		WorkingDir: workingDir,
-		Version:    qf.Meta.Version,
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		Metadata: spacemodel.Metadata{
+			Name:       name,
+			WorkingDir: workingDir,
+			Version:    qf.Meta.Version,
+			CreatedAt:  now,
+			UpdatedAt:  now,
+		},
 	}
 	if err := s.writeMeta(sp); err != nil {
 		return nil, err
