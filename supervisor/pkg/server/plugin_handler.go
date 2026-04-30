@@ -1,32 +1,28 @@
 package server
 
 import (
-	"encoding/json"
-	"net/http"
-
+	"github.com/gofiber/fiber/v2"
 	"github.com/quarkloop/pkg/plugin"
 	"github.com/quarkloop/supervisor/pkg/api"
 	"github.com/quarkloop/supervisor/pkg/pluginmanager"
 )
 
-// handleListPlugins serves GET /v1/spaces/{name}/plugins.
-func (s *Server) handleListPlugins(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
+// handleListPlugins serves GET /v1/spaces/:name/plugins.
+func (s *Server) handleListPlugins(c *fiber.Ctx) error {
+	name := c.Params("name")
 	mgr, err := s.store.Plugins(name)
 	if err != nil {
-		writeSpaceError(w, name, err)
-		return
+		return s.writeSpaceError(c, name, err)
 	}
 
 	var plugins []pluginmanager.InstalledPlugin
-	if typeFilter := r.URL.Query().Get("type"); typeFilter != "" {
+	if typeFilter := c.Query("type"); typeFilter != "" {
 		plugins, err = mgr.ListByType(plugin.PluginType(typeFilter))
 	} else {
 		plugins, err = mgr.List()
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return writeError(c, fiber.StatusInternalServerError, err.Error())
 	}
 
 	out := api.ListPluginsResponse{
@@ -35,88 +31,78 @@ func (s *Server) handleListPlugins(w http.ResponseWriter, r *http.Request) {
 	for _, p := range plugins {
 		out.Plugins = append(out.Plugins, toAPIPluginInfo(p))
 	}
-	writeJSON(w, http.StatusOK, out)
+	return writeJSON(c, fiber.StatusOK, out)
 }
 
-// handleGetPlugin serves GET /v1/spaces/{name}/plugins/{plugin}.
-func (s *Server) handleGetPlugin(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	pluginName := r.PathValue("plugin")
+// handleGetPlugin serves GET /v1/spaces/:name/plugins/:plugin.
+func (s *Server) handleGetPlugin(c *fiber.Ctx) error {
+	name := c.Params("name")
+	pluginName := c.Params("plugin")
 
 	mgr, err := s.store.Plugins(name)
 	if err != nil {
-		writeSpaceError(w, name, err)
-		return
+		return s.writeSpaceError(c, name, err)
 	}
 	p, err := mgr.Get(pluginName)
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
-		return
+		return writeError(c, fiber.StatusNotFound, err.Error())
 	}
-	writeJSON(w, http.StatusOK, toAPIPluginInfo(*p))
+	return writeJSON(c, fiber.StatusOK, toAPIPluginInfo(*p))
 }
 
-// handleInstallPlugin serves POST /v1/spaces/{name}/plugins.
-func (s *Server) handleInstallPlugin(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
+// handleInstallPlugin serves POST /v1/spaces/:name/plugins.
+func (s *Server) handleInstallPlugin(c *fiber.Ctx) error {
+	name := c.Params("name")
 	mgr, err := s.store.Plugins(name)
 	if err != nil {
-		writeSpaceError(w, name, err)
-		return
+		return s.writeSpaceError(c, name, err)
 	}
 
 	var req api.InstallPluginRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
-		return
+	if err := c.BodyParser(&req); err != nil {
+		return writeError(c, fiber.StatusBadRequest, "invalid request body: "+err.Error())
 	}
 	if req.Ref == "" {
-		writeError(w, http.StatusBadRequest, "ref is required")
-		return
+		return writeError(c, fiber.StatusBadRequest, "ref is required")
 	}
 
-	installed, err := mgr.Install(r.Context(), req.Ref)
+	installed, err := mgr.Install(c.Context(), req.Ref)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return writeError(c, fiber.StatusInternalServerError, err.Error())
 	}
 
-	writeJSON(w, http.StatusCreated, api.InstallPluginResponse{
+	return writeJSON(c, fiber.StatusCreated, api.InstallPluginResponse{
 		Plugin: toAPIPluginInfo(*installed),
 	})
 }
 
-// handleUninstallPlugin serves DELETE /v1/spaces/{name}/plugins/{plugin}.
-func (s *Server) handleUninstallPlugin(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	pluginName := r.PathValue("plugin")
+// handleUninstallPlugin serves DELETE /v1/spaces/:name/plugins/:plugin.
+func (s *Server) handleUninstallPlugin(c *fiber.Ctx) error {
+	name := c.Params("name")
+	pluginName := c.Params("plugin")
 
 	mgr, err := s.store.Plugins(name)
 	if err != nil {
-		writeSpaceError(w, name, err)
-		return
+		return s.writeSpaceError(c, name, err)
 	}
 	if err := mgr.Uninstall(pluginName); err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
-		return
+		return writeError(c, fiber.StatusNotFound, err.Error())
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.SendStatus(fiber.StatusNoContent)
 }
 
-// handleSearchPlugins serves GET /v1/spaces/{name}/plugins/search?q=...
-func (s *Server) handleSearchPlugins(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
+// handleSearchPlugins serves GET /v1/spaces/:name/plugins/search.
+func (s *Server) handleSearchPlugins(c *fiber.Ctx) error {
+	name := c.Params("name")
 	mgr, err := s.store.Plugins(name)
 	if err != nil {
-		writeSpaceError(w, name, err)
-		return
+		return s.writeSpaceError(c, name, err)
 	}
 
-	query := r.URL.Query().Get("q")
+	query := c.Query("q")
 	results, err := mgr.Search(query)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return writeError(c, fiber.StatusInternalServerError, err.Error())
 	}
 
 	out := api.SearchPluginsResponse{
@@ -131,26 +117,24 @@ func (s *Server) handleSearchPlugins(w http.ResponseWriter, r *http.Request) {
 			Author:      res.Author,
 		})
 	}
-	writeJSON(w, http.StatusOK, out)
+	return writeJSON(c, fiber.StatusOK, out)
 }
 
-// handleHubPluginInfo serves GET /v1/spaces/{name}/plugins/hub/{plugin}.
-func (s *Server) handleHubPluginInfo(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	pluginName := r.PathValue("plugin")
+// handleHubPluginInfo serves GET /v1/spaces/:name/plugins/hub/:plugin.
+func (s *Server) handleHubPluginInfo(c *fiber.Ctx) error {
+	name := c.Params("name")
+	pluginName := c.Params("plugin")
 
 	mgr, err := s.store.Plugins(name)
 	if err != nil {
-		writeSpaceError(w, name, err)
-		return
+		return s.writeSpaceError(c, name, err)
 	}
 	info, err := mgr.GetHubInfo(pluginName)
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
-		return
+		return writeError(c, fiber.StatusNotFound, err.Error())
 	}
 
-	writeJSON(w, http.StatusOK, api.HubPluginInfo{
+	return writeJSON(c, fiber.StatusOK, api.HubPluginInfo{
 		Name:        info.Name,
 		Version:     info.Version,
 		Type:        info.Type,
