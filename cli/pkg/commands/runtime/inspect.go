@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	agentclient "github.com/quarkloop/agent/pkg/client"
-	"github.com/quarkloop/cli/pkg/quarkfile"
+	spacemodel "github.com/quarkloop/pkg/space"
 	"github.com/quarkloop/supervisor/pkg/api"
 	supclient "github.com/quarkloop/supervisor/pkg/client"
 )
@@ -24,7 +24,7 @@ func InspectCLI() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			name, err := quarkfile.NameFromDir(cwd)
+			name, err := spacemodel.NameFromDir(cwd)
 			if err != nil {
 				return err
 			}
@@ -34,7 +34,9 @@ func InspectCLI() *cobra.Command {
 				return err
 			}
 			fmt.Printf("Space:      %s\n", info.Name)
-			fmt.Printf("Version:    v%d\n", info.Version)
+			if info.Version != "" {
+				fmt.Printf("Version:    %s\n", info.Version)
+			}
 			fmt.Printf("Created:    %s\n", info.CreatedAt.Format(time.RFC3339))
 			fmt.Printf("Updated:    %s\n", info.UpdatedAt.Format(time.RFC3339))
 
