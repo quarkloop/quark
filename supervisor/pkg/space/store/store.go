@@ -96,7 +96,7 @@ func (c *Collection) Get(id string) (json.RawMessage, error) {
 
 	raw, ok := c.records[id]
 	if !ok {
-		return nil, ErrNotFound(id)
+		return nil, NewNotFoundError(id)
 	}
 	return raw, nil
 }
@@ -117,7 +117,7 @@ func (c *Collection) Delete(id string) error {
 	defer c.mu.Unlock()
 
 	if _, ok := c.records[id]; !ok {
-		return ErrNotFound(id)
+		return NewNotFoundError(id)
 	}
 	delete(c.records, id)
 	// Remove from order slice
