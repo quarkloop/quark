@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -40,21 +41,21 @@ type Session struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// Store persists sessions for a single space as JSONL.
+// Store persists sessions for a single space as one JSONL file per session.
 type Store struct {
 	mu       sync.RWMutex
-	path     string
+	dir      string
 	space    string
 	sessions map[string]*Session
 }
 
-// Open opens (or creates) the session store rooted at path (a JSONL file).
+// Open opens (or creates) the session store rooted at dir.
 // Space is stamped onto each created session.
-func Open(path, space string) (*Store, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+func Open(dir, space string) (*Store, error) {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("mkdir session dir: %w", err)
 	}
-	s := &Store{path: path, space: space, sessions: make(map[string]*Session)}
+	s := &Store{dir: dir, space: space, sessions: make(map[string]*Session)}
 	if err := s.load(); err != nil {
 		return nil, err
 	}
@@ -62,12 +63,28 @@ func Open(path, space string) (*Store, error) {
 }
 
 func (s *Store) load() error {
-	f, err := os.Open(s.path)
+	entries, err := os.ReadDir(s.dir)
+	if err != nil {
+		return fmt.Errorf("read sessions dir: %w", err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".jsonl" {
+			continue
+		}
+		if err := s.loadFile(filepath.Join(s.dir, entry.Name())); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) loadFile(path string) error {
+	f, err := os.Open(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
 	if err != nil {
-		return fmt.Errorf("open sessions: %w", err)
+		return fmt.Errorf("open session %s: %w", filepath.Base(path), err)
 	}
 	defer f.Close()
 	scanner := bufio.NewScanner(f)
@@ -79,7 +96,7 @@ func (s *Store) load() error {
 		}
 		var sess Session
 		if err := json.Unmarshal(line, &sess); err != nil {
-			return fmt.Errorf("parse sessions line: %w", err)
+			return fmt.Errorf("parse session %s: %w", filepath.Base(path), err)
 		}
 		if sess.Status == "" {
 			sess.Status = "active"
@@ -89,23 +106,32 @@ func (s *Store) load() error {
 	return scanner.Err()
 }
 
-func (s *Store) persistLocked() error {
-	tmp := s.path + ".tmp"
+func (s *Store) persistSessionLocked(sess *Session) error {
+	path, err := s.sessionPath(sess.ID)
+	if err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
 	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
 	if err != nil {
 		return err
 	}
 	enc := json.NewEncoder(f)
-	for _, sess := range s.sessions {
-		if err := enc.Encode(sess); err != nil {
-			f.Close()
-			return err
-		}
+	if err := enc.Encode(sess); err != nil {
+		f.Close()
+		return err
 	}
 	if err := f.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp, s.path)
+	return os.Rename(tmp, path)
+}
+
+func (s *Store) sessionPath(id string) (string, error) {
+	if id == "" || strings.ContainsAny(id, `/\`) || filepath.Base(id) != id {
+		return "", ErrNotFound
+	}
+	return filepath.Join(s.dir, id+".jsonl"), nil
 }
 
 // Create inserts a new session. The ID is generated.
@@ -125,7 +151,7 @@ func (s *Store) Create(t Type, title string) (*Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.sessions[sess.ID] = sess
-	if err := s.persistLocked(); err != nil {
+	if err := s.persistSessionLocked(sess); err != nil {
 		delete(s.sessions, sess.ID)
 		return nil, err
 	}
@@ -164,7 +190,14 @@ func (s *Store) Delete(id string) error {
 		return ErrNotFound
 	}
 	delete(s.sessions, id)
-	return s.persistLocked()
+	path, err := s.sessionPath(id)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
 }
 
 // Touch updates the UpdatedAt timestamp.
@@ -176,7 +209,7 @@ func (s *Store) Touch(id string) error {
 		return ErrNotFound
 	}
 	sess.UpdatedAt = time.Now().UTC()
-	return s.persistLocked()
+	return s.persistSessionLocked(sess)
 }
 
 func newID() string {
