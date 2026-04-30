@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/quarkloop/cli/pkg/quarkfile"
+	spacemodel "github.com/quarkloop/pkg/space"
 	supclient "github.com/quarkloop/supervisor/pkg/client"
 )
 
@@ -22,7 +22,7 @@ func DoctorCLI() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			name, err := quarkfile.NameFromDir(cwd)
+			name, err := spacemodel.NameFromDir(cwd)
 			if err != nil {
 				return err
 			}
