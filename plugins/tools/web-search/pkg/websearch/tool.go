@@ -2,11 +2,10 @@ package websearch
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
 
+	"github.com/gofiber/fiber/v2"
 	"github.com/quarkloop/pkg/plugin"
 	"github.com/quarkloop/pkg/toolkit"
 )
@@ -100,56 +99,37 @@ func (t *Tool) Commands() []toolkit.Command {
 				}}, nil
 			},
 		},
-		{
-			Name:        "serve",
-			Description: "Start HTTP server",
-			Args: []toolkit.Arg{
-				{Name: "addr", Description: "Listen address", Required: false, Default: "127.0.0.1:8090"},
-			},
-			Handler: func(ctx context.Context, input toolkit.Input) (toolkit.Output, error) {
-				addr := input.Args["addr"]
-				if addr == "" {
-					addr = "127.0.0.1:8090"
-				}
-				fmt.Printf("web-search tool listening on %s\n", addr)
-				return toolkit.Output{}, Serve(addr)
-			},
-		},
 	}
 }
 
-// Serve starts an HTTP server for the web-search tool on the given address.
-func Serve(addr string) error {
-	http.HandleFunc("POST /search", searchHandler())
-	fmt.Printf("web-search tool listening on %s\n", addr)
-	return http.ListenAndServe(addr, nil)
-}
-
-func searchHandler() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+// searchHandler returns a Fiber handler for the search endpoint.
+func searchHandler() fiber.Handler {
+	return func(c *fiber.Ctx) error {
 		var req struct {
 			Query      string `json:"query"`
 			MaxResults int    `json:"max_results"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, `{"error":"invalid request"}`, http.StatusBadRequest)
-			return
+		if err := c.BodyParser(&req); err != nil {
+			return c.Status(fiber.StatusBadRequest).SendString(`{"error":"invalid request"}`)
 		}
 		if req.Query == "" {
-			http.Error(w, `{"error":"query is required"}`, http.StatusBadRequest)
-			return
+			return c.Status(fiber.StatusBadRequest).SendString(`{"error":"query is required"}`)
 		}
 		if req.MaxResults == 0 {
 			req.MaxResults = 5
 		}
 		results, err := Search(req.Query, req.MaxResults)
 		if err != nil {
-			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
-			return
+			return c.Status(fiber.StatusInternalServerError).SendString(fmt.Sprintf(`{"error":%q}`, err.Error()))
 		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
-			"results": results,
-		})
+		return c.JSON(fiber.Map{"results": results})
 	}
+}
+
+// Serve starts an HTTP server for the web-search tool on the given address (api mode).
+func Serve(addr string) error {
+	app := fiber.New()
+	app.Post("/search", searchHandler())
+	fmt.Printf("web-search tool listening on %s\n", addr)
+	return app.Listen(addr)
 }
