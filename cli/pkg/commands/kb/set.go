@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/quarkloop/cli/pkg/quarkfile"
+	spacemodel "github.com/quarkloop/pkg/space"
 	supclient "github.com/quarkloop/supervisor/pkg/client"
 )
 
@@ -30,7 +30,7 @@ func newKBSetCmd() *cobra.Command {
 			} else {
 				value = []byte(args[1])
 			}
-			name, err := quarkfile.CurrentName()
+			name, err := spacemodel.CurrentName()
 			if err != nil {
 				return err
 			}
