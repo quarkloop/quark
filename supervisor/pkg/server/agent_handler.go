@@ -3,64 +3,53 @@ package server
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"net/http"
 	"time"
 
+	"github.com/gofiber/fiber/v2"
 	"github.com/quarkloop/supervisor/pkg/api"
 	"github.com/quarkloop/supervisor/pkg/registry"
-	"github.com/quarkloop/supervisor/pkg/space"
+	"github.com/quarkloop/supervisor/pkg/space/store"
 )
 
 // handleListAgents serves GET /v1/agents.
-func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleListAgents(c *fiber.Ctx) error {
 	agents := s.agents.List()
 	out := make([]api.AgentInfo, 0, len(agents))
 	for _, a := range agents {
 		out = append(out, toAPIAgentInfo(a))
 	}
-	writeJSON(w, http.StatusOK, out)
+	return writeJSON(c, fiber.StatusOK, out)
 }
 
 // handleStartAgent serves POST /v1/agents.
-func (s *Server) handleStartAgent(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleStartAgent(c *fiber.Ctx) error {
 	var req api.StartAgentRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
-		return
+	if err := c.BodyParser(&req); err != nil {
+		return writeError(c, fiber.StatusBadRequest, "invalid request body: "+err.Error())
 	}
 	if req.Space == "" {
-		writeError(w, http.StatusBadRequest, "space is required")
-		return
-	}
-	if req.WorkingDir == "" {
-		writeError(w, http.StatusBadRequest, "working_dir is required")
-		return
-	}
-
-	if _, err := s.store.Get(req.Space); err != nil {
-		if errors.Is(err, space.ErrNotFound) {
-			writeError(w, http.StatusNotFound, fmt.Sprintf("space %q not found", req.Space))
-			return
-		}
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if existing, err := s.agents.GetBySpace(req.Space); err == nil {
-		writeError(w, http.StatusConflict, fmt.Sprintf("agent %s already running for space %q", existing.ID, req.Space))
-		return
+		return writeError(c, fiber.StatusBadRequest, "space is required")
 	}
 
 	port := req.Port
 	if port == 0 {
 		p, err := reservePort()
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "reserve port: "+err.Error())
-			return
+			return writeError(c, fiber.StatusInternalServerError, "reserve port: "+err.Error())
 		}
 		port = p
+	}
+
+	sp, err := s.store.Get(req.Space)
+	if err != nil {
+		if store.IsNotFound(err) {
+			return writeError(c, fiber.StatusNotFound, fmt.Sprintf("space %q not found", req.Space))
+		}
+		return writeError(c, fiber.StatusInternalServerError, err.Error())
+	}
+	if existing, err := s.agents.GetBySpace(req.Space); err == nil {
+		return writeError(c, fiber.StatusConflict, fmt.Sprintf("agent %s already running for space %q", existing.ID, req.Space))
 	}
 
 	pluginsDir := ""
@@ -71,7 +60,7 @@ func (s *Server) handleStartAgent(w http.ResponseWriter, r *http.Request) {
 	agent := &registry.Agent{
 		ID:         generateAgentID(),
 		Space:      req.Space,
-		WorkingDir: req.WorkingDir,
+		WorkingDir: sp.WorkingDir,
 		PluginsDir: pluginsDir,
 		Status:     api.AgentStarting,
 		Port:       port,
@@ -79,43 +68,44 @@ func (s *Server) handleStartAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	s.agents.Register(agent)
 
-	if err := s.launcher.Start(r.Context(), agent); err != nil {
+	env, err := s.store.AgentEnvironment(req.Space)
+	if err != nil {
 		s.agents.Remove(agent.ID)
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return writeError(c, fiber.StatusBadRequest, err.Error())
 	}
 
-	writeJSON(w, http.StatusCreated, toAPIAgentInfo(agent))
-}
-
-// handleGetAgent serves GET /v1/agents/{id}.
-func (s *Server) handleGetAgent(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	agent, err := s.agents.Get(id)
-	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
-		return
+	if err := s.launcher.Start(c.Context(), agent, env); err != nil {
+		s.agents.Remove(agent.ID)
+		return writeError(c, fiber.StatusInternalServerError, err.Error())
 	}
-	writeJSON(w, http.StatusOK, toAPIAgentInfo(agent))
+
+	return writeJSON(c, fiber.StatusCreated, toAPIAgentInfo(agent))
 }
 
-// handleStopAgent serves POST /v1/agents/{id}/stop.
-func (s *Server) handleStopAgent(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+// handleGetAgent serves GET /v1/agents/:id.
+func (s *Server) handleGetAgent(c *fiber.Ctx) error {
+	id := c.Params("id")
 	agent, err := s.agents.Get(id)
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
-		return
+		return writeError(c, fiber.StatusNotFound, err.Error())
+	}
+	return writeJSON(c, fiber.StatusOK, toAPIAgentInfo(agent))
+}
+
+// handleStopAgent serves POST /v1/agents/:id/stop.
+func (s *Server) handleStopAgent(c *fiber.Ctx) error {
+	id := c.Params("id")
+	agent, err := s.agents.Get(id)
+	if err != nil {
+		return writeError(c, fiber.StatusNotFound, err.Error())
 	}
 	if agent.Status != api.AgentRunning && agent.Status != api.AgentStarting {
-		writeError(w, http.StatusConflict, fmt.Sprintf("agent %s is not running (status: %s)", id, agent.Status))
-		return
+		return writeError(c, fiber.StatusConflict, fmt.Sprintf("agent %s is not running (status: %s)", id, agent.Status))
 	}
 	if err := s.launcher.Stop(agent); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return writeError(c, fiber.StatusInternalServerError, err.Error())
 	}
-	writeJSON(w, http.StatusOK, toAPIAgentInfo(agent))
+	return writeJSON(c, fiber.StatusOK, toAPIAgentInfo(agent))
 }
 
 func toAPIAgentInfo(a *registry.Agent) api.AgentInfo {
