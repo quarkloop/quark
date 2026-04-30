@@ -82,20 +82,5 @@ func (t *Tool) Commands() []toolkit.Command {
 				}}, nil
 			},
 		},
-		{
-			Name:        "serve",
-			Description: "Start HTTP server",
-			Args: []toolkit.Arg{
-				{Name: "addr", Description: "Listen address", Required: false, Default: "127.0.0.1:8091"},
-			},
-			Handler: func(ctx context.Context, input toolkit.Input) (toolkit.Output, error) {
-				addr := input.Args["addr"]
-				if addr == "" {
-					addr = "127.0.0.1:8091"
-				}
-				fmt.Printf("bash tool listening on %s\n", addr)
-				return toolkit.Output{}, Serve(addr)
-			},
-		},
 	}
 }
