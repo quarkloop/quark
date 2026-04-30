@@ -5,6 +5,7 @@ use (
 	./cli
 	./e2e
 	./pkg/plugin
+	./pkg/space
 	./pkg/toolkit
 	./plugins/providers/anthropic
 	./plugins/providers/openai
@@ -20,6 +21,7 @@ replace (
 	github.com/quarkloop/agent v0.0.0 => ./agent
 	github.com/quarkloop/cli v0.0.0 => ./cli
 	github.com/quarkloop/pkg/plugin v0.0.0 => ./pkg/plugin
+	github.com/quarkloop/pkg/space v0.0.0 => ./pkg/space
 	github.com/quarkloop/pkg/toolkit v0.0.0 => ./pkg/toolkit
 	github.com/quarkloop/plugins/providers/anthropic v0.0.0 => ./plugins/providers/anthropic
 	github.com/quarkloop/plugins/providers/openai v0.0.0 => ./plugins/providers/openai
