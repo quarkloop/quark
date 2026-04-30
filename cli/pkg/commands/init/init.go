@@ -1,75 +1,93 @@
-// Package initcmd provides the `quark init` command.
 package initcmd
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
 
-	"github.com/quarkloop/cli/pkg/quarkfile"
+	spacemodel "github.com/quarkloop/pkg/space"
 	supclient "github.com/quarkloop/supervisor/pkg/client"
 )
 
-// InitCLI returns the "init" command. It writes a Quarkfile to the user's
-// working directory (if missing) and registers the space with the
-// supervisor.
+var workDir string
+
+const (
+	initLong = `Scaffold a new Quarkfile and register the space with the supervisor.
+
+The <name> argument is used as the space identifier. A local Quarkfile is created
+in the working directory, and the space is registered with the supervisor.
+
+The command refuses to run if a space with the same name is already registered.`
+	initExample = `  # Create a new space in ./my-space (default)
+  quark init my-space
+
+  # Create a space in the current directory
+  quark init my-space --work-dir .
+
+  # Create a space in an existing directory
+  quark init my-space --work-dir ./projects/existing-dir`
+)
+
+// InitCLI returns the "init" command.
 func InitCLI() *cobra.Command {
-	var name string
 	cmd := &cobra.Command{
-		Use:   "init [dir]",
-		Short: "Scaffold a Quarkfile and register the space with the supervisor",
-		Args:  cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			dir := "."
-			if len(args) > 0 {
-				dir = args[0]
-			}
-			abs, err := filepath.Abs(dir)
-			if err != nil {
-				return err
-			}
-			if err := os.MkdirAll(abs, 0o755); err != nil {
-				return fmt.Errorf("create dir: %w", err)
-			}
-
-			if !quarkfile.Exists(abs) {
-				spaceName := name
-				if spaceName == "" {
-					spaceName = filepath.Base(abs)
-				}
-				if err := quarkfile.Write(abs, quarkfile.DefaultTemplate(spaceName)); err != nil {
-					return err
-				}
-			}
-
-			data, err := quarkfile.Read(abs)
-			if err != nil {
-				return err
-			}
-			spaceName, err := quarkfile.Name(data)
-			if err != nil {
-				return err
-			}
-
-			sup := supclient.New()
-			info, err := sup.CreateSpace(cmd.Context(), spaceName, data)
-			if err != nil {
-				if supclient.IsConflict(err) {
-					fmt.Printf("Space %q is already registered.\n", spaceName)
-					return nil
-				}
-				return err
-			}
-			fmt.Printf("Space initialised: %s (v%d)\n", info.Name, info.Version)
-			fmt.Println("Next steps:")
-			fmt.Println("  1. Edit Quarkfile")
-			fmt.Println("  2. quark plugin install <ref>")
-			fmt.Println("  3. quark run")
-			return nil
-		},
+		Use:     "init <name>",
+		Short:   "Scaffold a Quarkfile and register the space with the supervisor",
+		Long:    initLong,
+		Example: initExample,
+		Args:    cobra.ExactArgs(1),
+		RunE:    runInit,
 	}
-	cmd.Flags().StringVar(&name, "name", "", "Space name (defaults to directory name)")
+
+	cmd.Flags().StringVar(&workDir, "work-dir", "", "Working directory (defaults to ./<name>)")
 	return cmd
+}
+
+func runInit(cmd *cobra.Command, args []string) error {
+	name := args[0]
+
+	dir := workDir
+	if dir == "" {
+		dir = name
+	}
+
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return err
+	}
+
+	sup := supclient.New()
+	_, err = sup.GetSpace(cmd.Context(), name)
+	if err == nil {
+		fmt.Printf("Space %q is already registered.\n", name)
+		return nil
+	}
+	if !supclient.IsNotFound(err) {
+		return fmt.Errorf("check space: %w", err)
+	}
+
+	data := spacemodel.DefaultQuarkfile(name)
+
+	info, err := sup.CreateSpace(cmd.Context(), name, data, abs)
+	if err != nil {
+		if supclient.IsConflict(err) {
+			fmt.Printf("Space %q is already registered.\n", name)
+			return nil
+		}
+		return fmt.Errorf("register space: %w", err)
+	}
+
+	fmt.Printf("Space initialised: %s", info.Name)
+	if info.Version != "" {
+		fmt.Printf(" (version %s)", info.Version)
+	}
+	fmt.Println()
+	fmt.Printf("Quarkfile written to: %s\n", filepath.Join(abs, "Quarkfile"))
+	fmt.Println("Next steps:")
+	fmt.Println("  1. Edit Quarkfile")
+	fmt.Println("  2. quark plugin install <ref>")
+	fmt.Println("  3. quark run")
+
+	return nil
 }
