@@ -295,7 +295,7 @@ func (a *Agent) handleUserMessage(ctx context.Context, msg loop.Message) error {
 		ctx,
 		history,
 		client,
-		prompt.SystemPrompt,
+		prompt.GetSystemPrompt(),
 		a.Plan.GetSummary(),
 		a.defaultTools(),
 		a.executeTool,
@@ -393,7 +393,7 @@ func (a *Agent) handleWorkStep(ctx context.Context, msg loop.Message) error {
 		})
 	}
 
-	if err := a.Plan.ExecuteStep(ctx, infer, prompt.SystemPrompt); err != nil {
+	if err := a.Plan.ExecuteStep(ctx, infer, prompt.GetSystemPrompt()); err != nil {
 		slog.Error("work step error", "error", err)
 		return err
 	}
@@ -424,7 +424,7 @@ func (a *Agent) processWork(ctx context.Context, agentID, task string) (string, 
 
 	// Simple inference for sub-agent work
 	msgs := []provider.Message{
-		{Role: "system", Content: prompt.SystemPrompt},
+		{Role: "system", Content: prompt.GetSystemPrompt()},
 		{Role: "user", Content: task},
 	}
 
