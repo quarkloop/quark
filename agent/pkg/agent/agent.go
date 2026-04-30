@@ -29,9 +29,9 @@ type Config struct {
 	ID            string
 	Name          string
 	Description   string
+	ModelProvider string
 	Model         string
 	ModelListURL  string
-	OpenRouterKey string
 	PluginsDir    string
 
 	// Execution mode configuration
@@ -231,16 +231,9 @@ func (a *Agent) sendInitMessages() {
 
 	fallback := []llm.ModelEntry{}
 	if a.config.Model != "" {
-		// Determine provider from model prefix or default to openrouter
-		providerID := "openrouter"
-		if _, ok := providers["anthropic"]; ok && containsPrefix(a.config.Model, "claude") {
-			providerID = "anthropic"
-		} else if _, ok := providers["openai"]; ok && containsPrefix(a.config.Model, "gpt") {
-			providerID = "openai"
-		}
 		fallback = append(fallback, llm.ModelEntry{
 			ID:       a.config.Model,
-			Provider: providerID,
+			Provider: a.config.ModelProvider,
 			Name:     a.config.Model,
 			Default:  true,
 		})
@@ -258,26 +251,6 @@ func (a *Agent) sendInitMessages() {
 	}
 
 	a.loop.Send(msg)
-}
-
-// containsPrefix checks if s starts with prefix (case-insensitive).
-func containsPrefix(s, prefix string) bool {
-	if len(s) < len(prefix) {
-		return false
-	}
-	for i := 0; i < len(prefix); i++ {
-		sc, pc := s[i], prefix[i]
-		if sc >= 'A' && sc <= 'Z' {
-			sc += 'a' - 'A'
-		}
-		if pc >= 'A' && pc <= 'Z' {
-			pc += 'a' - 'A'
-		}
-		if sc != pc {
-			return false
-		}
-	}
-	return true
 }
 
 // workStepTicker periodically triggers work step execution.
