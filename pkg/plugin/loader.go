@@ -166,14 +166,9 @@ func (l *Loader) loadLib(ctx context.Context, manifest *Manifest, dir string) (*
 		return nil, fmt.Errorf("open plugin: %w", err)
 	}
 
-	// Look up the exported Plugin symbol
-	sym, err := p.Lookup("QuarkPlugin")
-	if err != nil {
-		// Try factory function as fallback
-		factorySym, factoryErr := p.Lookup("NewPlugin")
-		if factoryErr != nil {
-			return nil, fmt.Errorf("plugin has no QuarkPlugin or NewPlugin export: %w", err)
-		}
+	// Prefer NewPlugin factory function; fall back to QuarkPlugin for backward compatibility.
+	factorySym, factoryErr := p.Lookup("NewPlugin")
+	if factoryErr == nil {
 		factory, ok := factorySym.(func() Plugin)
 		if !ok {
 			return nil, fmt.Errorf("NewPlugin is not func() Plugin")
@@ -191,7 +186,11 @@ func (l *Loader) loadLib(ctx context.Context, manifest *Manifest, dir string) (*
 		}, nil
 	}
 
-	// Handle pointer or value export
+	// Fallback: try legacy QuarkPlugin export
+	sym, err := p.Lookup("QuarkPlugin")
+	if err != nil {
+		return nil, fmt.Errorf("plugin has no NewPlugin or QuarkPlugin export: %w", err)
+	}
 	var plugin Plugin
 	switch v := sym.(type) {
 	case *Plugin:

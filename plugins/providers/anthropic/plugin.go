@@ -6,5 +6,7 @@ package main
 
 import "github.com/quarkloop/pkg/plugin"
 
-// QuarkPlugin is the exported plugin instance for lib-mode loading.
-var QuarkPlugin plugin.Plugin = &AnthropicProvider{}
+// NewPlugin creates a new AnthropicProvider instance for lib-mode loading.
+func NewPlugin() plugin.Plugin {
+	return &AnthropicProvider{}
+}

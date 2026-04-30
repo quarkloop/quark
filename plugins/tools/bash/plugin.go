@@ -6,47 +6,44 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"os"
 	"os/exec"
 
 	"github.com/quarkloop/pkg/plugin"
-	"github.com/quarkloop/pkg/toolkit"
 	"github.com/quarkloop/plugins/tools/bash/pkg/bash"
 )
 
-var (
-	manifest *plugin.Manifest
-)
-
-func init() {
-	var err error
-	manifest, err = toolkit.LoadManifest()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "bash: %v\n", err)
-		os.Exit(1)
-	}
+// NewPlugin creates a new BashTool instance for lib-mode loading.
+func NewPlugin() plugin.Plugin {
+	return &BashTool{}
 }
 
-// QuarkPlugin is the exported plugin instance for lib-mode loading.
-var QuarkPlugin plugin.Plugin = &BashTool{}
-
 // BashTool implements the ToolPlugin interface, sourcing metadata from manifest.yaml.
-type BashTool struct{}
+type BashTool struct {
+	manifest *plugin.Manifest
+}
 
-func (t *BashTool) Name() string    { return manifest.Name }
-func (t *BashTool) Version() string { return manifest.Version }
-func (t *BashTool) Type() plugin.PluginType { return manifest.Type }
-func (t *BashTool) Initialize(ctx context.Context, cfg map[string]any) error { return nil }
+func (t *BashTool) Name() string    { return t.manifest.Name }
+func (t *BashTool) Version() string { return t.manifest.Version }
+func (t *BashTool) Type() plugin.PluginType { return t.manifest.Type }
+
+func (t *BashTool) Initialize(ctx context.Context, cfg map[string]any) error {
+	manifest, err := plugin.ParseManifest("manifest.yaml")
+	if err != nil {
+		return err
+	}
+	t.manifest = manifest
+	return nil
+}
+
 func (t *BashTool) Shutdown(ctx context.Context) error { return nil }
 
 func (t *BashTool) Schema() plugin.ToolSchema {
-	if manifest.Tool != nil {
-		return manifest.Tool.Schema
+	if t.manifest.Tool != nil {
+		return t.manifest.Tool.Schema
 	}
 	return plugin.ToolSchema{
-		Name:        manifest.Name,
-		Description: manifest.Description,
+		Name:        t.manifest.Name,
+		Description: t.manifest.Description,
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{

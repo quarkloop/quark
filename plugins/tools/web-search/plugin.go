@@ -6,46 +6,41 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"os"
 
 	"github.com/quarkloop/pkg/plugin"
-	"github.com/quarkloop/pkg/toolkit"
 	"github.com/quarkloop/plugins/tools/web-search/pkg/websearch"
 )
 
-var (
-	manifest *plugin.Manifest
-)
-
-func init() {
-	var err error
-	manifest, err = toolkit.LoadManifest()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "web-search: %v\n", err)
-		os.Exit(1)
-	}
+// NewPlugin creates a new WebSearchTool instance for lib-mode loading.
+func NewPlugin() plugin.Plugin {
+	return &WebSearchTool{}
 }
 
-// QuarkPlugin is the exported plugin instance for lib-mode loading.
-var QuarkPlugin plugin.Plugin = &WebSearchTool{}
-
 // WebSearchTool implements the ToolPlugin interface, sourcing metadata from manifest.yaml.
-type WebSearchTool struct{}
+type WebSearchTool struct {
+	manifest *plugin.Manifest
+}
 
-func (t *WebSearchTool) Name() string    { return manifest.Name }
-func (t *WebSearchTool) Version() string { return manifest.Version }
-func (t *WebSearchTool) Type() plugin.PluginType { return manifest.Type }
-func (t *WebSearchTool) Initialize(ctx context.Context, cfg map[string]any) error { return nil }
+func (t *WebSearchTool) Name() string    { return t.manifest.Name }
+func (t *WebSearchTool) Version() string { return t.manifest.Version }
+func (t *WebSearchTool) Type() plugin.PluginType { return t.manifest.Type }
+func (t *WebSearchTool) Initialize(ctx context.Context, cfg map[string]any) error {
+	manifest, err := plugin.ParseManifest("manifest.yaml")
+	if err != nil {
+		return err
+	}
+	t.manifest = manifest
+	return nil
+}
 func (t *WebSearchTool) Shutdown(ctx context.Context) error { return nil }
 
 func (t *WebSearchTool) Schema() plugin.ToolSchema {
-	if manifest.Tool != nil {
-		return manifest.Tool.Schema
+	if t.manifest.Tool != nil {
+		return t.manifest.Tool.Schema
 	}
 	return plugin.ToolSchema{
-		Name:        manifest.Name,
-		Description: manifest.Description,
+		Name:        t.manifest.Name,
+		Description: t.manifest.Description,
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{

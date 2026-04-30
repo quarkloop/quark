@@ -7,49 +7,47 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/quarkloop/pkg/plugin"
 	"github.com/quarkloop/pkg/toolkit"
 	"github.com/quarkloop/plugins/tools/build-release/pkg/buildrelease"
 )
 
-var (
-	manifest *plugin.Manifest
-	tool     = &buildrelease.Tool{}
-)
-
-func init() {
-	var err error
-	manifest, err = toolkit.LoadManifest()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "build-release: %v\n", err)
-		os.Exit(1)
-	}
+// NewPlugin creates a new BuildReleaseTool instance for lib-mode loading.
+func NewPlugin() plugin.Plugin {
+	return &BuildReleaseTool{tool: &buildrelease.Tool{}}
 }
 
-// QuarkPlugin is the exported plugin instance for lib-mode loading.
-var QuarkPlugin plugin.Plugin = &BuildReleaseTool{}
-
 // BuildReleaseTool implements the ToolPlugin interface, sourcing metadata from manifest.yaml.
-type BuildReleaseTool struct{}
+type BuildReleaseTool struct {
+	manifest *plugin.Manifest
+	tool     *buildrelease.Tool
+}
 
-func (t *BuildReleaseTool) Name() string    { return manifest.Name }
-func (t *BuildReleaseTool) Version() string { return manifest.Version }
-func (t *BuildReleaseTool) Type() plugin.PluginType { return manifest.Type }
-func (t *BuildReleaseTool) Initialize(ctx context.Context, cfg map[string]any) error { return nil }
+func (t *BuildReleaseTool) Name() string    { return t.manifest.Name }
+func (t *BuildReleaseTool) Version() string { return t.manifest.Version }
+func (t *BuildReleaseTool) Type() plugin.PluginType { return t.manifest.Type }
+func (t *BuildReleaseTool) Initialize(ctx context.Context, cfg map[string]any) error {
+	manifest, err := plugin.ParseManifest("manifest.yaml")
+	if err != nil {
+		return err
+	}
+	t.manifest = manifest
+	t.tool.SetManifest(manifest)
+	return nil
+}
 func (t *BuildReleaseTool) Shutdown(ctx context.Context) error { return nil }
 
 func (t *BuildReleaseTool) Schema() plugin.ToolSchema {
-	if manifest.Tool != nil {
-		return manifest.Tool.Schema
+	if t.manifest.Tool != nil {
+		return t.manifest.Tool.Schema
 	}
-	return tool.Schema()
+	return t.tool.Schema()
 }
 
 func (t *BuildReleaseTool) Execute(ctx context.Context, args map[string]any) (plugin.ToolResult, error) {
 	cmdName, _ := args["command"].(string)
-	for _, cmd := range tool.Commands() {
+	for _, cmd := range t.tool.Commands() {
 		if cmd.Name != cmdName {
 			continue
 		}

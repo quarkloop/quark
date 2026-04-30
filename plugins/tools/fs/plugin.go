@@ -7,49 +7,49 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/quarkloop/pkg/plugin"
 	"github.com/quarkloop/pkg/toolkit"
 	"github.com/quarkloop/plugins/tools/fs/pkg/fs"
 )
 
-var (
-	manifest *plugin.Manifest
-	tool     = &fs.Tool{}
-)
-
-func init() {
-	var err error
-	manifest, err = toolkit.LoadManifest()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "fs: %v\n", err)
-		os.Exit(1)
-	}
+// NewPlugin creates a new FSTool instance for lib-mode loading.
+func NewPlugin() plugin.Plugin {
+	return &FSTool{tool: &fs.Tool{}}
 }
 
-// QuarkPlugin is the exported plugin instance for lib-mode loading.
-var QuarkPlugin plugin.Plugin = &FSTool{}
-
 // FSTool implements the ToolPlugin interface, sourcing metadata from manifest.yaml.
-type FSTool struct{}
+type FSTool struct {
+	manifest *plugin.Manifest
+	tool     *fs.Tool
+}
 
-func (t *FSTool) Name() string    { return manifest.Name }
-func (t *FSTool) Version() string { return manifest.Version }
-func (t *FSTool) Type() plugin.PluginType { return manifest.Type }
-func (t *FSTool) Initialize(ctx context.Context, cfg map[string]any) error { return nil }
+func (t *FSTool) Name() string    { return t.manifest.Name }
+func (t *FSTool) Version() string { return t.manifest.Version }
+func (t *FSTool) Type() plugin.PluginType { return t.manifest.Type }
+
+func (t *FSTool) Initialize(ctx context.Context, cfg map[string]any) error {
+	manifest, err := plugin.ParseManifest("manifest.yaml")
+	if err != nil {
+		return err
+	}
+	t.manifest = manifest
+	t.tool.SetManifest(manifest)
+	return nil
+}
+
 func (t *FSTool) Shutdown(ctx context.Context) error { return nil }
 
 func (t *FSTool) Schema() plugin.ToolSchema {
-	if manifest.Tool != nil {
-		return manifest.Tool.Schema
+	if t.manifest.Tool != nil {
+		return t.manifest.Tool.Schema
 	}
-	return tool.Schema()
+	return t.tool.Schema()
 }
 
 func (t *FSTool) Execute(ctx context.Context, args map[string]any) (plugin.ToolResult, error) {
 	cmdName, _ := args["command"].(string)
-	for _, cmd := range tool.Commands() {
+	for _, cmd := range t.tool.Commands() {
 		if cmd.Name != cmdName {
 			continue
 		}

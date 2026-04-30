@@ -11,42 +11,33 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/quarkloop/pkg/plugin"
-	"github.com/quarkloop/pkg/toolkit"
 )
-
-var (
-	manifest *plugin.Manifest
-)
-
-func init() {
-	var err error
-	manifest, err = toolkit.LoadManifest()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "openai: %v\n", err)
-		os.Exit(1)
-	}
-}
 
 // OpenAIProvider implements the ProviderPlugin interface for OpenAI.
 type OpenAIProvider struct {
-	apiKey  string
-	baseURL string
-	client  *http.Client
+	manifest *plugin.Manifest
+	apiKey   string
+	baseURL  string
+	client   *http.Client
 }
 
-func (p *OpenAIProvider) Name() string    { return manifest.Name }
-func (p *OpenAIProvider) Version() string { return manifest.Version }
-func (p *OpenAIProvider) Type() plugin.PluginType { return manifest.Type }
-func (p *OpenAIProvider) ProviderID() string      { return manifest.Name }
+func (p *OpenAIProvider) Name() string    { return p.manifest.Name }
+func (p *OpenAIProvider) Version() string { return p.manifest.Version }
+func (p *OpenAIProvider) Type() plugin.PluginType { return p.manifest.Type }
+func (p *OpenAIProvider) ProviderID() string      { return p.manifest.Name }
 
 func (p *OpenAIProvider) Initialize(ctx context.Context, config map[string]any) error {
+	manifest, err := plugin.ParseManifest("manifest.yaml")
+	if err != nil {
+		return fmt.Errorf("load manifest: %w", err)
+	}
+	p.manifest = manifest
 	p.client = &http.Client{}
-	if manifest.Provider != nil && manifest.Provider.APIBase != "" {
-		p.baseURL = manifest.Provider.APIBase
+	if p.manifest.Provider != nil && p.manifest.Provider.APIBase != "" {
+		p.baseURL = p.manifest.Provider.APIBase
 	} else {
 		p.baseURL = "https://api.openai.com/v1"
 	}
@@ -66,8 +57,8 @@ func (p *OpenAIProvider) Configure(config plugin.ProviderConfig) error {
 }
 
 func (p *OpenAIProvider) ListModels(ctx context.Context) ([]plugin.ModelInfo, error) {
-	if manifest.Provider != nil && len(manifest.Provider.Models) > 0 {
-		return manifest.Provider.Models, nil
+	if p.manifest.Provider != nil && len(p.manifest.Provider.Models) > 0 {
+		return p.manifest.Provider.Models, nil
 	}
 	return []plugin.ModelInfo{
 		{ID: "gpt-4o", Name: "GPT-4o", ContextWindow: 128000, Default: true},

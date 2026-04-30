@@ -2,7 +2,6 @@ package fs
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"strings"
 
@@ -10,39 +9,34 @@ import (
 	"github.com/quarkloop/pkg/toolkit"
 )
 
-var manifest *plugin.Manifest
-
-func init() {
-	var err error
-	manifest, err = toolkit.LoadManifest()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "fs: %v\n", err)
-		os.Exit(1)
-	}
+// Tool implements filesystem operations.
+type Tool struct {
+	manifest *plugin.Manifest
 }
 
-// Tool implements filesystem operations.
-type Tool struct{}
+func (t *Tool) SetManifest(m *plugin.Manifest) {
+	t.manifest = m
+}
 
 // Name returns the tool name.
 func (t *Tool) Name() string {
-	return manifest.Name
+	return t.manifest.Name
 }
 
 // Version returns the tool version.
 func (t *Tool) Version() string {
-	return manifest.Version
+	return t.manifest.Version
 }
 
 // Description returns the tool description.
 func (t *Tool) Description() string {
-	return manifest.Description
+	return t.manifest.Description
 }
 
 // Schema returns the tool schema for LLM function calling.
 func (t *Tool) Schema() plugin.ToolSchema {
-	if manifest.Tool != nil {
-		return manifest.Tool.Schema
+	if t.manifest.Tool != nil {
+		return t.manifest.Tool.Schema
 	}
 	return plugin.ToolSchema{
 		Name:        "fs",
