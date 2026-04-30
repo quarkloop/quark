@@ -188,23 +188,26 @@ type ErrorResponse struct {
 
 // --- Space (data) types ---
 
-// SpaceInfo identifies a space and exposes non-sensitive metadata.
-// A space is a supervisor-owned data namespace, keyed by Name (from the
-// Quarkfile meta.name). Storage location is an internal detail and is not
-// exposed.
+// SpaceInfo identifies a space and exposes non-sensitive metadata. A space is
+// a supervisor-owned data namespace keyed by Name (from Quarkfile meta.name).
+// WorkingDir is the user workspace where the agent is launched.
 type SpaceInfo struct {
-	Name      string    `json:"name"`
-	Version   int       `json:"version"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Name string `json:"name"`
+	// Version is meta.version from the latest stored Quarkfile.
+	Version    string    `json:"version,omitempty"`
+	WorkingDir string    `json:"working_dir,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
-// CreateSpaceRequest is the body for POST /v1/spaces. The CLI reads the
-// Quarkfile from the user's working directory and sends its raw contents.
-// The supervisor parses, validates, and persists it in its own storage.
+// CreateSpaceRequest is the body for POST /v1/spaces. The CLI sends the
+// space name, Quarkfile contents, and working directory path.
+// The supervisor creates the space in its storage and writes the Quarkfile
+// to the working directory.
 type CreateSpaceRequest struct {
-	Name      string `json:"name"`
-	Quarkfile []byte `json:"quarkfile"`
+	Name       string `json:"name"`
+	Quarkfile  []byte `json:"quarkfile"`
+	WorkingDir string `json:"working_dir"`
 }
 
 // UpdateQuarkfileRequest is the body for PUT /v1/spaces/{name}/quarkfile.
@@ -214,8 +217,9 @@ type UpdateQuarkfileRequest struct {
 
 // QuarkfileResponse is returned when fetching a space's stored Quarkfile.
 type QuarkfileResponse struct {
-	Name      string    `json:"name"`
-	Version   int       `json:"version"`
+	Name string `json:"name"`
+	// Version is meta.version from this Quarkfile.
+	Version   string    `json:"version,omitempty"`
 	Quarkfile []byte    `json:"quarkfile"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -266,9 +270,8 @@ func (a AgentInfo) URL() string {
 
 // StartAgentRequest is the body for POST /v1/agents.
 type StartAgentRequest struct {
-	Space      string `json:"space"`
-	WorkingDir string `json:"working_dir"`
-	Port       int    `json:"port,omitempty"`
+	Space string `json:"space"`
+	Port  int    `json:"port,omitempty"`
 }
 
 // --- Plugin management types ---
