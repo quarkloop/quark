@@ -3,7 +3,7 @@ package dag
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -191,8 +191,8 @@ func (e *Executor) runStep(ctx context.Context, step *Step) error {
 	if err != nil {
 		// Check if we can retry
 		if e.dag.CanRetry(step.ID) {
-			log.Printf("dag: step %s failed (attempt %d/%d), retrying: %v",
-				step.ID, step.Attempts, step.RetryCount+1, err)
+			slog.Warn("step failed, retrying",
+				"step_id", step.ID, "attempt", step.Attempts, "retry_count", step.RetryCount+1, "error", err)
 
 			// Reset status to allow retry
 			e.dag.mu.Lock()

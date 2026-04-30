@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -127,6 +128,10 @@ func toAPIAgentInfo(a *registry.Agent) api.AgentInfo {
 // generateAgentID returns a short random hex ID.
 func generateAgentID() string {
 	var buf [6]byte
-	_, _ = rand.Read(buf[:])
+	if _, err := rand.Read(buf[:]); err != nil {
+		// Fallback: use timestamp + pid for uniqueness (not cryptographically secure)
+		slog.Error("failed to generate random ID", "error", err)
+		return fmt.Sprintf("%x", time.Now().UnixNano())
+	}
 	return hex.EncodeToString(buf[:])
 }

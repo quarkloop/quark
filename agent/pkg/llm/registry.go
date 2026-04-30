@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"sync"
 
@@ -64,12 +64,12 @@ func (r *Registry) LoadEntries(entries []ModelEntry, providers map[string]provid
 	for _, entry := range entries {
 		p, ok := providers[entry.Provider]
 		if !ok {
-			log.Printf("llm: warning: provider %q not implemented, skipping model %q", entry.Provider, entry.ID)
+			slog.Warn("provider not implemented, skipping model", "provider", entry.Provider, "model", entry.ID)
 			continue
 		}
 
 		r.models[entry.ID] = NewClient(p, entry.ID, entry.ContextWindow)
-		log.Printf("llm: registered model %q (provider: %s, context_window: %d)", entry.ID, entry.Provider, entry.ContextWindow)
+		slog.Info("model registered", "model", entry.ID, "provider", entry.Provider, "context_window", entry.ContextWindow)
 
 		if entry.Default || r.Default == "" {
 			r.Default = entry.ID
@@ -80,7 +80,7 @@ func (r *Registry) LoadEntries(entries []ModelEntry, providers map[string]provid
 		return fmt.Errorf("no models loaded — no matching providers")
 	}
 
-	log.Printf("llm: %d model(s) loaded, default: %s", len(r.models), r.Default)
+	slog.Info("models loaded", "count", len(r.models), "default", r.Default)
 	return nil
 }
 

@@ -3,7 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -85,15 +85,15 @@ func runStart(port int, channels []string) error {
 		}
 	}
 
-	log.Println("Starting agent runtime...")
-	log.Printf("Enabled channels: %v", validChannels)
+	slog.Info("starting agent runtime")
+	slog.Info("enabled channels", "channels", fmt.Sprintf("%v", validChannels))
 
 	modelProvider := os.Getenv("QUARK_MODEL_PROVIDER")
 	modelName := os.Getenv("QUARK_MODEL_NAME")
 	if modelProvider == "" || modelName == "" {
 		return fmt.Errorf("model provider and name are required")
 	}
-	log.Printf("Using model: %s/%s", modelProvider, modelName)
+	slog.Info("using model", "provider", modelProvider, "model", modelName)
 
 	// Create agent
 	a, err := agent.NewAgent(agent.Config{
@@ -121,7 +121,7 @@ func runStart(port int, channels []string) error {
 		switch ch {
 		case "web":
 			listenAddr := fmt.Sprintf(":%d", port)
-			log.Printf("Registering [web] channel on %s", listenAddr)
+			slog.Info("registering web channel", "listen_addr", listenAddr)
 			srv.Bus().Register(web.New(listenAddr, a))
 
 		case "telegram":
@@ -130,7 +130,7 @@ func runStart(port int, channels []string) error {
 				return fmt.Errorf("TELEGRAM_BOT_TOKEN environment variable is required for the telegram channel")
 			}
 
-			log.Printf("Registering [telegram] channel")
+			slog.Info("registering telegram channel")
 			srv.Bus().Register(telegram.New(
 				telegram.Config{Token: token},
 				a,
@@ -143,10 +143,10 @@ func runStart(port int, channels []string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	log.Println("Starting agent background loop...")
+	slog.Info("starting agent background loop")
 	go a.Run(ctx)
 
-	log.Println("Agent server is running. Press Ctrl+C to exit.")
+	slog.Info("agent server is running, press Ctrl+C to exit")
 	// Start all channels via ChannelBus and block
 	return srv.Run(ctx)
 }

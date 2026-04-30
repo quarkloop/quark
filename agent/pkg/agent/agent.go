@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/quarkloop/agent/pkg/channel"
@@ -83,7 +83,7 @@ func NewAgent(cfg Config) (*Agent, error) {
 		loop.WithWorkQueueSize(32),
 		loop.WithWorkPriority(true),
 		loop.WithUnhandledCallback(func(msg loop.Message) {
-			log.Printf("agent: unhandled message type: %s", msg.Type())
+			slog.Info("unhandled message", "type", msg.Type())
 		}),
 	)
 
@@ -157,7 +157,7 @@ func NewAgent(cfg Config) (*Agent, error) {
 	// Add observer middleware for logging
 	l.Use(loop.ObserverMiddleware(func(msgType string, err error) {
 		if err != nil {
-			log.Printf("agent: handler error for %s: %v", msgType, err)
+			slog.Error("handler error", "type", msgType, "error", err)
 		}
 	}))
 
@@ -189,11 +189,11 @@ func (a *Agent) Send(msg loop.Message) {
 
 // Run starts the agent's main loop.
 func (a *Agent) Run(ctx context.Context) error {
-	log.Println("agent: main loop started")
+	slog.Info("main loop started", "agent_id", a.ID)
 
 	// Initialize loads both tool and provider plugins.
 	if err := a.Plugins.Initialize(ctx); err != nil {
-		log.Printf("agent: failed to initialize plugins: %v", err)
+		slog.Error("failed to initialize plugins", "error", err)
 	}
 	defer a.Plugins.Shutdown()
 
@@ -223,10 +223,10 @@ func (a *Agent) sendInitMessages() {
 
 	// Log loaded providers
 	if len(providers) == 0 {
-		log.Printf("agent: warning: no providers loaded from plugins")
+		slog.Warn("no providers loaded from plugins")
 	}
 	for id := range providers {
-		log.Printf("agent: provider available: %s", id)
+		slog.Info("provider available", "id", id)
 	}
 
 	fallback := []llm.ModelEntry{}
@@ -316,7 +316,7 @@ func (a *Agent) handleUserMessage(ctx context.Context, msg loop.Message) error {
 // handleInitLLM initializes or reinitializes LLM models.
 func (a *Agent) handleInitLLM(ctx context.Context, msg loop.Message) error {
 	payload := msg.(InitLLMMsg)
-	log.Println("agent: initializing LLM models")
+	slog.Info("initializing LLM models")
 
 	providers := make(map[string]provider.Provider)
 	for k, v := range payload.Providers {
@@ -327,7 +327,7 @@ func (a *Agent) handleInitLLM(ctx context.Context, msg loop.Message) error {
 
 	if payload.ModelListURL != "" {
 		if err := a.Models.LoadFromURL(payload.ModelListURL, providers); err != nil {
-			log.Printf("agent: remote model list failed: %v, using fallback", err)
+			slog.Warn("remote model list failed, using fallback", "error", err)
 		}
 	}
 
@@ -341,15 +341,15 @@ func (a *Agent) handleInitLLM(ctx context.Context, msg loop.Message) error {
 		}
 		if len(entries) > 0 {
 			if err := a.Models.LoadEntries(entries, providers); err != nil {
-				log.Printf("agent: fallback model init failed: %v", err)
+				slog.Error("fallback model init failed", "error", err)
 			}
 		}
 	}
 
 	if client := a.Models.GetDefault(); client != nil {
-		log.Printf("agent: LLM ready, default model: %s", a.Models.Default)
+		slog.Info("LLM ready", "default_model", a.Models.Default)
 	} else {
-		log.Println("agent: warning: no LLM models available")
+		slog.Warn("no LLM models available")
 	}
 
 	return nil
@@ -360,7 +360,7 @@ func (a *Agent) handleInitChannel(ctx context.Context, msg loop.Message) error {
 	payload := msg.(InitChannelMsg)
 	if bus, ok := payload.Bus.(*channel.ChannelBus); ok {
 		a.Bus = bus
-		log.Printf("agent: channel bus registered with %d active channel(s)", len(a.Bus.ActiveChannels()))
+		slog.Info("channel bus registered", "active_channels", len(a.Bus.ActiveChannels()))
 	}
 	return nil
 }
@@ -369,9 +369,9 @@ func (a *Agent) handleInitChannel(ctx context.Context, msg loop.Message) error {
 func (a *Agent) handleSetModel(ctx context.Context, msg loop.Message) error {
 	payload := msg.(SetModelMsg)
 	if a.Models.SetDefault(payload.ModelID) {
-		log.Printf("agent: switched default model to %s", payload.ModelID)
+		slog.Info("switched default model", "model_id", payload.ModelID)
 	} else {
-		log.Printf("agent: model %q not found in registry", payload.ModelID)
+		slog.Warn("model not found in registry", "model_id", payload.ModelID)
 	}
 	return nil
 }
@@ -394,7 +394,7 @@ func (a *Agent) handleWorkStep(ctx context.Context, msg loop.Message) error {
 	}
 
 	if err := a.Plan.ExecuteStep(ctx, infer, prompt.SystemPrompt); err != nil {
-		log.Printf("agent: work step error: %v", err)
+		slog.Error("work step error", "error", err)
 		return err
 	}
 	return nil
@@ -504,24 +504,24 @@ func (a *Agent) HasSupervisor() bool {
 // reconnect with backoff.
 func (a *Agent) subscribeSupervisorEvents(ctx context.Context) {
 	if a.supervisorClient == nil || a.Space == "" {
-		log.Printf("agent: supervisor event stream disabled (client=%v space=%q)", a.supervisorClient != nil, a.Space)
+		slog.Info("supervisor event stream disabled", "client", a.supervisorClient != nil, "space", a.Space)
 		return
 	}
-	log.Printf("agent: subscribing to supervisor events (space=%s)", a.Space)
+	slog.Info("subscribing to supervisor events", "space", a.Space)
 	backoff := time.Second
 	for {
 		if ctx.Err() != nil {
 			return
 		}
 		err := a.supervisorClient.StreamEventsWithReady(ctx, a.Space,
-			func() { log.Printf("agent: supervisor event stream ready (space=%s)", a.Space) },
+			func() { slog.Info("supervisor event stream ready", "space", a.Space) },
 			func(ev api.Event) { a.applyEvent(ev) },
 		)
 		if ctx.Err() != nil {
 			return
 		}
 		if err != nil {
-			log.Printf("agent: supervisor event stream error: %v (retrying in %s)", err, backoff)
+			slog.Error("supervisor event stream error, retrying", "error", err, "retry_in", backoff)
 		}
 		select {
 		case <-ctx.Done():
@@ -547,7 +547,7 @@ func (a *Agent) applyEvent(ev api.Event) {
 			return
 		}
 		a.Sessions.GetOrCreate(p.ID, p.Type, p.Title)
-		log.Printf("agent: session created: id=%s type=%s", p.ID, p.Type)
+		slog.Info("session created", "id", p.ID, "type", p.Type)
 	case api.EventSessionDeleted:
 		var p struct {
 			ID string `json:"id"`
@@ -556,6 +556,6 @@ func (a *Agent) applyEvent(ev api.Event) {
 			return
 		}
 		a.Sessions.Delete(p.ID)
-		log.Printf("agent: session deleted: id=%s", p.ID)
+		slog.Info("session deleted", "id", p.ID)
 	}
 }

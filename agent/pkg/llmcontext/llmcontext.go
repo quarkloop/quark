@@ -9,7 +9,7 @@
 package llmcontext
 
 import (
-	"log"
+	"log/slog"
 	"sync"
 
 	"github.com/quarkloop/agent/pkg/provider"
@@ -253,8 +253,8 @@ func CompactIndex(contents []int, contextWindow int) int {
 		return 0
 	}
 
-	log.Printf("llmcontext: compaction — %d msgs, %d chars, budget %d chars",
-		n, total, charBudget)
+		slog.Info("compaction triggered",
+		"messages", n, "chars", total, "budget", charBudget)
 
 	startIdx := n - 1
 	for i, c := range contents {
@@ -268,6 +268,6 @@ func CompactIndex(contents []int, contextWindow int) int {
 		total -= c
 	}
 
-	log.Printf("llmcontext: dropped %d message(s), keeping %d", startIdx, n-startIdx)
+	slog.Info("messages dropped", "dropped", startIdx, "keeping", n-startIdx)
 	return startIdx
 }

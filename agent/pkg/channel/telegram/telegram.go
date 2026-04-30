@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -62,11 +62,11 @@ func (c *TelegramChannel) Stop(ctx context.Context) error {
 }
 
 func (c *TelegramChannel) poll(ctx context.Context) {
-	log.Println("telegram channel: polling started")
+	slog.Info("telegram channel polling started")
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("telegram channel: polling stopped")
+			slog.Info("telegram channel polling stopped")
 			return
 		default:
 		}
@@ -76,7 +76,7 @@ func (c *TelegramChannel) poll(ctx context.Context) {
 			if ctx.Err() != nil {
 				return
 			}
-			log.Printf("telegram: getUpdates error: %v", err)
+			slog.Error("getUpdates error", "error", err)
 			time.Sleep(3 * time.Second)
 			continue
 		}
@@ -122,7 +122,7 @@ func (c *TelegramChannel) handleUpdate(ctx context.Context, u update) {
 
 	if sb.Len() > 0 {
 		if err := c.sendMessage(ctx, u.Message.Chat.ID, sb.String()); err != nil {
-			log.Printf("telegram: sendMessage error: %v", err)
+			slog.Error("sendMessage error", "error", err)
 		}
 	}
 }

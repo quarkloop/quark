@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
@@ -55,7 +56,9 @@ type Manager struct {
 // (typically <space>/.quark/plugins).
 func NewManager(pluginsDir string) *Manager {
 	binDir := filepath.Join(pluginsDir, ".bin")
-	_ = os.MkdirAll(binDir, 0755)
+	if err := os.MkdirAll(binDir, 0755); err != nil {
+		slog.Error("failed to create bin dir", "path", binDir, "error", err)
+	}
 
 	return &Manager{
 		pluginsDir: pluginsDir,
@@ -486,16 +489,22 @@ func (m *Manager) stopProcess(cmd *exec.Cmd) {
 	if cmd == nil || cmd.Process == nil {
 		return
 	}
-	_ = cmd.Process.Signal(os.Interrupt)
+	if err := cmd.Process.Signal(os.Interrupt); err != nil {
+		slog.Error("failed to send SIGINT to process", "pid", cmd.Process.Pid, "error", err)
+	}
 	done := make(chan struct{})
 	go func() {
-		_ = cmd.Wait()
+		if err := cmd.Wait(); err != nil {
+			slog.Error("process exited with error", "pid", cmd.Process.Pid, "error", err)
+		}
 		close(done)
 	}()
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
-		_ = cmd.Process.Kill()
+		if err := cmd.Process.Kill(); err != nil {
+			slog.Error("failed to kill process", "pid", cmd.Process.Pid, "error", err)
+		}
 		<-done
 	}
 }

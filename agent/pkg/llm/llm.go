@@ -10,7 +10,7 @@ package llm
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	"github.com/quarkloop/agent/pkg/provider"
@@ -86,7 +86,7 @@ func (c *Client) Infer(ctx context.Context, messages []provider.Message, tools [
 			return fullContent, nil
 		}
 
-		log.Printf("llm: %d tool call(s)", len(toolCalls))
+		slog.Info("tool calls", "count", len(toolCalls))
 
 		// Append assistant message with tool calls
 		messages = append(messages, provider.Message{

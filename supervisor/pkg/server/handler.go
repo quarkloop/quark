@@ -1,6 +1,7 @@
 package server
 
 import (
+	"log/slog"
 	"net"
 
 	"github.com/gofiber/fiber/v2"
@@ -27,6 +28,8 @@ func reservePort() (int, error) {
 		return 0, err
 	}
 	port := ln.Addr().(*net.TCPAddr).Port
-	_ = ln.Close()
+	if err := ln.Close(); err != nil {
+		slog.Error("failed to close temp listener", "error", err)
+	}
 	return port, nil
 }

@@ -4,6 +4,7 @@ package runtime
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"syscall"
@@ -34,7 +35,7 @@ func (l *Launcher) Start(ctx context.Context, agent *registry.Agent, quarkfileEn
 	}
 	// Use a detached context: the child agent's lifetime is owned by the
 	// registry, not by the HTTP request that spawned it.
-	_ = ctx
+	// ctx is intentionally unused; the goroutine manages its own lifecycle.
 	cmd := exec.Command(l.agentBin,
 		"start",
 		"--port", fmt.Sprintf("%d", agent.Port),
@@ -63,7 +64,9 @@ func (l *Launcher) Start(ctx context.Context, agent *registry.Agent, quarkfileEn
 	agent.Status = api.AgentRunning
 
 	go func() {
-		_ = cmd.Wait()
+		if err := cmd.Wait(); err != nil {
+			slog.Error("agent exited with error", "agent_id", agent.ID, "error", err)
+		}
 		agent.Status = api.AgentStopped
 		agent.PID = 0
 		agent.Cmd = nil

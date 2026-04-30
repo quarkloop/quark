@@ -3,6 +3,7 @@ package loop
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 )
 
@@ -135,11 +136,10 @@ func (l *Loop) dispatch(ctx context.Context, msg Message) {
 	// Build the middleware chain
 	wrapped := chain(handler, middleware...)
 
-	// Execute the handler
+	// Execute the handler.
+	// Middleware is responsible for error handling; the loop logs unhandled errors.
 	if err := wrapped(ctx, msg); err != nil {
-		// Errors are silently ignored at this level.
-		// Use middleware for error handling/logging.
-		_ = err
+		slog.Error("unhandled error processing", "type", msg.Type(), "error", err)
 	}
 }
 

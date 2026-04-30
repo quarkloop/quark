@@ -3,7 +3,7 @@ package channel
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 )
 
@@ -23,7 +23,7 @@ func (b *ChannelBus) Register(ch Channel) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.channels[ch.Type()] = ch
-	log.Printf("channelbus: channel %s registered", ch.Type())
+	slog.Info("channel registered", "type", ch.Type())
 }
 
 // Start starts all registered channels.
@@ -34,7 +34,7 @@ func (b *ChannelBus) Start(ctx context.Context) error {
 		if err := ch.Start(ctx); err != nil {
 			return fmt.Errorf("start %s: %w", ch.Type(), err)
 		}
-		log.Printf("channelbus: channel %s started", ch.Type())
+		slog.Info("channel started", "type", ch.Type())
 	}
 	return nil
 }
@@ -46,7 +46,7 @@ func (b *ChannelBus) Stop(ctx context.Context) error {
 	var lastErr error
 	for _, ch := range b.channels {
 		if err := ch.Stop(ctx); err != nil {
-			log.Printf("channelbus: stop %s error: %v", ch.Type(), err)
+			slog.Error("channel stop error", "type", ch.Type(), "error", err)
 			lastErr = err
 		}
 	}
