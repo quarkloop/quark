@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/quarkloop/cli/pkg/quarkfile"
+	spacemodel "github.com/quarkloop/pkg/space"
 	supclient "github.com/quarkloop/supervisor/pkg/client"
 )
 
@@ -21,7 +21,7 @@ install and updates the Quarkfile — the CLI only sends the request.
   quark plugin install ./local-plugin/            # local path`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			name, err := quarkfile.CurrentName()
+			name, err := spacemodel.CurrentName()
 			if err != nil {
 				return err
 			}

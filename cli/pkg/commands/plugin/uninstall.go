@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/quarkloop/cli/pkg/quarkfile"
+	spacemodel "github.com/quarkloop/pkg/space"
 	supclient "github.com/quarkloop/supervisor/pkg/client"
 )
 
@@ -15,7 +15,7 @@ func newUninstallCmd() *cobra.Command {
 		Short: "Uninstall a plugin from the current space (via supervisor API)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			name, err := quarkfile.CurrentName()
+			name, err := spacemodel.CurrentName()
 			if err != nil {
 				return err
 			}
