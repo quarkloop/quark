@@ -9,16 +9,9 @@ Practical techniques for running, testing, and debugging the Quark agent runtime
 ```bash
 # Build all 9 binaries into ./bin/
 make build
-
-# Build individual binaries
-make build-agent
-make build-tools-bash
-make build-tools-read
-make build-tools-write
-make build-tools-web-search
 ```
 
-Binaries land in `./bin/`: `agent`, `bash`, `read`, `write`, `web-search`, `space`, `kb`, `quark`, `api-server`.
+Binaries land in `./bin/`: `supervisor`, `agent`, `quark`, `bash`, `fs`, `web-search`.
 
 ---
 
