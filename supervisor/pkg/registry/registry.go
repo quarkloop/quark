@@ -1,6 +1,6 @@
 // Package registry tracks running agent processes managed by the supervisor.
 // The registry is purely in-memory: it does not persist state. Durable data
-// (spaces, Quarkfiles, KB) lives in the space.Store.
+// (spaces, Quarkfile, KB) lives in the space.Store.
 package registry
 
 import (
