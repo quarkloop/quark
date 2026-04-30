@@ -27,7 +27,7 @@ type E2EEnv struct {
 	HTTPC     *http.Client
 }
 
-// installSpacePlugins populates the space's data/plugins directory with the
+// installSpacePlugins populates the space's plugins directory with the
 // plugin manifests and their pre-built artifacts (tool binaries and provider
 // .so files). The agent's api-mode loader detects the co-located binary
 // and runs it directly; there is no runtime `go build`.
@@ -36,7 +36,7 @@ type E2EEnv struct {
 // repo-shipped provider .so (produced by `make build-providers`).
 func installSpacePlugins(t *testing.T, env *E2EEnv, bins BuiltBinaries) {
 	t.Helper()
-	pluginsDir := filepath.Join(env.SpacesDir, env.Space, "data", "plugins")
+	pluginsDir := filepath.Join(env.SpacesDir, env.Space, "plugins")
 	srcRoot := filepath.Join(QuarkRoot(t), "plugins")
 
 	// installTool lays out a tool plugin exactly the way production installs
@@ -56,8 +56,7 @@ func installSpacePlugins(t *testing.T, env *E2EEnv, bins BuiltBinaries) {
 		}
 	}
 	installTool("bash", bins.Bash, bins.BashLib)
-	installTool("read", bins.Read, bins.ReadLib)
-	installTool("write", bins.Write, bins.WriteLib)
+	installTool("fs", bins.FS, bins.FSLib)
 
 	providerSrc := filepath.Join(srcRoot, "providers", "openrouter")
 	if _, err := os.Stat(filepath.Join(providerSrc, "plugin.so")); err == nil {
@@ -83,17 +82,24 @@ func copyFile(t *testing.T, src, dst string, mode os.FileMode) {
 
 // quarkfileFor returns the raw bytes of a minimal Quarkfile for a space.
 func quarkfileFor(name, provider, model string) []byte {
+	env := ""
+	if provider != "noop" {
+		env = `  env:
+    - OPENROUTER_API_KEY
+`
+	}
 	qf := fmt.Sprintf(`quark: "1.0"
 meta:
   name: %s
+  version: "0.1.0"
 model:
   provider: %s
   name: %s
+%s
 plugins:
   - ref: quark/tool-bash
-  - ref: quark/tool-read
-  - ref: quark/tool-write
-`, name, provider, model)
+  - ref: quark/tool-fs
+`, name, provider, model, env)
 	return []byte(qf)
 }
 
@@ -155,7 +161,7 @@ func StartE2E(t *testing.T, withProvider bool, opts ...StartOptions) *E2EEnv {
 
 	bins := BuildAllOnce(t)
 	if opt.ForceBinaryTools {
-		bins.BashLib, bins.ReadLib, bins.WriteLib = "", "", ""
+		bins.BashLib, bins.FSLib = "", ""
 	}
 	sup, supURL, spacesDir, proc := startSupervisor(t, bins)
 
@@ -169,7 +175,8 @@ func StartE2E(t *testing.T, withProvider bool, opts ...StartOptions) *E2EEnv {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if _, err := sup.CreateSpace(ctx, spaceName, quarkfileFor(spaceName, provider, model)); err != nil {
+	workingDir := t.TempDir()
+	if _, err := sup.CreateSpace(ctx, spaceName, quarkfileFor(spaceName, provider, model), workingDir); err != nil {
 		t.Fatalf("create space: %v", err)
 	}
 
@@ -184,9 +191,8 @@ func StartE2E(t *testing.T, withProvider bool, opts ...StartOptions) *E2EEnv {
 
 	installSpacePlugins(t, env, bins)
 
-	workingDir := t.TempDir()
 	agentPort := ReservePort(t)
-	info, err := sup.StartAgent(ctx, spaceName, workingDir, agentPort)
+	info, err := sup.StartAgent(ctx, spaceName, agentPort)
 	if err != nil {
 		t.Fatalf("start agent: %v", err)
 	}
