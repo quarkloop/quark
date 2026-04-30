@@ -1,9 +1,7 @@
 package server
 
 import (
-	"encoding/json"
-	"net/http"
-
+	"github.com/gofiber/fiber/v2"
 	"github.com/quarkloop/supervisor/pkg/api"
 	"github.com/quarkloop/supervisor/pkg/kb"
 )
@@ -13,73 +11,64 @@ func (s *Server) openKB(name string) (kb.Store, error) {
 	return s.store.KB(name)
 }
 
-func (s *Server) handleKBGet(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
+func (s *Server) handleKBGet(c *fiber.Ctx) error {
+	name := c.Params("name")
 	store, err := s.openKB(name)
 	if err != nil {
-		writeSpaceError(w, name, err)
-		return
+		return s.writeSpaceError(c, name, err)
 	}
 	defer store.Close()
 
-	val, err := store.Get(r.PathValue("namespace"), r.PathValue("key"))
+	val, err := store.Get(c.Params("namespace"), c.Params("key"))
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
-		return
+		return writeError(c, fiber.StatusNotFound, err.Error())
 	}
-	writeJSON(w, http.StatusOK, api.KBValueResponse{Value: val})
+	return writeJSON(c, fiber.StatusOK, api.KBValueResponse{Value: val})
 }
 
-func (s *Server) handleKBSet(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
+func (s *Server) handleKBSet(c *fiber.Ctx) error {
+	name := c.Params("name")
 	store, err := s.openKB(name)
 	if err != nil {
-		writeSpaceError(w, name, err)
-		return
+		return s.writeSpaceError(c, name, err)
 	}
 	defer store.Close()
 
 	var req api.KBSetRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON body")
-		return
+	if err := c.BodyParser(&req); err != nil {
+		return writeError(c, fiber.StatusBadRequest, "invalid JSON body")
 	}
-	if err := store.Set(r.PathValue("namespace"), r.PathValue("key"), req.Value); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+	if err := store.Set(c.Params("namespace"), c.Params("key"), req.Value); err != nil {
+		return writeError(c, fiber.StatusInternalServerError, err.Error())
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (s *Server) handleKBDelete(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
+func (s *Server) handleKBDelete(c *fiber.Ctx) error {
+	name := c.Params("name")
 	store, err := s.openKB(name)
 	if err != nil {
-		writeSpaceError(w, name, err)
-		return
+		return s.writeSpaceError(c, name, err)
 	}
 	defer store.Close()
 
-	if err := store.Delete(r.PathValue("namespace"), r.PathValue("key")); err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
-		return
+	if err := store.Delete(c.Params("namespace"), c.Params("key")); err != nil {
+		return writeError(c, fiber.StatusNotFound, err.Error())
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (s *Server) handleKBList(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
+func (s *Server) handleKBList(c *fiber.Ctx) error {
+	name := c.Params("name")
 	store, err := s.openKB(name)
 	if err != nil {
-		writeSpaceError(w, name, err)
-		return
+		return s.writeSpaceError(c, name, err)
 	}
 	defer store.Close()
 
-	keys, err := store.List(r.PathValue("namespace"))
+	keys, err := store.List(c.Params("namespace"))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return writeError(c, fiber.StatusInternalServerError, err.Error())
 	}
-	writeJSON(w, http.StatusOK, api.KBListResponse{Keys: keys})
+	return writeJSON(c, fiber.StatusOK, api.KBListResponse{Keys: keys})
 }
