@@ -3,63 +3,60 @@ package toolkit
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
+
+	"github.com/gofiber/fiber/v2"
 )
 
 // RunServer starts an HTTP server with all standard endpoints.
 func RunServer(tool AgentTool, addr string) error {
-	mux := BuildServer(tool)
+	app := BuildServer(tool)
 	fmt.Printf("%s tool listening on %s\n", tool.Name(), addr)
-	return http.ListenAndServe(addr, mux)
+	return app.Listen(addr)
 }
 
-// BuildServer returns an http.ServeMux with standard tool endpoints.
-func BuildServer(tool AgentTool) *http.ServeMux {
-	mux := http.NewServeMux()
+// BuildServer returns a Fiber app with standard tool endpoints.
+func BuildServer(tool AgentTool) *fiber.App {
+	app := fiber.New()
 
-	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+	app.Get("/health", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{
 			"status":  "ok",
 			"name":    tool.Name(),
 			"version": tool.Version(),
 		})
 	})
 
-	mux.HandleFunc("GET /schema", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		enc := json.NewEncoder(w)
+	app.Get("/schema", func(c *fiber.Ctx) error {
+		c.Set("Content-Type", "application/json")
+		enc := json.NewEncoder(c)
 		enc.SetIndent("", "  ")
-		enc.Encode(tool.Schema())
+		return enc.Encode(tool.Schema())
 	})
 
-	mux.HandleFunc("GET /skill", func(w http.ResponseWriter, r *http.Request) {
+	app.Get("/skill", func(c *fiber.Ctx) error {
 		data, err := os.ReadFile("SKILL.md")
 		if err != nil {
-			http.Error(w, "SKILL.md not found", http.StatusNotFound)
-			return
+			return c.Status(fiber.StatusNotFound).SendString("SKILL.md not found")
 		}
-		w.Header().Set("Content-Type", "text/plain")
-		w.Write(data)
+		c.Set("Content-Type", "text/plain")
+		return c.Send(data)
 	})
 
 	// Universal invoke endpoint
-	mux.HandleFunc("POST /invoke", func(w http.ResponseWriter, r *http.Request) {
+	app.Post("/invoke", func(c *fiber.Ctx) error {
 		var req struct {
 			Command string            `json:"command"`
 			Args    map[string]string `json:"args"`
 			Flags   map[string]any    `json:"flags"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeError(w, "invalid request: "+err.Error())
-			return
+		if err := c.BodyParser(&req); err != nil {
+			return writeError(c, "invalid request: "+err.Error())
 		}
 
 		cmd, ok := findCommand(tool, req.Command)
 		if !ok {
-			writeError(w, "unknown command: "+req.Command)
-			return
+			return writeError(c, "unknown command: "+req.Command)
 		}
 
 		input := Input{Args: make(map[string]string), Flags: make(map[string]any)}
@@ -74,22 +71,21 @@ func BuildServer(tool AgentTool) *http.ServeMux {
 			input.Flags[k] = v
 		}
 
-		out, err := cmd.Handler(r.Context(), input)
+		out, err := cmd.Handler(c.Context(), input)
 		if err != nil {
 			out.Error = err.Error()
 		}
-		writeOutput(w, out)
+		return writeOutput(c, out)
 	})
 
 	// Per-command endpoints
 	for _, cmdDef := range tool.Commands() {
 		cmdDef := cmdDef
-		mux.HandleFunc("POST /"+cmdDef.Name, func(w http.ResponseWriter, r *http.Request) {
+		app.Post("/"+cmdDef.Name, func(c *fiber.Ctx) error {
 			// For per-command endpoints, the body IS the args map directly
 			var reqBody map[string]any
-			if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
-				writeError(w, "invalid request: "+err.Error())
-				return
+			if err := c.BodyParser(&reqBody); err != nil {
+				return writeError(c, "invalid request: "+err.Error())
 			}
 
 			input := Input{Args: make(map[string]string), Flags: make(map[string]any)}
@@ -107,23 +103,21 @@ func BuildServer(tool AgentTool) *http.ServeMux {
 				}
 			}
 
-			out, err := cmdDef.Handler(r.Context(), input)
+			out, err := cmdDef.Handler(c.Context(), input)
 			if err != nil {
 				out.Error = err.Error()
 			}
-			writeOutput(w, out)
+			return writeOutput(c, out)
 		})
 	}
 
-	return mux
+	return app
 }
 
-func writeOutput(w http.ResponseWriter, out Output) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(out)
+func writeOutput(c *fiber.Ctx, out Output) error {
+	return c.JSON(out)
 }
 
-func writeError(w http.ResponseWriter, msg string) {
-	w.WriteHeader(http.StatusBadRequest)
-	json.NewEncoder(w).Encode(Output{Error: msg})
+func writeError(c *fiber.Ctx, msg string) error {
+	return c.Status(fiber.StatusBadRequest).JSON(Output{Error: msg})
 }
