@@ -8,7 +8,7 @@ import (
 	"fmt"
 
 	agentclient "github.com/quarkloop/agent/pkg/client"
-	"github.com/quarkloop/cli/pkg/quarkfile"
+	spacemodel "github.com/quarkloop/pkg/space"
 	"github.com/quarkloop/supervisor/pkg/api"
 	supclient "github.com/quarkloop/supervisor/pkg/client"
 )
@@ -19,7 +19,7 @@ import (
 // The supervisor is the source of truth; if no agent is running for the
 // current space, an error is returned.
 func Current(ctx context.Context) (*agentclient.Client, api.AgentInfo, error) {
-	name, err := quarkfile.CurrentName()
+	name, err := spacemodel.CurrentName()
 	if err != nil {
 		return nil, api.AgentInfo{}, err
 	}
