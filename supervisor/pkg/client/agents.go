@@ -17,14 +17,12 @@ func (c *Client) ListAgents(ctx context.Context) ([]api.AgentInfo, error) {
 	return out, nil
 }
 
-// StartAgent launches an agent for the given space. workingDir is the
-// directory the agent will chdir into (typically the user's cwd).
-func (c *Client) StartAgent(ctx context.Context, space, workingDir string, port int) (api.AgentInfo, error) {
+// StartAgent launches an agent for the given registered space.
+func (c *Client) StartAgent(ctx context.Context, space string, port int) (api.AgentInfo, error) {
 	var out api.AgentInfo
 	err := c.do(ctx, http.MethodPost, c.route.Agents(), api.StartAgentRequest{
-		Space:      space,
-		WorkingDir: workingDir,
-		Port:       port,
+		Space: space,
+		Port:  port,
 	}, &out)
 	return out, err
 }
