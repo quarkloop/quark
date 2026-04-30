@@ -55,7 +55,9 @@ func Start() *cobra.Command {
 }
 
 func runStart(port int, channels []string) error {
-	loadEnvFiles()
+	if os.Getenv("QUARK_SUPERVISOR_URL") == "" {
+		loadEnvFiles()
+	}
 
 	// 1. Deduplicate channels and handle "all"
 	activeChannels := make(map[string]bool)
@@ -86,19 +88,20 @@ func runStart(port int, channels []string) error {
 	log.Println("Starting agent runtime...")
 	log.Printf("Enabled channels: %v", validChannels)
 
-	model := os.Getenv("OPENROUTER_MODEL")
-	if model == "" {
-		model = "openai/gpt-4o-mini"
+	modelProvider := os.Getenv("QUARK_MODEL_PROVIDER")
+	modelName := os.Getenv("QUARK_MODEL_NAME")
+	if modelProvider == "" || modelName == "" {
+		return fmt.Errorf("model provider and name are required")
 	}
-	log.Printf("Using model: %s", model)
+	log.Printf("Using model: %s/%s", modelProvider, modelName)
 
 	// Create agent
 	a, err := agent.NewAgent(agent.Config{
 		ID:            "main",
 		Name:          "Main Agent",
-		Model:         model,
+		ModelProvider: modelProvider,
+		Model:         modelName,
 		ModelListURL:  os.Getenv("MODEL_LIST_URL"),
-		OpenRouterKey: os.Getenv("OPENROUTER_API_KEY"),
 		PluginsDir:    os.Getenv("QUARK_PLUGINS_DIR"),
 		SupervisorURL: os.Getenv("QUARK_SUPERVISOR_URL"),
 		SpaceID:       os.Getenv("QUARK_SPACE"),
