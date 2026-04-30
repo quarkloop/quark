@@ -1,10 +1,12 @@
 package server
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
-	"net/http"
+	"fmt"
 
+	"github.com/gofiber/fiber/v2"
 	"github.com/quarkloop/supervisor/pkg/api"
 	"github.com/quarkloop/supervisor/pkg/events"
 	"github.com/quarkloop/supervisor/pkg/sessions"
@@ -32,34 +34,30 @@ func toAPISessions(in []*sessions.Session) []api.Session {
 	return out
 }
 
-func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
+func (s *Server) handleListSessions(c *fiber.Ctx) error {
+	name := c.Params("name")
 	store, err := s.store.Sessions(name)
 	if err != nil {
-		writeSpaceError(w, name, err)
-		return
+		return s.writeSpaceError(c, name, err)
 	}
-	writeJSON(w, http.StatusOK, toAPISessions(store.List()))
+	return writeJSON(c, fiber.StatusOK, toAPISessions(store.List()))
 }
 
-func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
+func (s *Server) handleCreateSession(c *fiber.Ctx) error {
+	name := c.Params("name")
 	store, err := s.store.Sessions(name)
 	if err != nil {
-		writeSpaceError(w, name, err)
-		return
+		return s.writeSpaceError(c, name, err)
 	}
 	var req api.CreateSessionRequest
-	if r.ContentLength > 0 {
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid body: "+err.Error())
-			return
+	if len(c.Body()) > 0 {
+		if err := c.BodyParser(&req); err != nil {
+			return writeError(c, fiber.StatusBadRequest, "invalid body: "+err.Error())
 		}
 	}
 	sess, err := store.Create(sessions.Type(req.Type), req.Title)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return writeError(c, fiber.StatusInternalServerError, err.Error())
 	}
 	out := toAPISession(sess)
 	s.events.Publish(events.Event{
@@ -67,100 +65,94 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		Space:   name,
 		Payload: events.SessionPayload(out.ID, string(out.Type), out.Title),
 	})
-	writeJSON(w, http.StatusCreated, out)
+	return writeJSON(c, fiber.StatusCreated, out)
 }
 
-func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
+func (s *Server) handleGetSession(c *fiber.Ctx) error {
+	name := c.Params("name")
 	store, err := s.store.Sessions(name)
 	if err != nil {
-		writeSpaceError(w, name, err)
-		return
+		return s.writeSpaceError(c, name, err)
 	}
-	sess, err := store.Get(r.PathValue("id"))
+	sess, err := store.Get(c.Params("id"))
 	if errors.Is(err, sessions.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "session not found")
-		return
+		return writeError(c, fiber.StatusNotFound, "session not found")
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return writeError(c, fiber.StatusInternalServerError, err.Error())
 	}
-	writeJSON(w, http.StatusOK, toAPISession(sess))
+	return writeJSON(c, fiber.StatusOK, toAPISession(sess))
 }
 
-func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	id := r.PathValue("id")
+func (s *Server) handleDeleteSession(c *fiber.Ctx) error {
+	name := c.Params("name")
+	id := c.Params("id")
 	store, err := s.store.Sessions(name)
 	if err != nil {
-		writeSpaceError(w, name, err)
-		return
+		return s.writeSpaceError(c, name, err)
 	}
 	if err := store.Delete(id); err != nil {
 		if errors.Is(err, sessions.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "session not found")
-			return
+			return writeError(c, fiber.StatusNotFound, "session not found")
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return writeError(c, fiber.StatusInternalServerError, err.Error())
 	}
 	s.events.Publish(events.Event{
 		Kind:    events.SessionDeleted,
 		Space:   name,
 		Payload: events.SessionPayload(id, "", ""),
 	})
-	w.WriteHeader(http.StatusNoContent)
+	return c.SendStatus(fiber.StatusNoContent)
 }
 
-// handleEventStream serves GET /v1/spaces/{name}/events/stream as SSE.
+// handleEventStream serves GET /v1/spaces/:name/events/stream as SSE.
 //
 // The stream emits one event per supervisor-published Event scoped to name.
 // Clients (typically an agent process) should reconnect on disconnect; the
 // supervisor never retains event history.
-func (s *Server) handleEventStream(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
+func (s *Server) handleEventStream(c *fiber.Ctx) error {
+	name := c.Params("name")
 	if _, err := s.store.Get(name); err != nil {
-		writeSpaceError(w, name, err)
-		return
+		return s.writeSpaceError(c, name, err)
 	}
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		writeError(w, http.StatusInternalServerError, "streaming unsupported")
-		return
-	}
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
+
+	c.Set("Content-Type", "text/event-stream")
+	c.Set("Cache-Control", "no-cache")
+	c.Set("Connection", "keep-alive")
+	c.Set("X-Accel-Buffering", "no")
 
 	ch, cancel := s.events.Subscribe(name)
 	defer cancel()
 
-	// Send initial comment so clients know the stream is live.
-	_, _ = w.Write([]byte(": connected\n\n"))
-	flusher.Flush()
+	ctx := c.Context()
+	ctx.SetBodyStreamWriter(func(w *bufio.Writer) {
+		// Send initial comment so clients know the stream is live.
+		fmt.Fprintf(w, ": connected\n\n")
+		w.Flush()
 
-	enc := json.NewEncoder(w)
-	for {
-		select {
-		case <-r.Context().Done():
-			return
-		case ev, ok := <-ch:
-			if !ok {
+		enc := json.NewEncoder(w)
+		for {
+			select {
+			case <-ctx.Done():
 				return
+			case ev, ok := <-ch:
+				if !ok {
+					return
+				}
+				fmt.Fprintf(w, "event: %s\ndata: ", ev.Kind)
+				if err := enc.Encode(api.Event{
+					Kind:    string(ev.Kind),
+					Space:   ev.Space,
+					Time:    ev.Time,
+					Payload: ev.Payload,
+				}); err != nil {
+					return
+				}
+				fmt.Fprint(w, "\n")
+				w.Flush()
 			}
-			_, _ = w.Write([]byte("event: " + string(ev.Kind) + "\ndata: "))
-			if err := enc.Encode(api.Event{
-				Kind:    string(ev.Kind),
-				Space:   ev.Space,
-				Time:    ev.Time,
-				Payload: ev.Payload,
-			}); err != nil {
-				return
-			}
-			_, _ = w.Write([]byte("\n"))
-			flusher.Flush()
 		}
-	}
+	})
+
+	return nil
 }
