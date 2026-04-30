@@ -28,7 +28,7 @@ func New(agentBin, supervisorURL string) *Launcher {
 // Start launches an agent process for the registry entry. On success it
 // sets entry.Cmd, entry.PID, entry.Status = AgentRunning. When the
 // process exits the status is transitioned to AgentStopped.
-func (l *Launcher) Start(ctx context.Context, agent *registry.Agent) error {
+func (l *Launcher) Start(ctx context.Context, agent *registry.Agent, quarkfileEnv []string) error {
 	if agent.Port == 0 {
 		return fmt.Errorf("launch agent %s: port not assigned", agent.ID)
 	}
@@ -44,6 +44,7 @@ func (l *Launcher) Start(ctx context.Context, agent *registry.Agent) error {
 		fmt.Sprintf("QUARK_AGENT_ID=%s", agent.ID),
 		fmt.Sprintf("QUARK_SPACE=%s", agent.Space),
 	)
+	cmd.Env = append(cmd.Env, quarkfileEnv...)
 	if l.supervisorURL != "" {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("QUARK_SUPERVISOR_URL=%s", l.supervisorURL))
 	}
