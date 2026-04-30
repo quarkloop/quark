@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/quarkloop/cli/pkg/quarkfile"
+	spacemodel "github.com/quarkloop/pkg/space"
 	"github.com/quarkloop/supervisor/pkg/api"
 	supclient "github.com/quarkloop/supervisor/pkg/client"
 )
@@ -17,7 +17,7 @@ import (
 // currentSpace returns the space name from the Quarkfile in the current
 // working directory. Session commands operate on this space.
 func currentSpace() (string, error) {
-	return quarkfile.CurrentName()
+	return spacemodel.CurrentName()
 }
 
 func NewSessionCommand() *cobra.Command {
