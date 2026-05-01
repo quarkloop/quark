@@ -12,7 +12,7 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/quarkloop/agent/pkg/provider"
+	"github.com/quarkloop/pkg/plugin"
 )
 
 const (
@@ -31,14 +31,14 @@ const (
 // Use WorkContext or SessionContext for type-safe separation.
 type Context struct {
 	mu            sync.RWMutex
-	messages      []provider.Message
+	messages      []plugin.Message
 	contextWindow int // token limit (0 = unlimited)
 }
 
 // New creates a new context with the given token limit.
 func New(contextWindow int) *Context {
 	return &Context{
-		messages:      make([]provider.Message, 0, 32),
+		messages:      make([]plugin.Message, 0, 32),
 		contextWindow: contextWindow,
 	}
 }
@@ -48,7 +48,7 @@ func (c *Context) Add(role, content string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.messages = append(c.messages, provider.Message{
+	c.messages = append(c.messages, plugin.Message{
 		Role:    role,
 		Content: content,
 	})
@@ -57,11 +57,11 @@ func (c *Context) Add(role, content string) {
 }
 
 // AddWithToolCalls appends an assistant message with tool calls.
-func (c *Context) AddWithToolCalls(content string, toolCalls []provider.ToolCall) {
+func (c *Context) AddWithToolCalls(content string, toolCalls []plugin.ToolCall) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.messages = append(c.messages, provider.Message{
+	c.messages = append(c.messages, plugin.Message{
 		Role:      "assistant",
 		Content:   content,
 		ToolCalls: toolCalls,
@@ -75,7 +75,7 @@ func (c *Context) AddToolResult(toolCallID, result string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.messages = append(c.messages, provider.Message{
+	c.messages = append(c.messages, plugin.Message{
 		Role:       "tool",
 		Content:    result,
 		ToolCallID: toolCallID,
@@ -85,11 +85,11 @@ func (c *Context) AddToolResult(toolCallID, result string) {
 }
 
 // Messages returns a copy of all messages.
-func (c *Context) Messages() []provider.Message {
+func (c *Context) Messages() []plugin.Message {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	out := make([]provider.Message, len(c.messages))
+	out := make([]plugin.Message, len(c.messages))
 	copy(out, c.messages)
 	return out
 }
@@ -152,7 +152,7 @@ func (w *WorkContext) Add(role, content string) {
 }
 
 // Messages returns the work history.
-func (w *WorkContext) Messages() []provider.Message {
+func (w *WorkContext) Messages() []plugin.Message {
 	return w.ctx.Messages()
 }
 
@@ -192,7 +192,7 @@ func (s *SessionContext) Add(role, content string) {
 }
 
 // Messages returns the session history.
-func (s *SessionContext) Messages() []provider.Message {
+func (s *SessionContext) Messages() []plugin.Message {
 	return s.ctx.Messages()
 }
 
@@ -209,7 +209,7 @@ func (s *SessionContext) Len() int {
 // BuildWithWorkSummary creates a message list for LLM call that includes
 // a read-only work status summary WITHOUT including full work history.
 // This is the ONLY approved way to inject work context into a session.
-func (s *SessionContext) BuildWithWorkSummary(systemPrompt, workSummary string) []provider.Message {
+func (s *SessionContext) BuildWithWorkSummary(systemPrompt, workSummary string) []plugin.Message {
 	msgs := s.ctx.Messages()
 
 	// Prepend system message with work status
@@ -218,8 +218,8 @@ func (s *SessionContext) BuildWithWorkSummary(systemPrompt, workSummary string) 
 		system += "\n\n## Current Work Status\n" + workSummary
 	}
 
-	result := make([]provider.Message, 0, len(msgs)+1)
-	result = append(result, provider.Message{
+	result := make([]plugin.Message, 0, len(msgs)+1)
+	result = append(result, plugin.Message{
 		Role:    "system",
 		Content: system,
 	})
