@@ -6,7 +6,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/quarkloop/agent/pkg/message"
+	"github.com/quarkloop/runtime/pkg/message"
 )
 
 // MessageHandler holds message handler dependencies.

@@ -3,7 +3,7 @@ package api
 import (
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/quarkloop/agent/pkg/agent"
+	"github.com/quarkloop/runtime/pkg/agent"
 )
 
 // AgentHandler holds the agent info handler dependencies.

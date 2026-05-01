@@ -3,7 +3,7 @@ package api
 import (
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/quarkloop/agent/pkg/channel"
+	"github.com/quarkloop/runtime/pkg/channel"
 )
 
 // ChannelHandler holds channel handler dependencies.
