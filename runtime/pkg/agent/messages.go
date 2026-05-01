@@ -2,8 +2,8 @@
 package agent
 
 import (
-	"github.com/quarkloop/agent/pkg/loop"
-	"github.com/quarkloop/agent/pkg/message"
+	"github.com/quarkloop/runtime/pkg/loop"
+	"github.com/quarkloop/runtime/pkg/message"
 )
 
 // Message type constants.
