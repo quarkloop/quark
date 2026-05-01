@@ -140,12 +140,7 @@ func (s *Server) handleEventStream(c *fiber.Ctx) error {
 					return
 				}
 				fmt.Fprintf(w, "event: %s\ndata: ", ev.Kind)
-				if err := enc.Encode(api.Event{
-					Kind:    string(ev.Kind),
-					Space:   ev.Space,
-					Time:    ev.Time,
-					Payload: ev.Payload,
-				}); err != nil {
+				if err := enc.Encode(ev.ToWire()); err != nil {
 					return
 				}
 				fmt.Fprint(w, "\n")

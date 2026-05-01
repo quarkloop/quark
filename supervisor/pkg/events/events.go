@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"sync"
 	"time"
+
+	"github.com/quarkloop/supervisor/pkg/api"
 )
 
 // Kind identifies the event type.
@@ -26,6 +28,16 @@ type Event struct {
 	Space   string          `json:"space"`
 	Time    time.Time       `json:"time"`
 	Payload json.RawMessage `json:"payload,omitempty"`
+}
+
+// ToWire converts the internal Event to the wire-format api.Event.
+func (e Event) ToWire() api.Event {
+	return api.Event{
+		Kind:    string(e.Kind),
+		Space:   e.Space,
+		Time:    e.Time,
+		Payload: e.Payload,
+	}
 }
 
 // Bus is an in-memory fan-out of events scoped by space.
