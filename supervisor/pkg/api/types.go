@@ -167,7 +167,7 @@ const (
 	EventQuarkfileUpdated = "quarkfile.updated"
 	EventPluginInstalled  = "plugin.installed"
 	EventPluginRemoved    = "plugin.removed"
-	EventAgentShutdown    = "agent.shutdown"
+	EventRuntimeShutdown  = "runtime.shutdown"
 )
 
 // BudgetResponse is returned by budget endpoints.
@@ -236,40 +236,40 @@ type DoctorResponse struct {
 	Issues []DoctorIssue `json:"issues"`
 }
 
-// --- Agent (runtime) types ---
+// --- Runtime types ---
 
-// AgentStatus is the lifecycle state of a running agent.
-type AgentStatus string
+// RuntimeStatus is the lifecycle state of a running runtime.
+type RuntimeStatus string
 
 const (
-	AgentStarting AgentStatus = "starting"
-	AgentRunning  AgentStatus = "running"
-	AgentStopping AgentStatus = "stopping"
-	AgentStopped  AgentStatus = "stopped"
+	RuntimeStarting RuntimeStatus = "starting"
+	RuntimeRunning  RuntimeStatus = "running"
+	RuntimeStopping RuntimeStatus = "stopping"
+	RuntimeStopped  RuntimeStatus = "stopped"
 )
 
 // AgentInfo describes a supervisor-managed agent process.
-type AgentInfo struct {
-	ID         string      `json:"id"`
-	Space      string      `json:"space"`
-	WorkingDir string      `json:"working_dir"`
-	Status     AgentStatus `json:"status"`
-	PID        int         `json:"pid,omitempty"`
-	Port       int         `json:"port,omitempty"`
-	StartedAt  time.Time   `json:"started_at,omitempty"`
-	Uptime     string      `json:"uptime,omitempty"`
+type RuntimeInfo struct {
+	ID         string        `json:"id"`
+	Space      string        `json:"space"`
+	WorkingDir string        `json:"working_dir"`
+	Status     RuntimeStatus `json:"status"`
+	PID        int           `json:"pid,omitempty"`
+	Port       int           `json:"port,omitempty"`
+	StartedAt  time.Time     `json:"started_at,omitempty"`
+	Uptime     string        `json:"uptime,omitempty"`
 }
 
-// URL returns the agent's HTTP base URL or empty when not running.
-func (a AgentInfo) URL() string {
+// URL returns the runtime's HTTP base URL or empty when not running.
+func (a RuntimeInfo) URL() string {
 	if a.Port == 0 {
 		return ""
 	}
 	return "http://127.0.0.1:" + itoa(a.Port)
 }
 
-// StartAgentRequest is the body for POST /v1/agents.
-type StartAgentRequest struct {
+// StartRuntimeRequest is the body for POST /v1/agents.
+type StartRuntimeRequest struct {
 	Space string `json:"space"`
 	Port  int    `json:"port,omitempty"`
 }
