@@ -9,7 +9,6 @@ import (
 
 	agentclient "github.com/quarkloop/runtime/pkg/client"
 	spacemodel "github.com/quarkloop/pkg/space"
-	"github.com/quarkloop/supervisor/pkg/api"
 	supclient "github.com/quarkloop/supervisor/pkg/client"
 )
 
@@ -18,21 +17,21 @@ import (
 //
 // The supervisor is the source of truth; if no agent is running for the
 // current space, an error is returned.
-func Current(ctx context.Context) (*agentclient.Client, api.RuntimeInfo, error) {
+func Current(ctx context.Context) (*agentclient.Client, supclient.RuntimeInfo, error) {
 	name, err := spacemodel.CurrentName()
 	if err != nil {
-		return nil, api.RuntimeInfo{}, err
+		return nil, supclient.RuntimeInfo{}, err
 	}
 	sup := supclient.New()
 	rt, err := sup.RuntimeBySpace(ctx, name)
 	if err != nil {
 		if supclient.IsNotFound(err) {
-			return nil, api.RuntimeInfo{}, fmt.Errorf("no runtime running for space %q — start it with 'quark run'", name)
+			return nil, supclient.RuntimeInfo{}, fmt.Errorf("no runtime running for space %q — start it with 'quark run'", name)
 		}
-		return nil, api.RuntimeInfo{}, err
+		return nil, supclient.RuntimeInfo{}, err
 	}
-	if rt.Status != api.RuntimeRunning {
-		return nil, api.RuntimeInfo{}, fmt.Errorf("runtime for space %q is %s, not running", name, rt.Status)
+	if rt.Status != supclient.RuntimeRunning {
+		return nil, supclient.RuntimeInfo{}, fmt.Errorf("runtime for space %q is %s, not running", name, rt.Status)
 	}
 	return agentclient.New(rt.URL()), rt, nil
 }

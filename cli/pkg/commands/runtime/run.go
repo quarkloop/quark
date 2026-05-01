@@ -11,7 +11,6 @@ import (
 
 	"github.com/quarkloop/cli/pkg/util"
 	spacemodel "github.com/quarkloop/pkg/space"
-	"github.com/quarkloop/supervisor/pkg/api"
 	supclient "github.com/quarkloop/supervisor/pkg/client"
 )
 
@@ -92,7 +91,7 @@ func waitUntilRunning(ctx context.Context, sup *supclient.Client, runtimeID stri
 			return ctx.Err()
 		}
 		rt, err := sup.GetRuntime(ctx, runtimeID)
-		if err == nil && rt.Status == api.RuntimeRunning {
+		if err == nil && rt.Status == supclient.RuntimeRunning {
 			return nil
 		}
 		time.Sleep(500 * time.Millisecond)

@@ -9,7 +9,6 @@ import (
 
 	agentclient "github.com/quarkloop/runtime/pkg/client"
 	spacemodel "github.com/quarkloop/pkg/space"
-	"github.com/quarkloop/supervisor/pkg/api"
 	supclient "github.com/quarkloop/supervisor/pkg/client"
 )
 
@@ -62,7 +61,7 @@ func InspectCLI() *cobra.Command {
 			if rt.Uptime != "" {
 				fmt.Printf("Uptime:     %s\n", rt.Uptime)
 			}
-			if rt.Status != api.RuntimeRunning {
+			if rt.Status != supclient.RuntimeRunning {
 				return nil
 			}
 			runtimeInfo, err := agentclient.New(rt.URL()).Info(cmd.Context())

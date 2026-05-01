@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/quarkloop/cli/pkg/agentdial"
-	"github.com/quarkloop/supervisor/pkg/api"
+	supclient "github.com/quarkloop/supervisor/pkg/client"
 )
 
 func NewActivityCommand() *cobra.Command {
@@ -36,7 +36,7 @@ func newActivityQueryCmd() *cobra.Command {
 
 			if follow {
 				fmt.Println("Streaming live activity... (Ctrl+C to stop)")
-				return c.StreamActivity(cmd.Context(), func(record api.ActivityRecord) {
+				return c.StreamActivity(cmd.Context(), func(record supclient.ActivityRecord) {
 					if eventType != "" && record.Type != eventType {
 						return
 					}

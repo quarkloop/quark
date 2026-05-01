@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 
 	spacemodel "github.com/quarkloop/pkg/space"
-	"github.com/quarkloop/supervisor/pkg/api"
 	supclient "github.com/quarkloop/supervisor/pkg/client"
 )
 
@@ -43,8 +42,8 @@ func newSessionCreateCmd() *cobra.Command {
 				return err
 			}
 			c := supclient.New()
-			sess, err := c.CreateSession(cmd.Context(), space, api.CreateSessionRequest{
-				Type:  api.SessionType(sessType),
+			sess, err := c.CreateSession(cmd.Context(), space, supclient.CreateSessionRequest{
+				Type:  supclient.SessionType(sessType),
 				Title: title,
 			})
 			if err != nil {
