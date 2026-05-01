@@ -8,6 +8,20 @@ import (
 	"github.com/quarkloop/supervisor/pkg/api"
 )
 
+// RuntimeStatus is the lifecycle state of a running runtime.
+type RuntimeStatus = api.RuntimeStatus
+
+// Runtime status constants.
+const (
+	RuntimeStarting RuntimeStatus = api.RuntimeStarting
+	RuntimeRunning  RuntimeStatus = api.RuntimeRunning
+	RuntimeStopping RuntimeStatus = api.RuntimeStopping
+	RuntimeStopped  RuntimeStatus = api.RuntimeStopped
+)
+
+// RuntimeInfo describes a supervisor-managed agent process.
+type RuntimeInfo = api.RuntimeInfo
+
 // ListRuntimes returns every runtime tracked by the supervisor.
 func (c *Client) ListRuntimes(ctx context.Context) ([]api.RuntimeInfo, error) {
 	var out []api.RuntimeInfo

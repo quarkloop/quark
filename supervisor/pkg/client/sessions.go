@@ -12,6 +12,25 @@ import (
 	"github.com/quarkloop/supervisor/pkg/api"
 )
 
+// SessionType is the type of a session.
+type SessionType = api.SessionType
+
+const (
+	SessionTypeMain     SessionType = api.SessionTypeMain
+	SessionTypeChat     SessionType = api.SessionTypeChat
+	SessionTypeSubAgent SessionType = api.SessionTypeSubAgent
+	SessionTypeCron     SessionType = api.SessionTypeCron
+)
+
+// CreateSessionRequest is the body for POST /v1/spaces/{name}/sessions.
+type CreateSessionRequest = api.CreateSessionRequest
+
+// Session is the supervisor-owned record for a conversation.
+type Session = api.Session
+
+// ActivityRecord represents a single activity log entry.
+type ActivityRecord = api.ActivityRecord
+
 // ListSessions returns all sessions stored for the named space.
 func (c *Client) ListSessions(ctx context.Context, space string) ([]api.Session, error) {
 	var out []api.Session
