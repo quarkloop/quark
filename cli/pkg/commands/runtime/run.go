@@ -24,12 +24,12 @@ var flags struct {
 func RunCLI() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "run [dir]",
-		Short: "Start the agent for the current space via the supervisor",
+		Short: "Start the runtime for the current space via the supervisor",
 		Args:  cobra.MaximumNArgs(1),
 		RunE:  runRun,
 	}
 
-	cmd.Flags().IntVar(&flags.port, "port", 0, "Port for the agent HTTP API (0 = supervisor picks)")
+	cmd.Flags().IntVar(&flags.port, "port", 0, "Port for the runtime HTTP API (0 = supervisor picks)")
 	cmd.Flags().DurationVar(&flags.timeout, "timeout", 30*time.Second, "Maximum time to wait for the agent to become ready")
 	return cmd
 }
@@ -67,32 +67,32 @@ func runRun(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("space %s not found", space)
 	}
 
-	agent, err := sup.StartAgent(cmd.Context(), space, flags.port)
+	rt, err := sup.StartRuntime(cmd.Context(), space, flags.port)
 	if err != nil {
-		return fmt.Errorf("start agent: %w", err)
+		return fmt.Errorf("start runtime: %w", err)
 	}
 
-	if err := waitUntilRunning(cmd.Context(), sup, agent.ID, flags.timeout); err != nil {
-		return fmt.Errorf("agent failed to become ready: %w", err)
+	if err := waitUntilRunning(cmd.Context(), sup, rt.ID, flags.timeout); err != nil {
+		return fmt.Errorf("runtime failed to become ready: %w", err)
 	}
 
-	util.Successf("Agent started (space=%s, pid=%d, port=%d)", agent.Space, agent.PID, agent.Port)
-	fmt.Printf("  Agent ID: %s\n", agent.ID)
-	fmt.Printf("  URL:      %s\n", agent.URL())
+	util.Successf("Runtime started (space=%s, pid=%d, port=%d)", rt.Space, rt.PID, rt.Port)
+	fmt.Printf("  Runtime ID: %s\n", rt.ID)
+	fmt.Printf("  URL:        %s\n", rt.URL())
 	fmt.Println("\nUse 'quark activity --follow' to stream activity.")
 	fmt.Println("Use 'quark stop' to stop.")
 	return nil
 }
 
-// waitUntilRunning polls the supervisor until the agent reports running.
-func waitUntilRunning(ctx context.Context, sup *supclient.Client, agentID string, timeout time.Duration) error {
+// waitUntilRunning polls the supervisor until the runtime reports running.
+func waitUntilRunning(ctx context.Context, sup *supclient.Client, runtimeID string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		agent, err := sup.GetAgent(ctx, agentID)
-		if err == nil && agent.Status == api.AgentRunning {
+		rt, err := sup.GetRuntime(ctx, runtimeID)
+		if err == nil && rt.Status == api.RuntimeRunning {
 			return nil
 		}
 		time.Sleep(500 * time.Millisecond)
