@@ -50,7 +50,7 @@ func (s *Server) handleStartRuntime(c *fiber.Ctx) error {
 		return writeError(c, fiber.StatusInternalServerError, err.Error())
 	}
 	if existing, err := s.registry.GetBySpace(req.Space); err == nil {
-		return writeError(c, fiber.StatusConflict, fmt.Sprintf("runtime %s already running for space %q", existing.ID, req.Space))
+		return writeError(c, fiber.StatusConflict, fmt.Sprintf("runtime %s already running for space %q", existing.ID(), req.Space))
 	}
 
 	pluginsDir := ""
@@ -58,25 +58,17 @@ func (s *Server) handleStartRuntime(c *fiber.Ctx) error {
 		pluginsDir = mgr.PluginsDir()
 	}
 
-	agent := &runtime.Runtime{
-		ID:         generateRuntimeID(),
-		Space:      req.Space,
-		WorkingDir: sp.WorkingDir,
-		PluginsDir: pluginsDir,
-		Status:     api.RuntimeStarting,
-		Port:       port,
-		StartedAt:  time.Now(),
-	}
+	agent := runtime.NewRuntime(generateRuntimeID(), req.Space, sp.WorkingDir, pluginsDir)
 	s.registry.Register(agent)
 
 	env, err := s.store.AgentEnvironment(req.Space)
 	if err != nil {
-		s.registry.Remove(agent.ID)
+		s.registry.Remove(agent.ID())
 		return writeError(c, fiber.StatusBadRequest, err.Error())
 	}
 
 	if err := s.launcher.Start(c.Context(), agent, env); err != nil {
-		s.registry.Remove(agent.ID)
+		s.registry.Remove(agent.ID())
 		return writeError(c, fiber.StatusInternalServerError, err.Error())
 	}
 
@@ -101,8 +93,8 @@ func (s *Server) handleStopRuntime(c *fiber.Ctx) error {
 	if err != nil {
 		return writeError(c, fiber.StatusNotFound, err.Error())
 	}
-	if agent.Status != api.RuntimeRunning && agent.Status != api.RuntimeStarting {
-		return writeError(c, fiber.StatusConflict, fmt.Sprintf("runtime %s is not running (status: %s)", id, agent.Status))
+	if agent.Status() != api.RuntimeRunning && agent.Status() != api.RuntimeStarting {
+		return writeError(c, fiber.StatusConflict, fmt.Sprintf("runtime %s is not running (status: %s)", id, agent.Status()))
 	}
 	if err := s.launcher.Stop(agent); err != nil {
 		return writeError(c, fiber.StatusInternalServerError, err.Error())
@@ -112,16 +104,16 @@ func (s *Server) handleStopRuntime(c *fiber.Ctx) error {
 
 func toAPIRuntimeInfo(a *runtime.Runtime) api.RuntimeInfo {
 	info := api.RuntimeInfo{
-		ID:         a.ID,
-		Space:      a.Space,
-		WorkingDir: a.WorkingDir,
-		Status:     a.Status,
-		PID:        a.PID,
-		Port:       a.Port,
-		StartedAt:  a.StartedAt,
+		ID:         a.ID(),
+		Space:      a.Space(),
+		WorkingDir: a.WorkingDir(),
+		Status:     a.Status(),
+		PID:        a.PID(),
+		Port:       a.Port(),
+		StartedAt:  a.StartedAt(),
 	}
-	if a.Status == api.RuntimeRunning && !a.StartedAt.IsZero() {
-		info.Uptime = time.Since(a.StartedAt).Round(time.Second).String()
+	if a.Status() == api.RuntimeRunning && !a.StartedAt().IsZero() {
+		info.Uptime = time.Since(a.StartedAt()).Round(time.Second).String()
 	}
 	return info
 }
