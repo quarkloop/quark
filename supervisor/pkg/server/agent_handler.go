@@ -9,23 +9,23 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/quarkloop/supervisor/pkg/api"
-	"github.com/quarkloop/supervisor/pkg/registry"
+	"github.com/quarkloop/supervisor/pkg/runtime"
 	"github.com/quarkloop/supervisor/pkg/space/store"
 )
 
 // handleListAgents serves GET /v1/agents.
 func (s *Server) handleListAgents(c *fiber.Ctx) error {
-	agents := s.agents.List()
-	out := make([]api.AgentInfo, 0, len(agents))
+	agents := s.registry.List()
+	out := make([]api.RuntimeInfo, 0, len(agents))
 	for _, a := range agents {
-		out = append(out, toAPIAgentInfo(a))
+		out = append(out, toAPIRuntimeInfo(a))
 	}
 	return writeJSON(c, fiber.StatusOK, out)
 }
 
-// handleStartAgent serves POST /v1/agents.
-func (s *Server) handleStartAgent(c *fiber.Ctx) error {
-	var req api.StartAgentRequest
+// handleStartRuntime serves POST /v1/agents.
+func (s *Server) handleStartRuntime(c *fiber.Ctx) error {
+	var req api.StartRuntimeRequest
 	if err := c.BodyParser(&req); err != nil {
 		return writeError(c, fiber.StatusBadRequest, "invalid request body: "+err.Error())
 	}
@@ -49,8 +49,8 @@ func (s *Server) handleStartAgent(c *fiber.Ctx) error {
 		}
 		return writeError(c, fiber.StatusInternalServerError, err.Error())
 	}
-	if existing, err := s.agents.GetBySpace(req.Space); err == nil {
-		return writeError(c, fiber.StatusConflict, fmt.Sprintf("agent %s already running for space %q", existing.ID, req.Space))
+	if existing, err := s.registry.GetBySpace(req.Space); err == nil {
+		return writeError(c, fiber.StatusConflict, fmt.Sprintf("runtime %s already running for space %q", existing.ID, req.Space))
 	}
 
 	pluginsDir := ""
@@ -58,61 +58,60 @@ func (s *Server) handleStartAgent(c *fiber.Ctx) error {
 		pluginsDir = mgr.PluginsDir()
 	}
 
-	agent := &registry.Agent{
-		ID:         generateAgentID(),
+	agent := &runtime.Runtime{
+		ID:         generateRuntimeID(),
 		Space:      req.Space,
 		WorkingDir: sp.WorkingDir,
 		PluginsDir: pluginsDir,
-		Status:     api.AgentStarting,
+		Status:     api.RuntimeStarting,
 		Port:       port,
 		StartedAt:  time.Now(),
 	}
-	s.agents.Register(agent)
+	s.registry.Register(agent)
 
 	env, err := s.store.AgentEnvironment(req.Space)
 	if err != nil {
-		s.agents.Remove(agent.ID)
+		s.registry.Remove(agent.ID)
 		return writeError(c, fiber.StatusBadRequest, err.Error())
 	}
 
 	if err := s.launcher.Start(c.Context(), agent, env); err != nil {
-		s.agents.Remove(agent.ID)
+		s.registry.Remove(agent.ID)
 		return writeError(c, fiber.StatusInternalServerError, err.Error())
 	}
 
-	return writeJSON(c, fiber.StatusCreated, toAPIAgentInfo(agent))
+	return writeJSON(c, fiber.StatusCreated, toAPIRuntimeInfo(agent))
 }
 
-// handleGetAgent serves GET /v1/agents/:id.
-func (s *Server) handleGetAgent(c *fiber.Ctx) error {
+// handleGetRuntime serves GET /v1/runtimes/:id.
+func (s *Server) handleGetRuntime(c *fiber.Ctx) error {
 	id := c.Params("id")
-	agent, err := s.agents.Get(id)
+	agent, err := s.registry.Get(id)
 	if err != nil {
 		return writeError(c, fiber.StatusNotFound, err.Error())
 	}
-	return writeJSON(c, fiber.StatusOK, toAPIAgentInfo(agent))
+	return writeJSON(c, fiber.StatusOK, toAPIRuntimeInfo(agent))
 }
 
-// handleStopAgent serves POST /v1/agents/:id/stop.
-func (s *Server) handleStopAgent(c *fiber.Ctx) error {
+// handleStopRuntime serves POST /v1/runtimes/:id/stop.
+func (s *Server) handleStopRuntime(c *fiber.Ctx) error {
 	id := c.Params("id")
-	s.agents.Lock()
-	defer s.agents.Unlock()
-	agent, err := s.agents.GetLocked(id)
+
+	agent, err := s.registry.Get(id)
 	if err != nil {
 		return writeError(c, fiber.StatusNotFound, err.Error())
 	}
-	if agent.Status != api.AgentRunning && agent.Status != api.AgentStarting {
-		return writeError(c, fiber.StatusConflict, fmt.Sprintf("agent %s is not running (status: %s)", id, agent.Status))
+	if agent.Status != api.RuntimeRunning && agent.Status != api.RuntimeStarting {
+		return writeError(c, fiber.StatusConflict, fmt.Sprintf("runtime %s is not running (status: %s)", id, agent.Status))
 	}
 	if err := s.launcher.Stop(agent); err != nil {
 		return writeError(c, fiber.StatusInternalServerError, err.Error())
 	}
-	return writeJSON(c, fiber.StatusOK, toAPIAgentInfo(agent))
+	return writeJSON(c, fiber.StatusOK, toAPIRuntimeInfo(agent))
 }
 
-func toAPIAgentInfo(a *registry.Agent) api.AgentInfo {
-	info := api.AgentInfo{
+func toAPIRuntimeInfo(a *runtime.Runtime) api.RuntimeInfo {
+	info := api.RuntimeInfo{
 		ID:         a.ID,
 		Space:      a.Space,
 		WorkingDir: a.WorkingDir,
@@ -121,14 +120,14 @@ func toAPIAgentInfo(a *registry.Agent) api.AgentInfo {
 		Port:       a.Port,
 		StartedAt:  a.StartedAt,
 	}
-	if a.Status == api.AgentRunning && !a.StartedAt.IsZero() {
+	if a.Status == api.RuntimeRunning && !a.StartedAt.IsZero() {
 		info.Uptime = time.Since(a.StartedAt).Round(time.Second).String()
 	}
 	return info
 }
 
-// generateAgentID returns a short random hex ID.
-func generateAgentID() string {
+// generateRuntimeID returns a short random hex ID.
+func generateRuntimeID() string {
 	var buf [6]byte
 	if _, err := rand.Read(buf[:]); err != nil {
 		// Fallback: use timestamp + pid for uniqueness (not cryptographically secure)
