@@ -20,16 +20,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/quarkloop/agent/pkg/provider"
+	"github.com/quarkloop/agent/pkg/llm"
 	"github.com/quarkloop/pkg/plugin"
 )
 
 // Manager loads tool and provider plugins from disk and dispatches calls to them.
 //
 // Tool plugins run as api-mode HTTP servers or as lib-mode .so files loaded
-// in-process. Provider plugins are always lib-mode (.so) and are wrapped with
-// ProviderAdapter so the agent's LLM code can call them through the
-// provider.Provider interface.
+// in-process. Provider plugins are always lib-mode (.so) and implement the
+// llm.Provider interface (a reduced subset of plugin.ProviderPlugin).
 type Manager struct {
 	mu         sync.RWMutex
 	pluginsDir string
@@ -46,10 +45,10 @@ type Manager struct {
 	libTools map[string]plugin.ToolPlugin
 
 	// Tool schemas aggregated from all loaded tools
-	tools []provider.Tool
+	tools []plugin.ToolSchema
 
-	// Provider plugins (lib mode, wrapped with adapter)
-	providers map[string]provider.Provider
+	// Provider plugins (lib mode, wrapped to satisfy llm.Provider)
+	providers map[string]llm.Provider
 }
 
 // NewManager creates a plugin manager rooted at the given plugins directory
@@ -69,8 +68,8 @@ func NewManager(pluginsDir string) *Manager {
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 		nextPort:   8100,
 		libTools:   make(map[string]plugin.ToolPlugin),
-		providers:  make(map[string]provider.Provider),
-		tools:      make([]provider.Tool, 0),
+		providers:  make(map[string]llm.Provider),
+		tools:      make([]plugin.ToolSchema, 0),
 	}
 }
 
@@ -143,25 +142,25 @@ func (m *Manager) UnloadPlugin(name string) bool {
 	}
 
 	if unloaded {
-		m.removeToolSchema(name)
+		m.removeToolSchemaLocked(name)
 	}
 	return unloaded
 }
 
 // GetTools returns the aggregated tool schemas for all loaded tools.
-func (m *Manager) GetTools() []provider.Tool {
+func (m *Manager) GetTools() []plugin.ToolSchema {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	out := make([]provider.Tool, len(m.tools))
+	out := make([]plugin.ToolSchema, len(m.tools))
 	copy(out, m.tools)
 	return out
 }
 
 // GetProviders returns a copy of the loaded provider map keyed by provider ID.
-func (m *Manager) GetProviders() map[string]provider.Provider {
+func (m *Manager) GetProviders() map[string]llm.Provider {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	out := make(map[string]provider.Provider, len(m.providers))
+	out := make(map[string]llm.Provider, len(m.providers))
 	for k, v := range m.providers {
 		out[k] = v
 	}
@@ -169,7 +168,7 @@ func (m *Manager) GetProviders() map[string]provider.Provider {
 }
 
 // GetProvider returns a single provider by ID.
-func (m *Manager) GetProvider(id string) (provider.Provider, bool) {
+func (m *Manager) GetProvider(id string) (llm.Provider, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	p, ok := m.providers[id]
@@ -215,7 +214,7 @@ func (m *Manager) ExecuteTool(ctx context.Context, name, arguments string) (stri
 	if isBinary {
 		return m.executeBinary(ctx, name, endpoint, arguments)
 	}
-	return "", fmt.Errorf("tool %q not found or not running", name)
+	return "", fmt.Errorf("tool not found or not running")
 }
 
 // Shutdown stops all api-mode plugin processes.
@@ -320,14 +319,7 @@ func (m *Manager) loadToolLibLocked(ctx context.Context, manifest *plugin.Manife
 	}
 
 	m.libTools[toolName] = tp
-	m.tools = append(m.tools, provider.Tool{
-		Type: "function",
-		Function: provider.ToolFunction{
-			Name:        schema.Name,
-			Description: schema.Description,
-			Parameters:  schema.Parameters,
-		},
-	})
+	m.tools = append(m.tools, schema)
 	fmt.Printf("pluginmanager: loaded tool %s (lib)\n", toolName)
 	return nil
 }
@@ -366,14 +358,7 @@ func (m *Manager) loadToolBinaryLocked(ctx context.Context, manifest *plugin.Man
 	}
 
 	if manifest.Tool != nil {
-		m.tools = append(m.tools, provider.Tool{
-			Type: "function",
-			Function: provider.ToolFunction{
-				Name:        manifest.Tool.Schema.Name,
-				Description: manifest.Tool.Schema.Description,
-				Parameters:  manifest.Tool.Schema.Parameters,
-			},
-		})
+		m.tools = append(m.tools, manifest.Tool.Schema)
 	}
 
 	port := m.nextPort
@@ -427,7 +412,8 @@ func (m *Manager) loadProviderLocked(ctx context.Context, manifest *plugin.Manif
 		}
 	}
 
-	m.providers[pp.ProviderID()] = NewProviderAdapter(pp)
+	// Wrap the full ProviderPlugin with the reduced llm.Provider interface.
+	m.providers[pp.ProviderID()] = llm.NewProviderAdapter(pp)
 	fmt.Printf("pluginmanager: loaded provider %s (id: %s)\n", manifest.Name, pp.ProviderID())
 	return nil
 }
@@ -476,9 +462,11 @@ func (m *Manager) executeBinary(ctx context.Context, name, endpoint, arguments s
 	return string(data), nil
 }
 
-func (m *Manager) removeToolSchema(name string) {
+// removeToolSchemaLocked removes the tool schema for the given name.
+// Caller must hold m.mu.
+func (m *Manager) removeToolSchemaLocked(name string) {
 	for i, t := range m.tools {
-		if t.Function.Name == name {
+		if t.Name == name {
 			m.tools = append(m.tools[:i], m.tools[i+1:]...)
 			return
 		}
