@@ -1,11 +1,11 @@
-// agent is the quark agent binary.
+// runtime is the quark runtime binary.
 package main
 
 import (
 	"fmt"
 	"os"
 
-	"github.com/quarkloop/agent/pkg/commands"
+	"github.com/quarkloop/runtime/pkg/commands"
 )
 
 func main() {
