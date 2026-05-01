@@ -7,8 +7,6 @@ import (
 	"log/slog"
 	"net/http"
 	"sync"
-
-	"github.com/quarkloop/agent/pkg/provider"
 )
 
 // ModelEntry defines a model in the remote model list.
@@ -25,7 +23,7 @@ type Registry struct {
 	mu       sync.RWMutex
 	models   map[string]*Client // keyed by model ID
 	Default  string             // default model ID
-	provider provider.Provider  // current provider
+	provider Provider           // current provider
 }
 
 // NewRegistry creates a new empty model Registry.
@@ -36,7 +34,7 @@ func NewRegistry() *Registry {
 }
 
 // LoadFromURL fetches a model list from a remote URL and initializes clients.
-func (r *Registry) LoadFromURL(url string, providers map[string]provider.Provider) error {
+func (r *Registry) LoadFromURL(url string, providers map[string]Provider) error {
 	resp, err := http.Get(url)
 	if err != nil {
 		return fmt.Errorf("fetch model list: %w", err)
@@ -57,7 +55,7 @@ func (r *Registry) LoadFromURL(url string, providers map[string]provider.Provide
 }
 
 // LoadEntries initializes clients from a list of model entries.
-func (r *Registry) LoadEntries(entries []ModelEntry, providers map[string]provider.Provider) error {
+func (r *Registry) LoadEntries(entries []ModelEntry, providers map[string]Provider) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -121,7 +119,7 @@ func (r *Registry) List() []string {
 }
 
 // AddModel dynamically adds a model to the registry.
-func (r *Registry) AddModel(modelID string, p provider.Provider, contextWindow int) {
+func (r *Registry) AddModel(modelID string, p Provider, contextWindow int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.models[modelID] = NewClient(p, modelID, contextWindow)
