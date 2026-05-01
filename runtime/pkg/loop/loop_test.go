@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/quarkloop/agent/pkg/loop"
+	"github.com/quarkloop/runtime/pkg/loop"
 )
 
 type testMessage struct {

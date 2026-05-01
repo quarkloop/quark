@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/quarkloop/agent/pkg/loop"
+	"github.com/quarkloop/runtime/pkg/loop"
 )
 
 // WorkItem represents a unit of work that can be delegated to a sub-agent.

@@ -3,7 +3,7 @@ package hierarchy_test
 import (
 	"testing"
 
-	"github.com/quarkloop/agent/pkg/hierarchy"
+	"github.com/quarkloop/runtime/pkg/hierarchy"
 )
 
 func TestRegistryMain(t *testing.T) {
