@@ -13,17 +13,22 @@ import (
 	"github.com/quarkloop/supervisor/pkg/registry"
 )
 
+// StopCallback is invoked under the registry lock when an agent process exits.
+type StopCallback func(agentID string)
+
 // Launcher manages agent process lifecycle.
 type Launcher struct {
 	agentBin      string
 	supervisorURL string
+	onStop        StopCallback
 }
 
 // New creates a Launcher that spawns the given agent binary. supervisorURL is
 // forwarded to the child as QUARK_SUPERVISOR_URL so the agent can subscribe to
 // supervisor SSE events and issue KB/config reads.
-func New(agentBin, supervisorURL string) *Launcher {
-	return &Launcher{agentBin: agentBin, supervisorURL: supervisorURL}
+// onStop is called under the registry lock when an agent process exits.
+func New(agentBin, supervisorURL string, onStop StopCallback) *Launcher {
+	return &Launcher{agentBin: agentBin, supervisorURL: supervisorURL, onStop: onStop}
 }
 
 // Start launches an agent process for the registry entry. On success it
@@ -67,15 +72,16 @@ func (l *Launcher) Start(ctx context.Context, agent *registry.Agent, quarkfileEn
 		if err := cmd.Wait(); err != nil {
 			slog.Error("agent exited with error", "agent_id", agent.ID, "error", err)
 		}
-		agent.Status = api.AgentStopped
-		agent.PID = 0
-		agent.Cmd = nil
+		if l.onStop != nil {
+			l.onStop(agent.ID)
+		}
 	}()
 
 	return nil
 }
 
-// Stop sends SIGTERM to the agent process.
+// Stop sends SIGTERM to the agent process. The caller must hold the registry
+// write lock for the duration of this call to avoid a data race on agent.Status.
 func (l *Launcher) Stop(agent *registry.Agent) error {
 	if agent.Cmd == nil || agent.Cmd.Process == nil {
 		return fmt.Errorf("agent %s is not running", agent.ID)

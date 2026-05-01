@@ -61,11 +61,15 @@ func New(cfg Config) (*Server, error) {
 	}
 
 	supervisorURL := fmt.Sprintf("http://127.0.0.1:%d", cfg.Port)
+	agentsReg := registry.New()
+	agentsLauncher := runtime.New(cfg.AgentBin, supervisorURL, func(id string) {
+		agentsReg.SetStopped(id)
+	})
 	s := &Server{
 		cfg:      cfg,
 		store:    store,
-		agents:   registry.New(),
-		launcher: runtime.New(cfg.AgentBin, supervisorURL),
+		agents:   agentsReg,
+		launcher: agentsLauncher,
 		events:   events.NewBus(),
 	}
 	s.app = fiber.New(fiber.Config{

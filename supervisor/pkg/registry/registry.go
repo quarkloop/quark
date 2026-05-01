@@ -96,3 +96,37 @@ func (r *Registry) SetStatus(id string, status api.AgentStatus) error {
 	a.Status = status
 	return nil
 }
+
+// SetStopped marks a stopped agent's runtime fields under the registry lock.
+// This is called from the goroutine that waits on cmd.Wait() to avoid
+// data races with concurrent Get/GetBySpace readers.
+func (r *Registry) SetStopped(id string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if a, ok := r.agents[id]; ok {
+		a.Status = api.AgentStopped
+		a.PID = 0
+		a.Cmd = nil
+	}
+}
+
+// Lock acquires the write lock for external use (e.g., holding across
+// a Get + subsequent mutations like Status updates in Stop).
+func (r *Registry) Lock() {
+	r.mu.Lock()
+}
+
+// Unlock releases the write lock.
+func (r *Registry) Unlock() {
+	r.mu.Unlock()
+}
+
+// GetLocked returns an agent by ID without acquiring any lock.
+// The caller must hold the write lock.
+func (r *Registry) GetLocked(id string) (*Agent, error) {
+	a, ok := r.agents[id]
+	if !ok {
+		return nil, fmt.Errorf("agent %q not found", id)
+	}
+	return a, nil
+}

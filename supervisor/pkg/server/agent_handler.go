@@ -96,7 +96,9 @@ func (s *Server) handleGetAgent(c *fiber.Ctx) error {
 // handleStopAgent serves POST /v1/agents/:id/stop.
 func (s *Server) handleStopAgent(c *fiber.Ctx) error {
 	id := c.Params("id")
-	agent, err := s.agents.Get(id)
+	s.agents.Lock()
+	defer s.agents.Unlock()
+	agent, err := s.agents.GetLocked(id)
 	if err != nil {
 		return writeError(c, fiber.StatusNotFound, err.Error())
 	}
