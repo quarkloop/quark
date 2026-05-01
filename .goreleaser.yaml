@@ -3,10 +3,10 @@ version: 2
 project_name: quark
 
 builds:
-  - id: agent
-    dir: agent
-    main: ./cmd/agent
-    binary: agent
+  - id: runtime
+    dir: runtime
+    main: ./cmd/runtime
+    binary: runtime
     goos:
       - linux
       - darwin
