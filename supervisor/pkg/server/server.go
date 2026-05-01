@@ -4,15 +4,19 @@ package server
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
+
+	"github.com/quarkloop/supervisor/internal/supervisor"
 	"github.com/quarkloop/supervisor/pkg/api"
 	"github.com/quarkloop/supervisor/pkg/events"
-	"github.com/quarkloop/supervisor/pkg/registry"
 	"github.com/quarkloop/supervisor/pkg/runtime"
 	"github.com/quarkloop/supervisor/pkg/space"
 	"github.com/quarkloop/supervisor/pkg/space/fsstore"
@@ -25,18 +29,19 @@ type Config struct {
 	// SpacesDir is the root directory for the filesystem-backed space store.
 	// When empty, fsstore.DefaultRoot() is used.
 	SpacesDir string
-	// AgentBin is the path (or name on $PATH) of the agent binary to launch.
-	AgentBin string
+	// RuntimeBin is the path (or name on $PATH) of the runtime binary to launch.
+	RuntimeBin string
 }
 
 // Server is the Supervisor HTTP API server.
 type Server struct {
-	cfg      Config
+	cfg Config
+	app *fiber.App
+
 	store    space.Store
-	agents   *registry.Registry
+	registry *runtime.Registry
 	launcher *runtime.Launcher
 	events   *events.Bus
-	app      *fiber.App
 }
 
 // New creates a new Supervisor server.
@@ -44,8 +49,8 @@ func New(cfg Config) (*Server, error) {
 	if cfg.Port == 0 {
 		cfg.Port = 7200
 	}
-	if cfg.AgentBin == "" {
-		cfg.AgentBin = "agent"
+	if cfg.RuntimeBin == "" {
+		cfg.RuntimeBin = "runtime"
 	}
 	root := cfg.SpacesDir
 	if root == "" {
@@ -61,27 +66,26 @@ func New(cfg Config) (*Server, error) {
 	}
 
 	supervisorURL := fmt.Sprintf("http://127.0.0.1:%d", cfg.Port)
-	agentsReg := registry.New()
-	agentsLauncher := runtime.New(cfg.AgentBin, supervisorURL, func(id string) {
-		agentsReg.SetStopped(id)
+	runtimesReg := runtime.NewRegistry()
+	runtimesLauncher := runtime.NewLauncher(cfg.RuntimeBin, supervisorURL, func(id string) {
+		runtimesReg.SetStopped(id)
 	})
 	s := &Server{
 		cfg:      cfg,
 		store:    store,
-		agents:   agentsReg,
-		launcher: agentsLauncher,
+		registry: runtimesReg,
+		launcher: runtimesLauncher,
 		events:   events.NewBus(),
 	}
-	s.app = fiber.New(fiber.Config{
+
+	fiberConfig := fiber.Config{
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		ErrorHandler: s.errorHandler,
-	})
-
+	}
+	s.app = fiber.New(fiberConfig)
 	s.app.Use(recover.New())
-	s.app.Use(logger.New(logger.Config{
-		Format: "${time} ${status} - ${latency} ${method} ${path}\n",
-	}))
+	s.app.Use(logger.New(logger.Config{Format: "${time} ${status} - ${latency} ${method} ${path}\n"}))
 	s.app.Use(cors.New(cors.Config{
 		AllowOrigins: "*",
 		AllowHeaders: "Origin, Content-Type, Accept",
@@ -92,7 +96,17 @@ func New(cfg Config) (*Server, error) {
 }
 
 // Run starts the HTTP server and blocks until ctx is cancelled.
-func (s *Server) Run(ctx context.Context) error {
+func (s *Server) Start(ctx context.Context) error {
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	sup := supervisor.New()
+	// Write state before accepting traffic
+	if err := sup.Save(supervisor.State{Port: s.cfg.Port, PID: os.Getpid()}); err != nil {
+		return fmt.Errorf("writing state: %w", err)
+	}
+	defer sup.Clear() // clean up on exit
+
 	errCh := make(chan error, 1)
 	go func() {
 		fmt.Printf("supervisor listening on :%d\n", s.cfg.Port)
@@ -103,7 +117,7 @@ func (s *Server) Run(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
-		shutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		shutCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 		return s.app.ShutdownWithContext(shutCtx)
 	case err := <-errCh:
@@ -118,4 +132,15 @@ func (s *Server) errorHandler(c *fiber.Ctx, err error) error {
 		code = e.Code
 	}
 	return c.Status(code).JSON(api.ErrorResponse{Error: err.Error()})
+}
+
+func Stop() error {
+	sup := supervisor.New()
+
+	state, err := sup.Load()
+	if err != nil {
+		return err // "supervisor is not running"
+	}
+
+	return stopSupervisorProcess(state.PID, state.Port)
 }
