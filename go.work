@@ -1,7 +1,6 @@
 go 1.25.0
 
 use (
-	./agent
 	./cli
 	./e2e
 	./pkg/plugin
@@ -14,11 +13,11 @@ use (
 	./plugins/tools/build-release
 	./plugins/tools/fs
 	./plugins/tools/web-search
+	./runtime
 	./supervisor
 )
 
 replace (
-	github.com/quarkloop/agent v0.0.0 => ./agent
 	github.com/quarkloop/cli v0.0.0 => ./cli
 	github.com/quarkloop/pkg/plugin v0.0.0 => ./pkg/plugin
 	github.com/quarkloop/pkg/space v0.0.0 => ./pkg/space
@@ -30,5 +29,6 @@ replace (
 	github.com/quarkloop/plugins/tools/build-release v0.0.0 => ./plugins/tools/build-release
 	github.com/quarkloop/plugins/tools/fs v0.0.0 => ./plugins/tools/fs
 	github.com/quarkloop/plugins/tools/web-search v0.0.0 => ./plugins/tools/web-search
+	github.com/quarkloop/runtime v0.0.0 => ./runtime
 	github.com/quarkloop/supervisor v0.0.0 => ./supervisor
 )
