@@ -34,45 +34,45 @@ func NewLauncher(runtimeBin, supervisorURL string, onStop StopCallback) *Launche
 // sets entry.Cmd, entry.PID, entry.Status = RuntimeRunning. When the
 // process exits the status is transitioned to RuntimeStopped.
 func (l *Launcher) Start(ctx context.Context, rt *Runtime, quarkfileEnv []string) error {
-	if rt.Port == 0 {
-		return fmt.Errorf("launch runtime %s: port not assigned", rt.ID)
+	if rt.Port() == 0 {
+		return fmt.Errorf("launch runtime %s: port not assigned", rt.ID())
 	}
 	// Use a detached context: the child runtime's lifetime is owned by the
 	// registry, not by the HTTP request that spawned it.
 	// ctx is intentionally unused; the goroutine manages its own lifecycle.
 	cmd := exec.Command(l.runtimeBin,
 		"start",
-		"--port", fmt.Sprintf("%d", rt.Port),
+		"--port", fmt.Sprintf("%d", rt.Port()),
 	)
-	cmd.Dir = rt.WorkingDir
+	cmd.Dir = rt.WorkingDir()
 	cmd.Env = append(os.Environ(),
-		fmt.Sprintf("QUARK_RUNTIME_ID=%s", rt.ID),
-		fmt.Sprintf("QUARK_SPACE=%s", rt.Space),
+		fmt.Sprintf("QUARK_RUNTIME_ID=%s", rt.ID()),
+		fmt.Sprintf("QUARK_SPACE=%s", rt.Space()),
 	)
 	cmd.Env = append(cmd.Env, quarkfileEnv...)
 	if l.supervisorURL != "" {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("QUARK_SUPERVISOR_URL=%s", l.supervisorURL))
 	}
-	if rt.PluginsDir != "" {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("QUARK_PLUGINS_DIR=%s", rt.PluginsDir))
+	if rt.PluginsDir() != "" {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("QUARK_PLUGINS_DIR=%s", rt.PluginsDir()))
 	}
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("launch runtime %s: %w", rt.ID, err)
+		return fmt.Errorf("launch runtime %s: %w", rt.ID(), err)
 	}
 
-	rt.Cmd = cmd
-	rt.PID = cmd.Process.Pid
-	rt.Status = api.RuntimeRunning
+	rt.SetCmd(cmd)
+	rt.SetPID(cmd.Process.Pid)
+	rt.SetStatus(api.RuntimeRunning)
 
 	go func() {
 		if err := cmd.Wait(); err != nil {
-			slog.Error("runtime exited with error", "runtime_id", rt.ID, "error", err)
+			slog.Error("runtime exited with error", "runtime_id", rt.ID(), "error", err)
 		}
 		if l.onStop != nil {
-			l.onStop(rt.ID)
+			l.onStop(rt.ID())
 		}
 	}()
 
@@ -82,12 +82,12 @@ func (l *Launcher) Start(ctx context.Context, rt *Runtime, quarkfileEnv []string
 // Stop sends SIGTERM to the runtime process. The caller must hold the registry
 // write lock for the duration of this call to avoid a data race on rt.Status.
 func (l *Launcher) Stop(rt *Runtime) error {
-	if rt.Cmd == nil || rt.Cmd.Process == nil {
-		return fmt.Errorf("runtime %s is not running", rt.ID)
+	if rt.Cmd() == nil || rt.Cmd().Process == nil {
+		return fmt.Errorf("runtime %s is not running", rt.ID())
 	}
-	rt.Status = api.RuntimeStopping
-	if err := rt.Cmd.Process.Signal(syscall.SIGTERM); err != nil {
-		return fmt.Errorf("signal runtime %s: %w", rt.ID, err)
+	rt.SetStatus(api.RuntimeStopping)
+	if err := rt.Cmd().Process.Signal(syscall.SIGTERM); err != nil {
+		return fmt.Errorf("signal runtime %s: %w", rt.ID(), err)
 	}
 	return nil
 }
