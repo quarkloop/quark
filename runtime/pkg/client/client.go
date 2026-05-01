@@ -19,7 +19,7 @@ type ClientOption func(*Client)
 func New(baseURL string, opts ...ClientOption) *Client {
 	c := &Client{
 		transport: NewTransport(baseURL),
-		basePath:  api.DefaultAgentBasePath,
+		basePath:  api.DefaultRuntimeBasePath,
 	}
 	for _, opt := range opts {
 		opt(c)
