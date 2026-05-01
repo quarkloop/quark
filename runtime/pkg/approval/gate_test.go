@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/quarkloop/agent/pkg/approval"
+	"github.com/quarkloop/runtime/pkg/approval"
 )
 
 func TestGateApprove(t *testing.T) {
