@@ -19,7 +19,7 @@ const (
 	QuarkfileUpdated Kind = "quarkfile.updated"
 	PluginInstalled  Kind = "plugin.installed"
 	PluginRemoved    Kind = "plugin.removed"
-	AgentShutdown    Kind = "agent.shutdown"
+	RuntimeShutdown  Kind = "runtime.shutdown"
 )
 
 // Event is the wire format for a supervisor → agent signal.
