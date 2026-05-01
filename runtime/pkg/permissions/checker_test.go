@@ -3,7 +3,7 @@ package permissions_test
 import (
 	"testing"
 
-	"github.com/quarkloop/agent/pkg/permissions"
+	"github.com/quarkloop/runtime/pkg/permissions"
 )
 
 func TestToolPermissions(t *testing.T) {

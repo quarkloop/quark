@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/quarkloop/agent/pkg/llm"
-	"github.com/quarkloop/agent/pkg/llmcontext"
+	"github.com/quarkloop/runtime/pkg/llm"
+	"github.com/quarkloop/runtime/pkg/llmcontext"
 	"github.com/quarkloop/pkg/plugin"
 )
 

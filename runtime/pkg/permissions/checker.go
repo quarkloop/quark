@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/quarkloop/agent/pkg/loop"
+	"github.com/quarkloop/runtime/pkg/loop"
 )
 
 // ErrToolNotAllowed is returned when a tool is not in the allowed list.
