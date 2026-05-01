@@ -1,5 +1,5 @@
 // Package api defines HTTP types and path helpers shared between the
-// supervisor server, the supervisor Go SDK, and the agent HTTP client.
+// supervisor server, the supervisor Go SDK, and the runtime HTTP client.
 package api
 
 import (
@@ -7,10 +7,10 @@ import (
 	"strings"
 )
 
-// DefaultAgentBasePath is the URL prefix for the direct agent HTTP API.
-const DefaultAgentBasePath = "/api/v1/agent"
+// DefaultRuntimeBasePath is the URL prefix for the direct runtime HTTP API.
+const DefaultRuntimeBasePath = "/api/v1/runtime"
 
-// Agent API path suffixes (relative to an agent's base URL).
+// Runtime API path suffixes (relative to a runtime's base URL).
 const (
 	PathHealth          = "/health"
 	PathInfo            = "/info"
