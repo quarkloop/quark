@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	agentclient "github.com/quarkloop/agent/pkg/client"
+	agentclient "github.com/quarkloop/runtime/pkg/client"
 	spacemodel "github.com/quarkloop/pkg/space"
 	"github.com/quarkloop/supervisor/pkg/api"
 	supclient "github.com/quarkloop/supervisor/pkg/client"
@@ -17,7 +17,7 @@ import (
 func InspectCLI() *cobra.Command {
 	return &cobra.Command{
 		Use:   "inspect",
-		Short: "Show status and details of the current space and its agent",
+		Short: "Show status and details of the current space and its runtime",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := os.Getwd()
@@ -40,32 +40,32 @@ func InspectCLI() *cobra.Command {
 			fmt.Printf("Created:    %s\n", info.CreatedAt.Format(time.RFC3339))
 			fmt.Printf("Updated:    %s\n", info.UpdatedAt.Format(time.RFC3339))
 
-			agent, err := sup.AgentBySpace(cmd.Context(), name)
+			rt, err := sup.RuntimeBySpace(cmd.Context(), name)
 			if err != nil {
 				if supclient.IsNotFound(err) {
-					fmt.Println("Agent:      (not running)")
+					fmt.Println("Runtime:    (not running)")
 					return nil
 				}
 				return err
 			}
-			fmt.Printf("Agent ID:   %s\n", agent.ID)
-			fmt.Printf("Status:     %s\n", agent.Status)
-			if agent.PID != 0 {
-				fmt.Printf("PID:        %d\n", agent.PID)
+			fmt.Printf("Runtime ID: %s\n", rt.ID)
+			fmt.Printf("Status:     %s\n", rt.Status)
+			if rt.PID != 0 {
+				fmt.Printf("PID:        %d\n", rt.PID)
 			}
-			if agent.Port != 0 {
-				fmt.Printf("Port:       %d\n", agent.Port)
+			if rt.Port != 0 {
+				fmt.Printf("Port:       %d\n", rt.Port)
 			}
-			if !agent.StartedAt.IsZero() {
-				fmt.Printf("Started:    %s\n", agent.StartedAt.Format(time.RFC3339))
+			if !rt.StartedAt.IsZero() {
+				fmt.Printf("Started:    %s\n", rt.StartedAt.Format(time.RFC3339))
 			}
-			if agent.Uptime != "" {
-				fmt.Printf("Uptime:     %s\n", agent.Uptime)
+			if rt.Uptime != "" {
+				fmt.Printf("Uptime:     %s\n", rt.Uptime)
 			}
-			if agent.Status != api.AgentRunning {
+			if rt.Status != api.RuntimeRunning {
 				return nil
 			}
-			runtimeInfo, err := agentclient.New(agent.URL()).Info(cmd.Context())
+			runtimeInfo, err := agentclient.New(rt.URL()).Info(cmd.Context())
 			if err != nil {
 				return nil
 			}
