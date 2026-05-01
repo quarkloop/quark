@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/quarkloop/agent/pkg/channel"
-	"github.com/quarkloop/agent/pkg/message"
+	"github.com/quarkloop/runtime/pkg/channel"
+	"github.com/quarkloop/runtime/pkg/message"
 )
 
 const apiBase = "https://api.telegram.org/bot"

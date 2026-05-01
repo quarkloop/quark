@@ -10,9 +10,9 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 
-	"github.com/quarkloop/agent/pkg/agent"
-	"github.com/quarkloop/agent/pkg/api"
-	"github.com/quarkloop/agent/pkg/channel"
+	"github.com/quarkloop/runtime/pkg/agent"
+	"github.com/quarkloop/runtime/pkg/api"
+	"github.com/quarkloop/runtime/pkg/channel"
 )
 
 // WebChannel manages the HTTP server and registers API routes.
