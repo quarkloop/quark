@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/quarkloop/agent/pkg/message"
+	"github.com/quarkloop/runtime/pkg/message"
 )
 
 // AgentSession represents an in-memory agent communication channel with

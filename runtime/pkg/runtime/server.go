@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/quarkloop/agent/pkg/channel"
+	"github.com/quarkloop/runtime/pkg/channel"
 )
 
 // Server manages the ChannelBus lifecycle.

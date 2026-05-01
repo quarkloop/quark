@@ -20,7 +20,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/quarkloop/agent/pkg/llm"
+	"github.com/quarkloop/runtime/pkg/llm"
 	"github.com/quarkloop/pkg/plugin"
 )
 

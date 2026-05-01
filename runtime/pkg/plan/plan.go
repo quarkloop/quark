@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/quarkloop/agent/pkg/message"
+	"github.com/quarkloop/runtime/pkg/message"
 	"github.com/quarkloop/pkg/plugin"
 )
 
