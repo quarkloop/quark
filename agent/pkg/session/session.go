@@ -7,8 +7,11 @@ import (
 	"github.com/quarkloop/agent/pkg/message"
 )
 
-// Session represents a communication channel with isolated context.
-type Session struct {
+// AgentSession represents an in-memory agent communication channel with
+// isolated context, message history, and live subscriber notifications.
+// This is distinct from the supervisor's session persistence/wire types
+// (supervisor/pkg/sessions.Session and supervisor/pkg/api.Session).
+type AgentSession struct {
 	mu          sync.RWMutex
 	ID          string            `json:"id"`
 	Type        string            `json:"type"`
@@ -21,7 +24,7 @@ type Session struct {
 }
 
 // AddMessage appends a message to the session history and notifies subscribers.
-func (s *Session) AddMessage(role, content string) {
+func (s *AgentSession) AddMessage(role, content string) {
 	msg := message.Message{
 		Role:      role,
 		Content:   content,
@@ -46,7 +49,7 @@ func (s *Session) AddMessage(role, content string) {
 }
 
 // GetMessages returns a copy of the session message history.
-func (s *Session) GetMessages() []message.Message {
+func (s *AgentSession) GetMessages() []message.Message {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make([]message.Message, len(s.Messages))
@@ -55,7 +58,7 @@ func (s *Session) GetMessages() []message.Message {
 }
 
 // Subscribe returns a channel that receives new messages added to the session.
-func (s *Session) Subscribe() chan message.Message {
+func (s *AgentSession) Subscribe() chan message.Message {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	ch := make(chan message.Message, 16)
@@ -67,7 +70,7 @@ func (s *Session) Subscribe() chan message.Message {
 }
 
 // Unsubscribe removes a subscriber channel.
-func (s *Session) Unsubscribe(ch chan message.Message) {
+func (s *AgentSession) Unsubscribe(ch chan message.Message) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.subscribers, ch)
@@ -76,16 +79,16 @@ func (s *Session) Unsubscribe(ch chan message.Message) {
 // Registry manages all sessions for an agent.
 type Registry struct {
 	mu       sync.RWMutex
-	sessions map[string]*Session
+	sessions map[string]*AgentSession
 }
 
 // NewRegistry creates a new session Registry.
 func NewRegistry() *Registry {
-	return &Registry{sessions: make(map[string]*Session)}
+	return &Registry{sessions: make(map[string]*AgentSession)}
 }
 
 // GetOrCreate returns an existing session or creates a new one.
-func (r *Registry) GetOrCreate(id, sessionType, title string) *Session {
+func (r *Registry) GetOrCreate(id, sessionType, title string) *AgentSession {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -93,7 +96,7 @@ func (r *Registry) GetOrCreate(id, sessionType, title string) *Session {
 		return s
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	s := &Session{
+	s := &AgentSession{
 		ID:        id,
 		Type:      sessionType,
 		Title:     title,
@@ -105,18 +108,25 @@ func (r *Registry) GetOrCreate(id, sessionType, title string) *Session {
 	return s
 }
 
-// Delete removes a session.
+// Delete removes a session. The session status is set under s.mu to avoid
+// a race with concurrent AddMessage holders of s.mu.
 func (r *Registry) Delete(id string) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	if s, ok := r.sessions[id]; ok {
-		s.Status = "ended"
+	s, ok := r.sessions[id]
+	if ok {
 		delete(r.sessions, id)
+	}
+	r.mu.Unlock()
+
+	if ok {
+		s.mu.Lock()
+		s.Status = "ended"
+		s.mu.Unlock()
 	}
 }
 
 // Get returns a session by ID.
-func (r *Registry) Get(id string) *Session {
+func (r *Registry) Get(id string) *AgentSession {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.sessions[id]
@@ -131,10 +141,10 @@ func (r *Registry) Has(id string) bool {
 }
 
 // List returns all active sessions.
-func (r *Registry) List() []*Session {
+func (r *Registry) List() []*AgentSession {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	out := make([]*Session, 0, len(r.sessions))
+	out := make([]*AgentSession, 0, len(r.sessions))
 	for _, s := range r.sessions {
 		out = append(out, s)
 	}
