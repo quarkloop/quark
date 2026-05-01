@@ -20,7 +20,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/quarkloop/runtime/pkg/llm"
 	"github.com/quarkloop/pkg/plugin"
 )
 
@@ -47,8 +46,8 @@ type Manager struct {
 	// Tool schemas aggregated from all loaded tools
 	tools []plugin.ToolSchema
 
-	// Provider plugins (lib mode, wrapped to satisfy llm.Provider)
-	providers map[string]llm.Provider
+	// Provider plugins (lib mode, satisfy plugin.Provider)
+	providers map[string]plugin.Provider
 }
 
 // NewManager creates a plugin manager rooted at the given plugins directory
@@ -68,7 +67,7 @@ func NewManager(pluginsDir string) *Manager {
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 		nextPort:   8100,
 		libTools:   make(map[string]plugin.ToolPlugin),
-		providers:  make(map[string]llm.Provider),
+		providers:  make(map[string]plugin.Provider),
 		tools:      make([]plugin.ToolSchema, 0),
 	}
 }
@@ -157,10 +156,10 @@ func (m *Manager) GetTools() []plugin.ToolSchema {
 }
 
 // GetProviders returns a copy of the loaded provider map keyed by provider ID.
-func (m *Manager) GetProviders() map[string]llm.Provider {
+func (m *Manager) GetProviders() map[string]plugin.Provider {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	out := make(map[string]llm.Provider, len(m.providers))
+	out := make(map[string]plugin.Provider, len(m.providers))
 	for k, v := range m.providers {
 		out[k] = v
 	}
@@ -168,7 +167,7 @@ func (m *Manager) GetProviders() map[string]llm.Provider {
 }
 
 // GetProvider returns a single provider by ID.
-func (m *Manager) GetProvider(id string) (llm.Provider, bool) {
+func (m *Manager) GetProvider(id string) (plugin.Provider, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	p, ok := m.providers[id]
@@ -412,8 +411,7 @@ func (m *Manager) loadProviderLocked(ctx context.Context, manifest *plugin.Manif
 		}
 	}
 
-	// Wrap the full ProviderPlugin with the reduced llm.Provider interface.
-	m.providers[pp.ProviderID()] = llm.NewProviderAdapter(pp)
+	m.providers[pp.ProviderID()] = pp
 	fmt.Printf("pluginmanager: loaded provider %s (id: %s)\n", manifest.Name, pp.ProviderID())
 	return nil
 }
