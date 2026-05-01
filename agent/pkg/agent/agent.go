@@ -18,8 +18,8 @@ import (
 	"github.com/quarkloop/agent/pkg/plan"
 	"github.com/quarkloop/agent/pkg/pluginmanager"
 	"github.com/quarkloop/agent/pkg/prompt"
-	"github.com/quarkloop/agent/pkg/provider"
 	"github.com/quarkloop/agent/pkg/session"
+	"github.com/quarkloop/pkg/plugin"
 	"github.com/quarkloop/supervisor/pkg/api"
 	supclient "github.com/quarkloop/supervisor/pkg/client"
 )
@@ -318,9 +318,9 @@ func (a *Agent) handleInitLLM(ctx context.Context, msg loop.Message) error {
 	payload := msg.(InitLLMMsg)
 	slog.Info("initializing LLM models")
 
-	providers := make(map[string]provider.Provider)
+	providers := make(map[string]llm.Provider)
 	for k, v := range payload.Providers {
-		if p, ok := v.(provider.Provider); ok {
+		if p, ok := v.(llm.Provider); ok {
 			providers[k] = p
 		}
 	}
@@ -383,7 +383,7 @@ func (a *Agent) handleWorkStep(ctx context.Context, msg loop.Message) error {
 		return nil
 	}
 
-	infer := func(ictx context.Context, msgs []provider.Message, resp chan<- string) (string, error) {
+	infer := func(ictx context.Context, msgs []plugin.Message, resp chan<- string) (string, error) {
 		return client.Infer(ictx, msgs, a.defaultTools(), a.executeTool, func(msgType string, data any) {
 			if resp != nil && msgType == "token" {
 				if s, ok := data.(string); ok {
@@ -423,7 +423,7 @@ func (a *Agent) processWork(ctx context.Context, agentID, task string) (string, 
 	}
 
 	// Simple inference for sub-agent work
-	msgs := []provider.Message{
+	msgs := []plugin.Message{
 		{Role: "system", Content: prompt.GetSystemPrompt()},
 		{Role: "user", Content: task},
 	}
@@ -432,7 +432,7 @@ func (a *Agent) processWork(ctx context.Context, agentID, task string) (string, 
 }
 
 // defaultTools returns the available tools.
-func (a *Agent) defaultTools() []provider.Tool {
+func (a *Agent) defaultTools() []plugin.ToolSchema {
 	return a.Plugins.GetTools()
 }
 
