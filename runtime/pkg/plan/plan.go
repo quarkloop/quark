@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/quarkloop/runtime/pkg/message"
 	"github.com/quarkloop/pkg/plugin"
 )
 
 // Inferrer is a function that calls the LLM. Injected by the agent to avoid
 // plan importing the llm package directly.
-type Inferrer func(ctx context.Context, messages []plugin.Message, resp chan<- string) (string, error)
+// Signature matches llm.Client.Infer for direct use without adapters.
+type Inferrer func(ctx context.Context, messages []plugin.Message, tools []plugin.ToolSchema, onTool plugin.ToolHandler, onMessage func(msgType string, data any)) (string, error)
 
 // Step is a single unit of work in a plan.
 type Step struct {
@@ -24,21 +24,21 @@ type Step struct {
 // WorkContext holds accumulated history from autonomous work execution.
 type WorkContext struct {
 	mu      sync.RWMutex
-	History []message.Message
+	History []plugin.Message
 }
 
 // AddEntry appends an entry to the work history.
 func (wc *WorkContext) AddEntry(role, content string) {
 	wc.mu.Lock()
 	defer wc.mu.Unlock()
-	wc.History = append(wc.History, message.Message{Role: role, Content: content})
+	wc.History = append(wc.History, plugin.Message{Role: role, Content: content})
 }
 
 // GetHistory returns a copy of the work history.
-func (wc *WorkContext) GetHistory() []message.Message {
+func (wc *WorkContext) GetHistory() []plugin.Message {
 	wc.mu.RLock()
 	defer wc.mu.RUnlock()
-	out := make([]message.Message, len(wc.History))
+	out := make([]plugin.Message, len(wc.History))
 	copy(out, wc.History)
 	return out
 }
@@ -135,7 +135,7 @@ func (p *Plan) GetSummary() string {
 }
 
 // ExecuteStep runs the current pending step using the provided infer function.
-func (p *Plan) ExecuteStep(ctx context.Context, infer Inferrer, systemPrompt string) error {
+func (p *Plan) ExecuteStep(ctx context.Context, infer Inferrer, systemPrompt string, tools []plugin.ToolSchema, onTool plugin.ToolHandler) error {
 	step := p.currentStep()
 	if step == nil {
 		return nil
@@ -161,14 +161,8 @@ func (p *Plan) ExecuteStep(ctx context.Context, infer Inferrer, systemPrompt str
 		Content: fmt.Sprintf("Execute this step: %s", step.Description),
 	})
 
-	// Call LLM (drain response — no user stream for work execution)
-	resp := make(chan string, 64)
-	go func() {
-		for range resp {
-		}
-	}()
-
-	result, err := infer(ctx, msgs, resp)
+	// Call LLM (no user stream for work execution)
+	result, err := infer(ctx, msgs, tools, onTool, nil)
 
 	// Write step outcome under lock in one shot to avoid a lock gap.
 	p.mu.Lock()
