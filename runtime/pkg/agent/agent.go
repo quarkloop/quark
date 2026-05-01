@@ -229,9 +229,9 @@ func (a *Agent) sendInitMessages() {
 		slog.Info("provider available", "id", id)
 	}
 
-	fallback := []llm.ModelEntry{}
+	fallback := []plugin.ModelEntry{}
 	if a.config.Model != "" {
-		fallback = append(fallback, llm.ModelEntry{
+		fallback = append(fallback, plugin.ModelEntry{
 			ID:       a.config.Model,
 			Provider: a.config.ModelProvider,
 			Name:     a.config.Model,
@@ -241,14 +241,8 @@ func (a *Agent) sendInitMessages() {
 
 	msg := NewInitLLMMsg()
 	msg.ModelListURL = a.config.ModelListURL
-	msg.Providers = make(map[string]any)
-	for k, v := range providers {
-		msg.Providers[k] = v
-	}
-	msg.Fallback = make([]any, len(fallback))
-	for i, e := range fallback {
-		msg.Fallback[i] = e
-	}
+	msg.Providers = providers
+	msg.Fallback = fallback
 
 	a.loop.Send(msg)
 }
@@ -318,12 +312,7 @@ func (a *Agent) handleInitLLM(ctx context.Context, msg loop.Message) error {
 	payload := msg.(InitLLMMsg)
 	slog.Info("initializing LLM models")
 
-	providers := make(map[string]llm.Provider)
-	for k, v := range payload.Providers {
-		if p, ok := v.(llm.Provider); ok {
-			providers[k] = p
-		}
-	}
+	providers := payload.Providers
 
 	if payload.ModelListURL != "" {
 		if err := a.Models.LoadFromURL(payload.ModelListURL, providers); err != nil {
@@ -333,14 +322,8 @@ func (a *Agent) handleInitLLM(ctx context.Context, msg loop.Message) error {
 
 	// Fallback: load from config if registry is empty
 	if a.Models.GetDefault() == nil && len(payload.Fallback) > 0 {
-		entries := make([]llm.ModelEntry, 0, len(payload.Fallback))
-		for _, e := range payload.Fallback {
-			if entry, ok := e.(llm.ModelEntry); ok {
-				entries = append(entries, entry)
-			}
-		}
-		if len(entries) > 0 {
-			if err := a.Models.LoadEntries(entries, providers); err != nil {
+		if len(payload.Fallback) > 0 {
+			if err := a.Models.LoadEntries(payload.Fallback, providers); err != nil {
 				slog.Error("fallback model init failed", "error", err)
 			}
 		}
@@ -383,17 +366,7 @@ func (a *Agent) handleWorkStep(ctx context.Context, msg loop.Message) error {
 		return nil
 	}
 
-	infer := func(ictx context.Context, msgs []plugin.Message, resp chan<- string) (string, error) {
-		return client.Infer(ictx, msgs, a.defaultTools(), a.executeTool, func(msgType string, data any) {
-			if resp != nil && msgType == "token" {
-				if s, ok := data.(string); ok {
-					resp <- s
-				}
-			}
-		})
-	}
-
-	if err := a.Plan.ExecuteStep(ctx, infer, prompt.GetSystemPrompt()); err != nil {
+	if err := a.Plan.ExecuteStep(ctx, client.Infer, prompt.GetSystemPrompt(), a.defaultTools(), a.executeTool); err != nil {
 		slog.Error("work step error", "error", err)
 		return err
 	}
@@ -406,12 +379,12 @@ func (a *Agent) handleToolCall(ctx context.Context, msg loop.Message) error {
 
 	// Check permissions (additional check beyond middleware)
 	if err := a.permissions.ValidateTool(toolMsg.Tool); err != nil {
-		toolMsg.ResultChan <- ToolResult{Error: err}
+		toolMsg.ResultChan <- AgentToolResult{Error: err}
 		return err
 	}
 
 	result, err := a.Plugins.ExecuteTool(ctx, toolMsg.Tool, toolMsg.Arguments)
-	toolMsg.ResultChan <- ToolResult{Output: result, Error: err}
+	toolMsg.ResultChan <- AgentToolResult{Output: result, Error: err}
 	return err
 }
 

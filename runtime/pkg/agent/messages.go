@@ -4,6 +4,8 @@ package agent
 import (
 	"github.com/quarkloop/runtime/pkg/loop"
 	"github.com/quarkloop/runtime/pkg/message"
+
+	"github.com/quarkloop/pkg/plugin"
 )
 
 // Message type constants.
@@ -38,8 +40,8 @@ func NewUserMessage(sessionID, content string, resp chan message.StreamMessage) 
 type InitLLMMsg struct {
 	loop.BaseMessage
 	ModelListURL string
-	Providers    map[string]any // provider.Provider
-	Fallback     []any          // llm.ModelEntry
+	Providers    map[string]plugin.Provider // typed providers
+	Fallback     []plugin.ModelEntry        // typed model entries
 }
 
 // NewInitLLMMsg creates a new InitLLM message.
@@ -96,11 +98,11 @@ type ToolCallMsg struct {
 	Tool       string
 	Arguments  string
 	Session    string
-	ResultChan chan ToolResult
+	ResultChan chan AgentToolResult
 }
 
-// ToolResult holds the result of a tool execution.
-type ToolResult struct {
+// AgentToolResult holds the result of a tool execution.
+type AgentToolResult struct {
 	Output string
 	Error  error
 }
@@ -112,7 +114,7 @@ func NewToolCallMsg(tool, arguments, sessionID string) ToolCallMsg {
 		Tool:        tool,
 		Arguments:   arguments,
 		Session:     sessionID,
-		ResultChan:  make(chan ToolResult, 1),
+		ResultChan:  make(chan AgentToolResult, 1),
 	}
 }
 
