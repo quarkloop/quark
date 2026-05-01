@@ -8,19 +8,19 @@ Go 1.22 workspace with 9 modules and 6 binaries. Each module is a standalone Go 
 
 ### Module Layout
 
-| Module | Role |
-|--------|------|
-| `runtime` | Multi-agent runtime: supervisor loop, subagent dispatch, context management. |
-| `cli` | `quark` CLI binary — user-facing entrypoint. Directly launches and connects to runtime. |
-| `supervisor` | Supervisor process for managing runtime lifecycle. |
-| `pkg/plugin` | Shared plugin interfaces, types, manifest parsing, and loader for lib/api modes. |
-| `plugins/tools/bash` | Tool plugin: shell command execution (lib + api). |
-| `plugins/tools/read` | Tool plugin: read regular text files (lib + api). |
-| `plugins/tools/write` | Tool plugin: write and edit regular text files (lib + api). |
-| `plugins/tools/web-search` | Tool plugin: web search via Brave/SerpAPI (lib + api). |
-| `plugins/providers/openrouter` | Provider plugin: OpenRouter API (lib mode .so). |
-| `plugins/providers/openai` | Provider plugin: OpenAI API (lib mode .so). |
-| `plugins/providers/anthropic` | Provider plugin: Anthropic Messages API (lib mode .so). |
+| Module                         | Role                                                                                    |
+| ------------------------------ | --------------------------------------------------------------------------------------- |
+| `runtime`                      | Multi-agent runtime: supervisor loop, subagent dispatch, context management.            |
+| `cli`                          | `quark` CLI binary — user-facing entrypoint. Directly launches and connects to runtime. |
+| `supervisor`                   | Supervisor process for managing runtime lifecycle.                                      |
+| `pkg/plugin`                   | Shared plugin interfaces, types, manifest parsing, and loader for lib/api modes.        |
+| `plugins/tools/bash`           | Tool plugin: shell command execution (lib + api).                                       |
+| `plugins/tools/read`           | Tool plugin: read regular text files (lib + api).                                       |
+| `plugins/tools/write`          | Tool plugin: write and edit regular text files (lib + api).                             |
+| `plugins/tools/web-search`     | Tool plugin: web search via Brave/SerpAPI (lib + api).                                  |
+| `plugins/providers/openrouter` | Provider plugin: OpenRouter API (lib mode .so).                                         |
+| `plugins/providers/openai`     | Provider plugin: OpenAI API (lib mode .so).                                             |
+| `plugins/providers/anthropic`  | Provider plugin: Anthropic Messages API (lib mode .so).                                 |
 
 ### Dependency Graph
 
@@ -62,30 +62,30 @@ The `cli` module is an HTTP client. It reads and writes exactly one file on disk
 — the `Quarkfile` in the current working directory — and delegates everything
 else to the supervisor or the agent.
 
-| Package | Role |
-|---------|------|
-| `cli/cmd/quark` | Entry point binary. |
-| `cli/pkg/root.go` | Root command definition with command groups. |
-| `cli/pkg/commands/` | Command implementations (init, run, stop, inspect, doctor, plugin, session, config, kb, plan, activity, version). |
-| `cli/pkg/commands/plugin/` | Plugin install/uninstall/list/info/search (all via supervisor). |
-| `pkg/space` | Shared space directory model and Quarkfile I/O/schema/validation. |
-| `cli/pkg/agentdial/` | Resolves the running agent for the current space (supervisor → agent URL → `runtime/pkg/client`). Used by session, plan, activity commands. |
-| `cli/pkg/buildinfo/` | Build-time version info. |
-| `cli/pkg/util/` | Shared CLI helpers (formatted output). |
+| Package                    | Role                                                                                                                                        |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cli/cmd/quark`            | Entry point binary.                                                                                                                         |
+| `cli/pkg/root.go`          | Root command definition with command groups.                                                                                                |
+| `cli/pkg/commands/`        | Command implementations (init, run, stop, inspect, doctor, plugin, session, config, kb, plan, activity, version).                           |
+| `cli/pkg/commands/plugin/` | Plugin install/uninstall/list/info/search (all via supervisor).                                                                             |
+| `pkg/space`                | Shared space directory model and Quarkfile I/O/schema/validation.                                                                           |
+| `cli/pkg/agentdial/`       | Resolves the running agent for the current space (supervisor → agent URL → `runtime/pkg/client`). Used by session, plan, activity commands. |
+| `cli/pkg/buildinfo/`       | Build-time version info.                                                                                                                    |
+| `cli/pkg/util/`            | Shared CLI helpers (formatted output).                                                                                                      |
 
 ## Supervisor Package Structure
 
-| Package | Role |
-|---------|------|
-| `supervisor/cmd/supervisor` | Entry point binary. |
-| `supervisor/pkg/api` | Wire types and `RouteBuilder` (shared between server and client). |
-| `supervisor/pkg/client` | Go SDK for the supervisor HTTP API — split by concern: `client.go` (transport + `HTTPError`, `IsNotFound`, `IsConflict`), `spaces.go`, `kb.go`, `plugins.go`, `runtimes.go`. |
-| `supervisor/pkg/commands` | `supervisor start` / `supervisor stop` cobra commands. |
-| `supervisor/pkg/server` | HTTP handlers (`handler.go`, `space_handler.go`, `kb_handler.go`, `plugin_handler.go`, `agent_handler.go`, `session_handler.go`) + routes — Fiber v2. |
-| `supervisor/pkg/space` | `Store` interface, `FSStore` implementation, `Doctor` function. |
-| `supervisor/pkg/kb` | Per-space JSONL-backed KB. Opened via `store.KB(name)`. |
-| `supervisor/pkg/pluginmanager` | Per-space plugin install/list/uninstall. Opened via `store.Plugins(name)`. |
-| `supervisor/pkg/runtime` | In-memory registry of running `Runtime` processes; launches and reaps runtime child processes. |
+| Package                        | Role                                                                                                                                                                         |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `supervisor/cmd/supervisor`    | Entry point binary.                                                                                                                                                          |
+| `supervisor/pkg/api`           | Wire types and `RouteBuilder` (shared between server and client).                                                                                                            |
+| `supervisor/pkg/client`        | Go SDK for the supervisor HTTP API — split by concern: `client.go` (transport + `HTTPError`, `IsNotFound`, `IsConflict`), `spaces.go`, `kb.go`, `plugins.go`, `runtimes.go`. |
+| `supervisor/pkg/commands`      | `supervisor start` / `supervisor stop` cobra commands.                                                                                                                       |
+| `supervisor/pkg/server`        | HTTP handlers (`handler.go`, `space_handler.go`, `kb_handler.go`, `plugin_handler.go`, `agent_handler.go`, `session_handler.go`) + routes — Fiber v2.                        |
+| `supervisor/pkg/space`         | `Store` interface, `FSStore` implementation, `Doctor` function.                                                                                                              |
+| `supervisor/pkg/kb`            | Per-space JSONL-backed KB. Opened via `store.KB(name)`.                                                                                                                      |
+| `supervisor/pkg/pluginmanager` | Per-space plugin install/list/uninstall. Opened via `store.Plugins(name)`.                                                                                                   |
+| `supervisor/pkg/runtime`       | In-memory registry of running `Runtime` processes; launches and reaps runtime child processes.                                                                               |
 
 ### Space storage layout (FSStore)
 
@@ -131,29 +131,30 @@ Individual: `make build-runtime`, `make build-cli`, `make build-supervisor`.
 
 The `runtime` module is split into focused sub-packages with strict single responsibility:
 
-| Package | Role |
-|---------|------|
-| `runtime/pkg/agentcore` | Shared types, constants, `Resources` struct. Leaf dependency — no logic. |
-| `runtime/pkg/session` | Session types, hierarchical keys, KB-backed CRUD store. |
-| `runtime/pkg/inference` | LLM calling: `Infer`, `InferWithRetry`, message factory helpers. |
-| `runtime/pkg/execution` | Tool invocation and plan step execution (LLM+tool loop). |
-| `runtime/pkg/chat` | Chat mode routing: ask, plan, masterplan, auto. Prompt builders. |
-| `runtime/pkg/cycle` | Supervisor loop: orient → plan → dispatch → monitor → assess. |
-| `runtime/pkg/api` | Consolidated HTTP handlers (system, agent, message, channel) — Fiber v2. |
-| `runtime/pkg/agent` | Thin orchestrator: session management, request routing, lifecycle glue. |
-| `runtime/pkg/config` | KB-backed dynamic config store with owner-wins semantics. |
-| `runtime/pkg/eventbus` | In-memory pub/sub with per-subscriber channels and typed event kinds. |
-| `runtime/pkg/hooks` | Extensible interception: Observer/Modifier/Gate hooks at tool and inference points. |
-| `runtime/pkg/intervention` | Per-session message queue for mid-execution user course-correction. |
-| `runtime/pkg/model` | LLM provider abstraction: Anthropic, OpenAI, OpenRouter, Zhipu, noop. |
-| `runtime/pkg/context` | LLM context management: token accounting, compaction, visibility policies. |
-| `runtime/pkg/activity` | Persisted event log — async subscriber to EventBus with ring buffer. |
-| `runtime/pkg/tool` | HTTP tool dispatcher and tool definition types. |
-| `runtime/pkg/plan` | Plan and step types, KB-backed stores, master plan support. |
-| `runtime/pkg/runtime` | Agent lifecycle: process management, HTTP server (Fiber v2). |
-| `runtime/pkg/plugin` | Plugin manifest parsing, discovery from `.quark/plugins/`, hub client. |
+| Package                    | Role                                                                                |
+| -------------------------- | ----------------------------------------------------------------------------------- |
+| `runtime/pkg/agentcore`    | Shared types, constants, `Resources` struct. Leaf dependency — no logic.            |
+| `runtime/pkg/session`      | Session types, hierarchical keys, KB-backed CRUD store.                             |
+| `runtime/pkg/inference`    | LLM calling: `Infer`, `InferWithRetry`, message factory helpers.                    |
+| `runtime/pkg/execution`    | Tool invocation and plan step execution (LLM+tool loop).                            |
+| `runtime/pkg/chat`         | Chat mode routing: ask, plan, masterplan, auto. Prompt builders.                    |
+| `runtime/pkg/cycle`        | Supervisor loop: orient → plan → dispatch → monitor → assess.                       |
+| `runtime/pkg/api`          | Consolidated HTTP handlers (system, agent, message, channel) — Fiber v2.            |
+| `runtime/pkg/agent`        | Thin orchestrator: session management, request routing, lifecycle glue.             |
+| `runtime/pkg/config`       | KB-backed dynamic config store with owner-wins semantics.                           |
+| `runtime/pkg/eventbus`     | In-memory pub/sub with per-subscriber channels and typed event kinds.               |
+| `runtime/pkg/hooks`        | Extensible interception: Observer/Modifier/Gate hooks at tool and inference points. |
+| `runtime/pkg/intervention` | Per-session message queue for mid-execution user course-correction.                 |
+| `runtime/pkg/model`        | LLM provider abstraction: Anthropic, OpenAI, OpenRouter, Zhipu, noop.               |
+| `runtime/pkg/context`      | LLM context management: token accounting, compaction, visibility policies.          |
+| `runtime/pkg/activity`     | Persisted event log — async subscriber to EventBus with ring buffer.                |
+| `runtime/pkg/tool`         | HTTP tool dispatcher and tool definition types.                                     |
+| `runtime/pkg/plan`         | Plan and step types, KB-backed stores, master plan support.                         |
+| `runtime/pkg/runtime`      | Agent lifecycle: process management, HTTP server (Fiber v2).                        |
+| `runtime/pkg/plugin`       | Plugin manifest parsing, discovery from `.quark/plugins/`, hub client.              |
 
 **Dependency graph** (no circular imports):
+
 ```
 agentcore (types, constants, resources)
    ↑
@@ -181,12 +182,12 @@ Sessions are communication channels (chat threads), not process lifecycle record
 
 ### Session Types
 
-| Type | Purpose |
-|------|---------|
-| `main` | Persistent autonomous session. Created once per agent, survives restarts. Cannot be deleted. |
-| `chat` | User-created conversation thread. Independent context per chat. |
-| `subagent` | Worker session for plan step execution. Created/destroyed by supervisor. |
-| `cron` | Session for scheduled task runs. |
+| Type       | Purpose                                                                                      |
+| ---------- | -------------------------------------------------------------------------------------------- |
+| `main`     | Persistent autonomous session. Created once per agent, survives restarts. Cannot be deleted. |
+| `chat`     | User-created conversation thread. Independent context per chat.                              |
+| `subagent` | Worker session for plan step execution. Created/destroyed by supervisor.                     |
+| `cron`     | Session for scheduled task runs.                                                             |
 
 ### Session Keys
 
@@ -199,25 +200,25 @@ Hierarchical key scheme: `agent:<agentID>:<type>[:<id>]`
 
 ### Session API
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/sessions` | GET | List all sessions for the agent |
-| `/sessions` | POST | Create a new session (`{"type":"chat","title":"..."}`) |
-| `/sessions/{sessionKey}` | GET | Get a specific session |
-| `/sessions/{sessionKey}` | DELETE | Delete a session (cannot delete main) |
-| `/sessions/{sessionKey}/activity` | GET | Get session-scoped activity |
-| `/chat` | POST | Chat in a session (`session_key` field routes to session) |
+| Endpoint                          | Method | Description                                               |
+| --------------------------------- | ------ | --------------------------------------------------------- |
+| `/sessions`                       | GET    | List all sessions for the agent                           |
+| `/sessions`                       | POST   | Create a new session (`{"type":"chat","title":"..."}`)    |
+| `/sessions/{sessionKey}`          | GET    | Get a specific session                                    |
+| `/sessions/{sessionKey}`          | DELETE | Delete a session (cannot delete main)                     |
+| `/sessions/{sessionKey}/activity` | GET    | Get session-scoped activity                               |
+| `/chat`                           | POST   | Chat in a session (`session_key` field routes to session) |
 
 ## Agent Working Modes
 
 The agent supports four dynamic working modes, set per-session via `ChatRequest.Mode`:
 
-| Mode | Behaviour |
-|------|-----------|
-| `ask` | Direct answer with optional tool use. No plans created. |
-| `plan` | Creates a single execution plan with steps. Run() loop dispatches approved plans. |
-| `masterplan` | Creates a multi-phase master plan. Each phase becomes its own sub-plan. |
-| `auto` | LLM classifies the request and routes to ask/plan/masterplan. |
+| Mode         | Behaviour                                                                         |
+| ------------ | --------------------------------------------------------------------------------- |
+| `ask`        | Direct answer with optional tool use. No plans created.                           |
+| `plan`       | Creates a single execution plan with steps. Run() loop dispatches approved plans. |
+| `masterplan` | Creates a multi-phase master plan. Each phase becomes its own sub-plan.           |
+| `auto`       | LLM classifies the request and routes to ask/plan/masterplan.                     |
 
 Mode is per-session. Default is `auto`. Main session mode persists in KB across restarts.
 
@@ -225,21 +226,21 @@ Mode is per-session. Default is `auto`. Main session mode persists in KB across 
 
 `ApprovalPolicy` on `agentcore.Config` controls plan approval:
 
-| Policy | Constant | Behaviour |
-|--------|----------|-----------|
+| Policy     | Constant           | Behaviour                                                        |
+| ---------- | ------------------ | ---------------------------------------------------------------- |
 | `required` | `ApprovalRequired` | Plans are created as drafts; user must approve before execution. |
-| `auto` | `ApprovalAuto` | Plans are auto-approved for immediate execution. |
+| `auto`     | `ApprovalAuto`     | Plans are auto-approved for immediate execution.                 |
 
 ## Plugins
 
 Everything is a plugin. Four types exist:
 
-| Type | Mode | What it contains | Examples |
-|------|------|-----------------|----------|
-| **tool** | lib + api | `plugin.so` (lib) and/or executable (binary) + manifest.yaml + SKILL.md | `bash`, `read`, `write`, `web-search` |
-| **provider** | lib | .so plugin + manifest.yaml + SKILL.md | `openrouter`, `openai`, `anthropic` |
-| **agent** | - | System prompt + skill references + tool requirements | `supervisor`, `researcher` |
-| **skill** | - | Guidance files only, no binary | `code-review`, `debugging` |
+| Type         | Mode      | What it contains                                                        | Examples                              |
+| ------------ | --------- | ----------------------------------------------------------------------- | ------------------------------------- |
+| **tool**     | lib + api | `plugin.so` (lib) and/or executable (binary) + manifest.yaml + SKILL.md | `bash`, `read`, `write`, `web-search` |
+| **provider** | lib       | .so plugin + manifest.yaml + SKILL.md                                   | `openrouter`, `openai`, `anthropic`   |
+| **agent**    | -         | System prompt + skill references + tool requirements                    | `supervisor`, `researcher`            |
+| **skill**    | -         | Guidance files only, no binary                                          | `code-review`, `debugging`            |
 
 ### Plugin Modes
 
@@ -277,6 +278,7 @@ plugins/
 ```
 
 Agent HTTP handlers are consolidated in `runtime/pkg/api/`:
+
 ```
 runtime/pkg/api/
 ├── system.go     # Health, Stop handlers
@@ -286,6 +288,7 @@ runtime/pkg/api/
 ```
 
 Tool plugin api-mode servers use `pkg/toolkit/server.go` (Fiber v2):
+
 ```
 pkg/toolkit/
 ├── server.go     # BuildServer(), RunServer() — Fiber v2 HTTP server
@@ -298,8 +301,8 @@ pkg/toolkit/
 ```yaml
 name: bash
 version: "1.0.0"
-type: tool           # tool | provider | agent | skill
-mode: lib            # lib | api
+type: tool # tool | provider | agent | skill
+mode: lib # lib | api
 description: "Execute shell commands"
 
 # Type-specific config (nested)
@@ -343,12 +346,12 @@ Provider resolution order: `OPENROUTER_API_KEY` first, then `ZHIPU_API_KEY`. The
 
 ## Environment variables
 
-| Variable | Consumer | Purpose |
-|----------|----------|---------|
-| `QUARK_SUPERVISOR_URL` | cli, runtime | Supervisor base URL (default `http://127.0.0.1:7200`). |
-| `QUARK_SPACES_ROOT` | supervisor | Filesystem root for the space store (default `$HOME/.quarkloop/spaces`). |
-| `QUARK_RUNTIME_ID` | runtime | Set by the supervisor when launching a runtime process. |
-| `QUARK_SPACE` | runtime | Set by the supervisor; the space name this runtime serves. |
+| Variable               | Consumer     | Purpose                                                                  |
+| ---------------------- | ------------ | ------------------------------------------------------------------------ |
+| `QUARK_SUPERVISOR_URL` | cli, runtime | Supervisor base URL (default `http://127.0.0.1:7200`).                   |
+| `QUARK_SPACES_ROOT`    | supervisor   | Filesystem root for the space store (default `$HOME/.quarkloop/spaces`). |
+| `QUARK_RUNTIME_ID`     | runtime      | Set by the supervisor when launching a runtime process.                  |
+| `QUARK_SPACE`          | runtime      | Set by the supervisor; the space name this runtime serves.               |
 
 ## Conventions
 
@@ -364,3 +367,12 @@ Provider resolution order: `OPENROUTER_API_KEY` first, then `ZHIPU_API_KEY`. The
 - Tool plugin binaries follow the pattern: `plugins/tools/{name}/cmd/{name}/main.go` (thin CLI) + `plugins/tools/{name}/pkg/{name}/` (library).
 - Provider plugins follow the pattern: `plugins/providers/{name}/plugin.go` + `plugins/providers/{name}/provider.go`.
 - Module paths: `github.com/quarkloop/<module>` for top-level, `github.com/quarkloop/plugins/tools/{name}` for tool plugins, `github.com/quarkloop/plugins/providers/{name}` for provider plugins.
+
+## Git commit
+
+Always commit changes considering following strict requirements:
+
+- commit changes per scope.
+- do not commit all changes into a single commit.
+- do not include Co-author in commit message.
+- follow the commit message convention: {type}: {description}
