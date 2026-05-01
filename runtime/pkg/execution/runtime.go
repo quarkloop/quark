@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/quarkloop/agent/pkg/approval"
-	"github.com/quarkloop/agent/pkg/dag"
-	"github.com/quarkloop/agent/pkg/loop"
+	"github.com/quarkloop/runtime/pkg/approval"
+	"github.com/quarkloop/runtime/pkg/dag"
+	"github.com/quarkloop/runtime/pkg/loop"
 )
 
 // Runtime manages execution mode behavior at runtime.

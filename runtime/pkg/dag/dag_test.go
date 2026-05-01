@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/quarkloop/agent/pkg/dag"
+	"github.com/quarkloop/runtime/pkg/dag"
 )
 
 func TestDAGNew(t *testing.T) {

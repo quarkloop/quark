@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/quarkloop/agent/pkg/approval"
-	"github.com/quarkloop/agent/pkg/loop"
+	"github.com/quarkloop/runtime/pkg/approval"
+	"github.com/quarkloop/runtime/pkg/loop"
 )
 
 // ToolCallMessage is a message type for tool execution requests.
