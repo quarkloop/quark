@@ -45,7 +45,7 @@ func (s *Server) routes() {
 
 	// Agents (runtime)
 	app.Get("/v1/agents", s.handleListAgents)
-	app.Post("/v1/agents", s.handleStartAgent)
-	app.Get("/v1/agents/:id", s.handleGetAgent)
-	app.Post("/v1/agents/:id/stop", s.handleStopAgent)
+	app.Post("/v1/agents", s.handleStartRuntime)
+	app.Get("/v1/agents/:id", s.handleGetRuntime)
+	app.Post("/v1/agents/:id/stop", s.handleStopRuntime)
 }
