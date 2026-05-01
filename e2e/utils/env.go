@@ -22,7 +22,7 @@ type E2EEnv struct {
 	Space     string
 	SupURL    string
 	Sup       *supclient.Client
-	Agent     api.AgentInfo
+	Agent     api.RuntimeInfo
 	AgentURL  string
 	HTTPC     *http.Client
 }
@@ -192,9 +192,9 @@ func StartE2E(t *testing.T, withProvider bool, opts ...StartOptions) *E2EEnv {
 	installSpacePlugins(t, env, bins)
 
 	agentPort := ReservePort(t)
-	info, err := sup.StartAgent(ctx, spaceName, agentPort)
+	info, err := sup.StartRuntime(ctx, spaceName, agentPort)
 	if err != nil {
-		t.Fatalf("start agent: %v", err)
+		t.Fatalf("start runtime: %v", err)
 	}
 	env.Agent = info
 	env.AgentURL = fmt.Sprintf("http://127.0.0.1:%d", info.Port)
