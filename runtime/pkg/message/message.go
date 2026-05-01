@@ -1,13 +1,10 @@
 // Package message provides message types and the message handling flow.
 package message
 
-// Message represents a single chat message in a session.
-type Message struct {
-	ID        string `json:"id"`
-	Role      string `json:"role"`
-	Content   string `json:"content"`
-	Timestamp string `json:"timestamp"`
-}
+import "github.com/quarkloop/pkg/plugin"
+
+// Message is an alias for plugin.Message, the canonical message type.
+type Message = plugin.Message
 
 // StreamMessage defines a typed streaming message sent back to the channel.
 type StreamMessage struct {

@@ -15,7 +15,7 @@ import (
 //  3. Return full assistant response text
 //
 // Tokens are streamed to resp as they arrive.
-func Handle(ctx context.Context, history []Message, llmClient *llm.Client, systemPrompt string, workSummary string, tools []plugin.ToolSchema, onTool llm.ToolHandler, resp chan<- StreamMessage) (string, error) {
+func Handle(ctx context.Context, history []Message, llmClient *llm.Client, systemPrompt string, workSummary string, tools []plugin.ToolSchema, onTool plugin.ToolHandler, resp chan<- StreamMessage) (string, error) {
 	if llmClient == nil {
 		return "", fmt.Errorf("no LLM client configured")
 	}
