@@ -88,7 +88,7 @@ func BuildAllOnce(t *testing.T) BuiltBinaries {
 		}
 
 		buildRes.Supervisor = build("./supervisor/cmd/supervisor", "supervisor")
-		buildRes.Agent = build("./agent/cmd/agent", "agent")
+		buildRes.Agent = build("./runtime/cmd/runtime", "runtime")
 		buildRes.Bash = build("./plugins/tools/bash/cmd/bash", "bash")
 		buildRes.FS = build("./plugins/tools/fs/cmd/fs", "fs")
 
