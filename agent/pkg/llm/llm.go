@@ -13,7 +13,7 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/quarkloop/agent/pkg/provider"
+	"github.com/quarkloop/pkg/plugin"
 )
 
 // ToolHandler executes a tool call and returns the result string.
@@ -21,13 +21,13 @@ type ToolHandler func(ctx context.Context, name, arguments string) (string, erro
 
 // Client wraps a provider with the inference loop.
 type Client struct {
-	provider      provider.Provider
+	provider      Provider
 	model         string
 	ContextWindow int // token limit from the model entry (0 = unknown)
 }
 
 // NewClient creates a new LLM client.
-func NewClient(p provider.Provider, model string, contextWindow int) *Client {
+func NewClient(p Provider, model string, contextWindow int) *Client {
 	return &Client{provider: p, model: model, ContextWindow: contextWindow}
 }
 
@@ -37,9 +37,9 @@ func NewClient(p provider.Provider, model string, contextWindow int) *Client {
 //
 // It fires onMessage for streamed text and tool execution data.
 // If onTool is nil, tool calls are ignored.
-func (c *Client) Infer(ctx context.Context, messages []provider.Message, tools []provider.Tool, onTool ToolHandler, onMessage func(msgType string, data any)) (string, error) {
+func (c *Client) Infer(ctx context.Context, messages []plugin.Message, tools []plugin.ToolSchema, onTool ToolHandler, onMessage func(msgType string, data any)) (string, error) {
 	for {
-		stream, err := c.provider.ChatCompletionStream(ctx, &provider.Request{
+		stream, err := c.provider.ChatCompletionStream(ctx, &plugin.ChatRequest{
 			Model:    c.model,
 			Messages: messages,
 			Tools:    tools,
@@ -49,7 +49,7 @@ func (c *Client) Infer(ctx context.Context, messages []provider.Message, tools [
 		}
 
 		var fullContent string
-		var toolCalls []provider.ToolCall
+		var toolCalls []plugin.ToolCall
 
 		for ev := range stream {
 			if ev.Err != nil {
@@ -89,7 +89,7 @@ func (c *Client) Infer(ctx context.Context, messages []provider.Message, tools [
 		slog.Info("tool calls", "count", len(toolCalls))
 
 		// Append assistant message with tool calls
-		messages = append(messages, provider.Message{
+		messages = append(messages, plugin.Message{
 			Role:      "assistant",
 			Content:   fullContent,
 			ToolCalls: toolCalls,
@@ -108,7 +108,7 @@ func (c *Client) Infer(ctx context.Context, messages []provider.Message, tools [
 			if err != nil {
 				result = fmt.Sprintf("error: %v", err)
 			}
-			messages = append(messages, provider.Message{
+			messages = append(messages, plugin.Message{
 				Role:       "tool",
 				Content:    result,
 				ToolCallID: tc.ID,
@@ -121,13 +121,13 @@ func (c *Client) Infer(ctx context.Context, messages []provider.Message, tools [
 }
 
 // mergeToolCalls accumulates streamed tool call deltas by index.
-func mergeToolCalls(existing []provider.ToolCall, deltas []provider.ToolCall) []provider.ToolCall {
+func mergeToolCalls(existing []plugin.ToolCall, deltas []plugin.ToolCall) []plugin.ToolCall {
 	for _, d := range deltas {
 		idx := d.Index
 
 		// Grow slice to fit
 		for len(existing) <= idx {
-			existing = append(existing, provider.ToolCall{})
+			existing = append(existing, plugin.ToolCall{})
 		}
 
 		tc := &existing[idx]
