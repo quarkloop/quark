@@ -7,12 +7,12 @@ import (
 	"sync"
 
 	"github.com/quarkloop/agent/pkg/message"
-	"github.com/quarkloop/agent/pkg/provider"
+	"github.com/quarkloop/pkg/plugin"
 )
 
 // Inferrer is a function that calls the LLM. Injected by the agent to avoid
 // plan importing the llm package directly.
-type Inferrer func(ctx context.Context, messages []provider.Message, resp chan<- string) (string, error)
+type Inferrer func(ctx context.Context, messages []plugin.Message, resp chan<- string) (string, error)
 
 // Step is a single unit of work in a plan.
 type Step struct {
@@ -146,17 +146,17 @@ func (p *Plan) ExecuteStep(ctx context.Context, infer Inferrer, systemPrompt str
 	p.mu.Unlock()
 
 	// Build work context messages
-	var msgs []provider.Message
-	msgs = append(msgs, provider.Message{
+	var msgs []plugin.Message
+	msgs = append(msgs, plugin.Message{
 		Role:    "system",
 		Content: systemPrompt + "\n\nYou are executing your autonomous work plan. Focus on the current step.",
 	})
 
 	for _, m := range p.workCtx.GetHistory() {
-		msgs = append(msgs, provider.Message{Role: m.Role, Content: m.Content})
+		msgs = append(msgs, plugin.Message{Role: m.Role, Content: m.Content})
 	}
 
-	msgs = append(msgs, provider.Message{
+	msgs = append(msgs, plugin.Message{
 		Role:    "user",
 		Content: fmt.Sprintf("Execute this step: %s", step.Description),
 	})
@@ -169,18 +169,21 @@ func (p *Plan) ExecuteStep(ctx context.Context, infer Inferrer, systemPrompt str
 	}()
 
 	result, err := infer(ctx, msgs, resp)
+
+	// Write step outcome under lock in one shot to avoid a lock gap.
+	p.mu.Lock()
 	if err != nil {
-		p.mu.Lock()
 		step.Status = "failed"
 		step.Result = err.Error()
-		p.mu.Unlock()
+	} else {
+		step.Status = "completed"
+		step.Result = result
+	}
+	p.mu.Unlock()
+
+	if err != nil {
 		return err
 	}
-
-	p.mu.Lock()
-	step.Status = "completed"
-	step.Result = result
-	p.mu.Unlock()
 
 	// Store in work context
 	p.workCtx.AddEntry("user", fmt.Sprintf("Step: %s", step.Description))
