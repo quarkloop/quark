@@ -8,22 +8,22 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/quarkloop/agent/pkg/agent"
-	"github.com/quarkloop/agent/pkg/channel/telegram"
-	"github.com/quarkloop/agent/pkg/channel/web"
-	"github.com/quarkloop/agent/pkg/runtime"
+	"github.com/quarkloop/runtime/pkg/agent"
+	"github.com/quarkloop/runtime/pkg/channel/telegram"
+	"github.com/quarkloop/runtime/pkg/channel/web"
+	"github.com/quarkloop/runtime/pkg/runtime"
 )
 
 const CmdStartDefaultPort = 8765
 
-// Start creates the "agent start" command.
+// Start creates the "runtime start" command.
 func Start() *cobra.Command {
 	var port int
 	var channelsFlag []string
 
 	cmd := &cobra.Command{
 		Use:           "start [channels...]",
-		Short:         "start the agent runtime",
+		Short:         "start the runtime",
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var channels []string
@@ -85,7 +85,7 @@ func runStart(port int, channels []string) error {
 		}
 	}
 
-	slog.Info("starting agent runtime")
+	slog.Info("starting runtime")
 	slog.Info("enabled channels", "channels", fmt.Sprintf("%v", validChannels))
 
 	modelProvider := os.Getenv("QUARK_MODEL_PROVIDER")
@@ -146,7 +146,7 @@ func runStart(port int, channels []string) error {
 	slog.Info("starting agent background loop")
 	go a.Run(ctx)
 
-	slog.Info("agent server is running, press Ctrl+C to exit")
+	slog.Info("runtime server is running, press Ctrl+C to exit")
 	// Start all channels via ChannelBus and block
 	return srv.Run(ctx)
 }
