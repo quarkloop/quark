@@ -7,16 +7,9 @@ import (
 	"log/slog"
 	"net/http"
 	"sync"
-)
 
-// ModelEntry defines a model in the remote model list.
-type ModelEntry struct {
-	ID            string `json:"id"`             // e.g. "openai/gpt-4o-mini"
-	Provider      string `json:"provider"`       // e.g. "openrouter"
-	Name          string `json:"name"`           // human-readable name
-	Default       bool   `json:"default"`        // whether this is the default model
-	ContextWindow int    `json:"context_window"` // token limit for this model (0 = unknown)
-}
+	"github.com/quarkloop/pkg/plugin"
+)
 
 // Registry manages available LLM models and their clients.
 type Registry struct {
@@ -46,7 +39,7 @@ func (r *Registry) LoadFromURL(url string, providers map[string]Provider) error 
 		return fmt.Errorf("fetch model list: %d %s", resp.StatusCode, string(body))
 	}
 
-	var entries []ModelEntry
+	var entries []plugin.ModelEntry
 	if err := json.NewDecoder(resp.Body).Decode(&entries); err != nil {
 		return fmt.Errorf("parse model list: %w", err)
 	}
@@ -55,7 +48,7 @@ func (r *Registry) LoadFromURL(url string, providers map[string]Provider) error 
 }
 
 // LoadEntries initializes clients from a list of model entries.
-func (r *Registry) LoadEntries(entries []ModelEntry, providers map[string]Provider) error {
+func (r *Registry) LoadEntries(entries []plugin.ModelEntry, providers map[string]Provider) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 

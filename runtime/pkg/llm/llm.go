@@ -16,9 +16,6 @@ import (
 	"github.com/quarkloop/pkg/plugin"
 )
 
-// ToolHandler executes a tool call and returns the result string.
-type ToolHandler func(ctx context.Context, name, arguments string) (string, error)
-
 // Client wraps a provider with the inference loop.
 type Client struct {
 	provider      Provider
@@ -37,7 +34,7 @@ func NewClient(p Provider, model string, contextWindow int) *Client {
 //
 // It fires onMessage for streamed text and tool execution data.
 // If onTool is nil, tool calls are ignored.
-func (c *Client) Infer(ctx context.Context, messages []plugin.Message, tools []plugin.ToolSchema, onTool ToolHandler, onMessage func(msgType string, data any)) (string, error) {
+func (c *Client) Infer(ctx context.Context, messages []plugin.Message, tools []plugin.ToolSchema, onTool plugin.ToolHandler, onMessage func(msgType string, data any)) (string, error) {
 	for {
 		stream, err := c.provider.ChatCompletionStream(ctx, &plugin.ChatRequest{
 			Model:    c.model,

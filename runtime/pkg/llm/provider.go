@@ -7,15 +7,8 @@ import (
 	"github.com/quarkloop/pkg/plugin"
 )
 
-// Provider is the minimal interface for LLM API providers.
-// It is a reduced subset of plugin.ProviderPlugin that excludes lifecycle
-// methods (Configure, Shutdown) and metadata (ProviderID, ListModels).
-type Provider interface {
-	// ChatCompletionStream sends a streaming chat completion request.
-	ChatCompletionStream(ctx context.Context, req *plugin.ChatRequest) (<-chan plugin.StreamEvent, error)
-	// ParseToolCalls extracts tool calls from content (for non-native tool calling).
-	ParseToolCalls(content string) ([]plugin.ToolCall, string)
-}
+// Provider is an alias for plugin.Provider, the minimal interface for LLM API providers.
+type Provider = plugin.Provider
 
 // ProviderAdapter wraps a plugin.ProviderPlugin to satisfy the minimal Provider interface.
 type ProviderAdapter struct {
