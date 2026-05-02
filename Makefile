@@ -9,12 +9,11 @@ TOOLS := bash fs web-search build-release
 # Provider plugins
 PROVIDERS := openrouter openai anthropic
 
-# All modules for testing/vetting (14 total)
+# All modules for testing/vetting (13 modules; e2e tested separately)
 MODULES := \
 		supervisor \
 		runtime \
 		cli \
-		e2e \
 		pkg/plugin \
 		pkg/space \
 		pkg/toolkit \
