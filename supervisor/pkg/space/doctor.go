@@ -27,7 +27,7 @@ func Doctor(quarkfileBytes []byte, installed []pluginmanager.InstalledPlugin) ap
 	}
 	installedByName := make(map[string]bool, len(installed))
 	for _, p := range installed {
-		installedByName[p.Name] = true
+		installedByName[p.Manifest.Name] = true
 	}
 	for _, ref := range qf.Plugins {
 		name := pluginNameFromRef(ref.Ref)

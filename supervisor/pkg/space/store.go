@@ -41,7 +41,7 @@ type Store interface {
 	KB(name string) (kb.Store, error)
 
 	// Plugins returns the plugin manager scoped to the named space.
-	Plugins(name string) (*pluginmanager.Manager, error)
+	Plugins(name string) (*pluginmanager.Installer, error)
 
 	// Sessions returns the session store scoped to the named space.
 	Sessions(name string) (*sessions.Store, error)

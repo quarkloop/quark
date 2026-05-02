@@ -1,6 +1,6 @@
 module github.com/quarkloop/supervisor
 
-go 1.26
+go 1.26.2
 
 require (
 	github.com/go-git/go-git/v5 v5.17.2
@@ -45,11 +45,13 @@ require (
 )
 
 require (
+	github.com/quarkloop/pkg/event v0.0.0-00010101000000-000000000000
 	github.com/quarkloop/pkg/plugin v0.0.0
 	github.com/quarkloop/pkg/space v0.0.0
 )
 
 replace (
+	github.com/quarkloop/pkg/event => ../pkg/event
 	github.com/quarkloop/pkg/plugin => ../pkg/plugin
 	github.com/quarkloop/pkg/space => ../pkg/space
 )

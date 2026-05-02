@@ -20,7 +20,7 @@ import (
 	"github.com/quarkloop/runtime/pkg/prompt"
 	"github.com/quarkloop/runtime/pkg/session"
 	"github.com/quarkloop/pkg/plugin"
-	"github.com/quarkloop/supervisor/pkg/api"
+	event "github.com/quarkloop/pkg/event"
 	supclient "github.com/quarkloop/supervisor/pkg/client"
 )
 
@@ -63,7 +63,7 @@ type Agent struct {
 	delegator *hierarchy.Delegator
 
 	// Execution runtime
-	execution *execution.Runtime
+	execution *execution.ExecutionRuntime
 
 	// Permission checker
 	permissions *permissions.Checker
@@ -92,7 +92,7 @@ func NewAgent(cfg Config) (*Agent, error) {
 	if execCfg.Mode == "" {
 		execCfg.Mode = execution.ModeAutonomous
 	}
-	execRuntime, err := execution.NewRuntime(execCfg)
+	execRuntime, err := execution.NewExecutionRuntime(execCfg)
 	if err != nil {
 		return nil, fmt.Errorf("execution runtime: %w", err)
 	}
@@ -434,7 +434,7 @@ func (a *Agent) Delegator() *hierarchy.Delegator {
 }
 
 // Execution returns the execution runtime.
-func (a *Agent) Execution() *execution.Runtime {
+func (a *Agent) Execution() *execution.ExecutionRuntime {
 	return a.execution
 }
 
@@ -488,7 +488,7 @@ func (a *Agent) subscribeSupervisorEvents(ctx context.Context) {
 		}
 		err := a.supervisorClient.StreamEventsWithReady(ctx, a.Space,
 			func() { slog.Info("supervisor event stream ready", "space", a.Space) },
-			func(ev api.Event) { a.applyEvent(ev) },
+			func(ev event.Event) { a.applyEvent(ev) },
 		)
 		if ctx.Err() != nil {
 			return
@@ -508,9 +508,9 @@ func (a *Agent) subscribeSupervisorEvents(ctx context.Context) {
 }
 
 // applyEvent updates agent runtime state in response to a supervisor event.
-func (a *Agent) applyEvent(ev api.Event) {
+func (a *Agent) applyEvent(ev event.Event) {
 	switch ev.Kind {
-	case api.EventSessionCreated:
+	case event.SessionCreated:
 		var p struct {
 			ID    string `json:"id"`
 			Type  string `json:"type"`
@@ -521,7 +521,7 @@ func (a *Agent) applyEvent(ev api.Event) {
 		}
 		a.Sessions.GetOrCreate(p.ID, p.Type, p.Title)
 		slog.Info("session created", "id", p.ID, "type", p.Type)
-	case api.EventSessionDeleted:
+	case event.SessionDeleted:
 		var p struct {
 			ID string `json:"id"`
 		}

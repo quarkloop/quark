@@ -11,42 +11,39 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/quarkloop/pkg/plugin"
+	plugin "github.com/quarkloop/pkg/plugin"
 )
 
-// Manager handles plugin management for a single plugins directory.
-type Manager struct {
+// Installer handles plugin management for a single plugins directory.
+type Installer struct {
 	mu         sync.RWMutex
 	pluginsDir string
 	hubClient  *HubClient
 }
 
-// NewManager creates a plugin manager rooted at pluginsDir. The directory
+// NewInstaller creates a plugin installer rooted at pluginsDir. The directory
 // must be the absolute path to the space's plugins directory.
-func NewManager(pluginsDir string) *Manager {
-	return &Manager{
+func NewInstaller(pluginsDir string) *Installer {
+	return &Installer{
 		pluginsDir: pluginsDir,
 		hubClient:  NewHubClient(""),
 	}
 }
 
 // PluginsDir returns the absolute plugins directory managed by this Manager.
-func (m *Manager) PluginsDir() string {
+func (m *Installer) PluginsDir() string {
 	return m.pluginsDir
 }
 
 // InstalledPlugin represents an installed plugin with its path.
 type InstalledPlugin struct {
-	Name        string            `json:"name"`
-	Version     string            `json:"version"`
-	Type        plugin.PluginType `json:"type"`
-	Mode        plugin.PluginMode `json:"mode"`
-	Description string            `json:"description"`
-	Path        string            `json:"path"` // Full path to plugin directory
+	Manifest *plugin.Manifest `json:"manifest"`
+	Path    string            `json:"path"`  // Full path to plugin directory
+	Active  bool              `json:"active"`
 }
 
 // List returns all installed plugins in the space.
-func (m *Manager) List() ([]InstalledPlugin, error) {
+func (m *Installer) List() ([]InstalledPlugin, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -67,12 +64,8 @@ func (m *Manager) List() ([]InstalledPlugin, error) {
 				continue
 			}
 			plugins = append(plugins, InstalledPlugin{
-				Name:        manifest.Name,
-				Version:     manifest.Version,
-				Type:        manifest.Type,
-				Mode:        manifest.Mode,
-				Description: manifest.Description,
-				Path:        pluginDir,
+				Manifest: manifest,
+				Path:     pluginDir,
 			})
 		}
 	}
@@ -90,12 +83,8 @@ func (m *Manager) List() ([]InstalledPlugin, error) {
 				continue
 			}
 			plugins = append(plugins, InstalledPlugin{
-				Name:        manifest.Name,
-				Version:     manifest.Version,
-				Type:        manifest.Type,
-				Mode:        manifest.Mode,
-				Description: manifest.Description,
-				Path:        pluginDir,
+				Manifest: manifest,
+				Path:     pluginDir,
 			})
 		}
 	}
@@ -113,12 +102,8 @@ func (m *Manager) List() ([]InstalledPlugin, error) {
 				continue
 			}
 			plugins = append(plugins, InstalledPlugin{
-				Name:        manifest.Name,
-				Version:     manifest.Version,
-				Type:        manifest.Type,
-				Mode:        manifest.Mode,
-				Description: manifest.Description,
-				Path:        pluginDir,
+				Manifest: manifest,
+				Path:     pluginDir,
 			})
 		}
 	}
@@ -136,12 +121,8 @@ func (m *Manager) List() ([]InstalledPlugin, error) {
 				continue
 			}
 			plugins = append(plugins, InstalledPlugin{
-				Name:        manifest.Name,
-				Version:     manifest.Version,
-				Type:        manifest.Type,
-				Mode:        manifest.Mode,
-				Description: manifest.Description,
-				Path:        pluginDir,
+				Manifest: manifest,
+				Path:     pluginDir,
 			})
 		}
 	}
@@ -149,39 +130,8 @@ func (m *Manager) List() ([]InstalledPlugin, error) {
 	return plugins, nil
 }
 
-// ListByType returns installed plugins of a specific type.
-func (m *Manager) ListByType(pluginType plugin.PluginType) ([]InstalledPlugin, error) {
-	all, err := m.List()
-	if err != nil {
-		return nil, err
-	}
-
-	var filtered []InstalledPlugin
-	for _, p := range all {
-		if p.Type == pluginType {
-			filtered = append(filtered, p)
-		}
-	}
-	return filtered, nil
-}
-
-// Get returns a specific installed plugin by name.
-func (m *Manager) Get(name string) (*InstalledPlugin, error) {
-	plugins, err := m.List()
-	if err != nil {
-		return nil, err
-	}
-
-	for _, p := range plugins {
-		if p.Name == name {
-			return &p, nil
-		}
-	}
-	return nil, fmt.Errorf("plugin %q not found", name)
-}
-
 // Install installs a plugin from a reference (local path, git URL, or hub name).
-func (m *Manager) Install(ctx context.Context, ref string) (*InstalledPlugin, error) {
+func (m *Installer) Install(ctx context.Context, ref string) (*InstalledPlugin, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -251,17 +201,13 @@ func (m *Manager) Install(ctx context.Context, ref string) (*InstalledPlugin, er
 	}
 
 	return &InstalledPlugin{
-		Name:        manifest.Name,
-		Version:     manifest.Version,
-		Type:        manifest.Type,
-		Mode:        manifest.Mode,
-		Description: manifest.Description,
-		Path:        destDir,
+		Manifest: manifest,
+		Path:     destDir,
 	}, nil
 }
 
 // installFromHub downloads and installs from the plugin hub.
-func (m *Manager) installFromHub(ctx context.Context, name, version, pluginsDir string) (*InstalledPlugin, error) {
+func (m *Installer) installFromHub(ctx context.Context, name, version, pluginsDir string) (*InstalledPlugin, error) {
 	// Download from hub
 	extractDir, err := m.hubClient.Download(name, version, pluginsDir)
 	if err != nil {
@@ -287,17 +233,13 @@ func (m *Manager) installFromHub(ctx context.Context, name, version, pluginsDir 
 	}
 
 	return &InstalledPlugin{
-		Name:        manifest.Name,
-		Version:     manifest.Version,
-		Type:        manifest.Type,
-		Mode:        manifest.Mode,
-		Description: manifest.Description,
-		Path:        destDir,
+		Manifest: manifest,
+		Path:     destDir,
 	}, nil
 }
 
 // destDirForType returns the destination directory for a plugin based on its type.
-func (m *Manager) destDirForType(pluginType plugin.PluginType, name string) string {
+func (m *Installer) destDirForType(pluginType plugin.PluginType, name string) string {
 	pluginsDir := m.PluginsDir()
 	switch pluginType {
 	case plugin.TypeTool:
@@ -314,7 +256,7 @@ func (m *Manager) destDirForType(pluginType plugin.PluginType, name string) stri
 }
 
 // Uninstall removes an installed plugin.
-func (m *Manager) Uninstall(name string) error {
+func (m *Installer) Uninstall(name string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -325,7 +267,7 @@ func (m *Manager) Uninstall(name string) error {
 	}
 
 	for _, p := range plugins {
-		if p.Name == name {
+		if p.Manifest.Name == name {
 			return os.RemoveAll(p.Path)
 		}
 	}
@@ -333,12 +275,43 @@ func (m *Manager) Uninstall(name string) error {
 	return fmt.Errorf("plugin %q not found", name)
 }
 
+// Get returns a specific installed plugin by name.
+func (m *Installer) Get(name string) (InstalledPlugin, error) {
+	plugins, err := m.List()
+	if err != nil {
+		return InstalledPlugin{}, err
+	}
+
+	for _, p := range plugins {
+		if p.Manifest.Name == name {
+			return p, nil
+		}
+	}
+	return InstalledPlugin{}, fmt.Errorf("plugin %q not found", name)
+}
+
+// ListByType returns installed plugins of a specific type.
+func (m *Installer) ListByType(t plugin.PluginType) ([]InstalledPlugin, error) {
+	all, err := m.List()
+	if err != nil {
+		return nil, err
+	}
+
+	var filtered []InstalledPlugin
+	for _, p := range all {
+		if p.Manifest.Type == t {
+			filtered = append(filtered, p)
+		}
+	}
+	return filtered, nil
+}
+
 // Search searches the hub for plugins matching the query.
-func (m *Manager) Search(query string) ([]PluginSearchItem, error) {
+func (m *Installer) Search(query string) ([]PluginSearchItem, error) {
 	return m.hubClient.Search(query)
 }
 
 // GetHubInfo returns information about a plugin from the hub.
-func (m *Manager) GetHubInfo(name string) (*PluginInfo, error) {
+func (m *Installer) GetHubInfo(name string) (*PluginInfo, error) {
 	return m.hubClient.GetInfo(name)
 }

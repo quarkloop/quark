@@ -295,7 +295,7 @@ func (s *FSStore) KB(name string) (kb.Store, error) {
 }
 
 // Plugins returns a plugin manager scoped to the named space.
-func (s *FSStore) Plugins(name string) (*pluginmanager.Manager, error) {
+func (s *FSStore) Plugins(name string) (*pluginmanager.Installer, error) {
 	l, err := s.layout(name)
 	if err != nil {
 		return nil, err
@@ -303,7 +303,7 @@ func (s *FSStore) Plugins(name string) (*pluginmanager.Manager, error) {
 	if _, err := s.readMeta(name); err != nil {
 		return nil, err
 	}
-	return pluginmanager.NewManager(l.PluginsPath()), nil
+	return pluginmanager.NewInstaller(l.PluginsPath()), nil
 }
 
 // Sessions returns the session store scoped to the named space.

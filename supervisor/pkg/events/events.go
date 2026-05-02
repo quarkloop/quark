@@ -7,24 +7,27 @@ import (
 	"sync"
 	"time"
 
-	"github.com/quarkloop/supervisor/pkg/api"
+	api "github.com/quarkloop/supervisor/pkg/api"
+	event "github.com/quarkloop/pkg/event"
 )
 
-// Kind identifies the event type.
-type Kind string
+// Kind and constants are now defined in pkg/event.
+// Re-export for backwards compatibility within this package.
+type Kind = event.Kind
 
 const (
-	SessionCreated   Kind = "session.created"
-	SessionDeleted   Kind = "session.deleted"
-	QuarkfileUpdated Kind = "quarkfile.updated"
-	PluginInstalled  Kind = "plugin.installed"
-	PluginRemoved    Kind = "plugin.removed"
-	RuntimeShutdown  Kind = "runtime.shutdown"
+	SessionCreated   = event.SessionCreated
+	SessionDeleted   = event.SessionDeleted
+	QuarkfileUpdated = event.QuarkfileUpdated
+	PluginInstalled  = event.PluginInstalled
+	PluginRemoved    = event.PluginRemoved
+	RuntimeShutdown  = event.RuntimeShutdown
 )
 
-// Event is the wire format for a supervisor → agent signal.
+// Event is the internal event type for the supervisor's fan-out bus.
+// It uses the shared event.Kind from pkg/event.
 type Event struct {
-	Kind    Kind            `json:"kind"`
+	Kind    event.Kind     `json:"kind"`
 	Space   string          `json:"space"`
 	Time    time.Time       `json:"time"`
 	Payload json.RawMessage `json:"payload,omitempty"`
@@ -33,7 +36,7 @@ type Event struct {
 // ToWire converts the internal Event to the wire-format api.Event.
 func (e Event) ToWire() api.Event {
 	return api.Event{
-		Kind:    string(e.Kind),
+		Kind:    e.Kind,
 		Space:   e.Space,
 		Time:    e.Time,
 		Payload: e.Payload,

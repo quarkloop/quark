@@ -1,8 +1,9 @@
-go 1.26
+go 1.26.2
 
 use (
 	./cli
 	./e2e
+	./pkg/event
 	./pkg/plugin
 	./pkg/space
 	./pkg/toolkit
@@ -19,6 +20,7 @@ use (
 
 replace (
 	github.com/quarkloop/cli v0.0.0 => ./cli
+	github.com/quarkloop/pkg/event v0.0.0 => ./pkg/event
 	github.com/quarkloop/pkg/plugin v0.0.0 => ./pkg/plugin
 	github.com/quarkloop/pkg/space v0.0.0 => ./pkg/space
 	github.com/quarkloop/pkg/toolkit v0.0.0 => ./pkg/toolkit

@@ -42,4 +42,6 @@ replace gopkg.in/kr/pretty.v0 => github.com/kr/pretty v0.3.1
 
 replace github.com/quarkloop/pkg/plugin v0.0.0 => ../pkg/plugin
 
+replace github.com/quarkloop/pkg/event v0.0.0 => ../pkg/event
+
 replace github.com/quarkloop/pkg/space v0.0.0 => ../pkg/space

@@ -9,7 +9,8 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/quarkloop/supervisor/pkg/api"
+	api "github.com/quarkloop/supervisor/pkg/api"
+	event "github.com/quarkloop/pkg/event"
 )
 
 // SessionType is the type of a session.
@@ -70,7 +71,7 @@ func (c *Client) DeleteSession(ctx context.Context, space, id string) error {
 // Because StreamEvents holds the HTTP connection open for the lifetime of
 // ctx, the call ignores the Client's configured timeout by using a
 // dedicated no-timeout HTTP client.
-func (c *Client) StreamEvents(ctx context.Context, space string, fn func(api.Event)) error {
+func (c *Client) StreamEvents(ctx context.Context, space string, fn func(event.Event)) error {
 	return c.StreamEventsWithReady(ctx, space, nil, fn)
 }
 
@@ -78,7 +79,7 @@ func (c *Client) StreamEvents(ctx context.Context, space string, fn func(api.Eve
 // once the HTTP response headers have arrived successfully — i.e., the
 // supervisor has registered this subscriber and no further events for this
 // space can be missed.
-func (c *Client) StreamEventsWithReady(ctx context.Context, space string, onReady func(), fn func(api.Event)) error {
+func (c *Client) StreamEventsWithReady(ctx context.Context, space string, onReady func(), fn func(event.Event)) error {
 	url := c.baseURL + c.route.SpaceEventStream(space)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -127,7 +128,7 @@ func (c *Client) StreamEventsWithReady(ctx context.Context, space string, onRead
 			if dataBuf.Len() == 0 {
 				continue
 			}
-			var ev api.Event
+			var ev event.Event
 			if err := json.Unmarshal(dataBuf.Bytes(), &ev); err == nil {
 				fn(ev)
 			}
