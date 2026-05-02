@@ -1,6 +1,6 @@
 module github.com/quarkloop/plugins/tools/bash
 
-go 1.25.0
+go 1.26
 
 require (
 	github.com/gofiber/fiber/v2 v2.52.13
