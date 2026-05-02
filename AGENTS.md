@@ -4,7 +4,7 @@ Local runtime for autonomous multi-agent AI spaces.
 
 ## Architecture
 
-Go 1.22 workspace with 9 modules and 6 binaries. Each module is a standalone Go module with its own `go.mod`.
+Go 1.26 workspace with 14 modules and 7 binaries. Each module is a standalone Go module with its own `go.mod`.
 
 ### Module Layout
 
@@ -14,13 +14,16 @@ Go 1.22 workspace with 9 modules and 6 binaries. Each module is a standalone Go 
 | `cli`                          | `quark` CLI binary — user-facing entrypoint. Directly launches and connects to runtime. |
 | `supervisor`                   | Supervisor process for managing runtime lifecycle.                                      |
 | `pkg/plugin`                   | Shared plugin interfaces, types, manifest parsing, and loader for lib/api modes.        |
+| `pkg/space`                    | Shared space directory model + Quarkfile schema/validation                             |
+| `pkg/toolkit`                  | Shared toolkit for tool plugins (Fiber server, CLI, pipe mode).                        |
 | `plugins/tools/bash`           | Tool plugin: shell command execution (lib + api).                                       |
-| `plugins/tools/read`           | Tool plugin: read regular text files (lib + api).                                       |
-| `plugins/tools/write`          | Tool plugin: write and edit regular text files (lib + api).                             |
+| `plugins/tools/fs`             | Tool plugin: filesystem read/write operations (lib + api).                             |
 | `plugins/tools/web-search`     | Tool plugin: web search via Brave/SerpAPI (lib + api).                                  |
+| `plugins/tools/build-release`   | Tool plugin: build and release automation (lib + api).                                 |
 | `plugins/providers/openrouter` | Provider plugin: OpenRouter API (lib mode .so).                                         |
 | `plugins/providers/openai`     | Provider plugin: OpenAI API (lib mode .so).                                             |
 | `plugins/providers/anthropic`  | Provider plugin: Anthropic Messages API (lib mode .so).                                 |
+| `e2e`                          | End-to-end tests with real providers (build tag: e2e).                                |
 
 ### Dependency Graph
 
@@ -237,7 +240,7 @@ Everything is a plugin. Four types exist:
 
 | Type         | Mode      | What it contains                                                        | Examples                              |
 | ------------ | --------- | ----------------------------------------------------------------------- | ------------------------------------- |
-| **tool**     | lib + api | `plugin.so` (lib) and/or executable (binary) + manifest.yaml + SKILL.md | `bash`, `read`, `write`, `web-search` |
+| **tool**     | lib + api | `plugin.so` (lib) and/or executable (binary) + manifest.yaml + SKILL.md | `bash`, `fs`, `web-search`, `build-release` |
 | **provider** | lib       | .so plugin + manifest.yaml + SKILL.md                                   | `openrouter`, `openai`, `anthropic`   |
 | **agent**    | -         | System prompt + skill references + tool requirements                    | `supervisor`, `researcher`            |
 | **skill**    | -         | Guidance files only, no binary                                          | `code-review`, `debugging`            |
@@ -260,13 +263,13 @@ plugins/
 │   │   ├── plugin.go          # lib-mode export (build tag: plugin)
 │   │   ├── cmd/bash/          # api-mode entry point (Fiber v2)
 │   │   └── pkg/bash/          # shared implementation + RunHandler() (Fiber)
-│   ├── read/
-│   ├── write/
-│   └── web-search/
-│       ├── manifest.yaml
-│       ├── SKILL.md
-│       ├── cmd/web-search/   # api-mode entry point (Fiber v2)
-│       └── pkg/websearch/    # shared implementation + searchHandler() (Fiber)
+│   ├── fs/
+│   ├── web-search/
+│   │   ├── manifest.yaml
+│   │   ├── SKILL.md
+│   │   ├── cmd/web-search/   # api-mode entry point (Fiber v2)
+│   │   └── pkg/websearch/    # shared implementation + searchHandler() (Fiber)
+│   └── build-release/
 └── providers/
     ├── openrouter/
     │   ├── manifest.yaml
