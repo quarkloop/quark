@@ -84,8 +84,8 @@ func (c *HubClient) GetManifest(name, version string) ([]byte, error) {
 	return io.ReadAll(resp.Body)
 }
 
-// PluginInfo contains metadata about a plugin in the hub.
-type PluginInfo struct {
+// HubPlugin contains metadata about a plugin in the hub.
+type HubPlugin struct {
 	Name        string   `json:"name"`
 	Version     string   `json:"version"`
 	Type        string   `json:"type"`
@@ -98,7 +98,7 @@ type PluginInfo struct {
 }
 
 // GetInfo fetches detailed information about a plugin from the hub.
-func (c *HubClient) GetInfo(name string) (*PluginInfo, error) {
+func (c *HubClient) GetInfo(name string) (*HubPlugin, error) {
 	url := fmt.Sprintf("%s/plugins/%s", c.BaseURL, name)
 	resp, err := c.HTTPClient.Get(url)
 	if err != nil {
@@ -113,7 +113,7 @@ func (c *HubClient) GetInfo(name string) (*PluginInfo, error) {
 		return nil, fmt.Errorf("hub get info returned %d", resp.StatusCode)
 	}
 
-	var info PluginInfo
+	var info HubPlugin
 	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
 		return nil, fmt.Errorf("parse hub info response: %w", err)
 	}

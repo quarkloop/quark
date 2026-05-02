@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	api "github.com/quarkloop/supervisor/pkg/api"
 	event "github.com/quarkloop/pkg/event"
 )
 
@@ -24,41 +23,28 @@ const (
 	RuntimeShutdown  = event.RuntimeShutdown
 )
 
-// Event is the internal event type for the supervisor's fan-out bus.
-// It uses the shared event.Kind from pkg/event.
-type Event struct {
-	Kind    event.Kind     `json:"kind"`
-	Space   string          `json:"space"`
-	Time    time.Time       `json:"time"`
-	Payload json.RawMessage `json:"payload,omitempty"`
-}
-
-// ToWire converts the internal Event to the wire-format api.Event.
-func (e Event) ToWire() api.Event {
-	return api.Event{
-		Kind:    e.Kind,
-		Space:   e.Space,
-		Time:    e.Time,
-		Payload: e.Payload,
-	}
-}
-
 // Bus is an in-memory fan-out of events scoped by space.
 type Bus struct {
 	mu   sync.RWMutex
-	subs map[string]map[chan Event]struct{} // space → subscribers
+	subs map[string]map[chan event.Event]struct{} // space → subscribers
 }
 
 // NewBus returns a fresh event bus.
 func NewBus() *Bus {
-	return &Bus{subs: make(map[string]map[chan Event]struct{})}
+	return &Bus{subs: make(map[string]map[chan event.Event]struct{})}
 }
 
 // Publish delivers e to every subscriber of e.Space. Slow subscribers are
 // dropped; publish never blocks.
-func (b *Bus) Publish(e Event) {
+func (b *Bus) Publish(e event.Event) {
 	if e.Time.IsZero() {
 		e.Time = time.Now().UTC()
+	}
+	// Deep-copy the payload to avoid sharing the underlying array with the caller.
+	if len(e.Payload) > 0 {
+		payloadCopy := make(json.RawMessage, len(e.Payload))
+		copy(payloadCopy, e.Payload)
+		e.Payload = payloadCopy
 	}
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -72,11 +58,11 @@ func (b *Bus) Publish(e Event) {
 
 // Subscribe returns a channel receiving events for space. Call the returned
 // function to unsubscribe.
-func (b *Bus) Subscribe(space string) (<-chan Event, func()) {
-	ch := make(chan Event, 32)
+func (b *Bus) Subscribe(space string) (<-chan event.Event, func()) {
+	ch := make(chan event.Event, 32)
 	b.mu.Lock()
 	if b.subs[space] == nil {
-		b.subs[space] = make(map[chan Event]struct{})
+		b.subs[space] = make(map[chan event.Event]struct{})
 	}
 	b.subs[space][ch] = struct{}{}
 	b.mu.Unlock()

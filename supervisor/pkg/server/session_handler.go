@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/quarkloop/pkg/event"
 	"github.com/quarkloop/supervisor/pkg/api"
 	"github.com/quarkloop/supervisor/pkg/events"
 	"github.com/quarkloop/supervisor/pkg/sessions"
@@ -60,7 +61,7 @@ func (s *Server) handleCreateSession(c *fiber.Ctx) error {
 		return writeError(c, fiber.StatusInternalServerError, err.Error())
 	}
 	out := toAPISession(sess)
-	s.events.Publish(events.Event{
+	s.events.Publish(event.Event{
 		Kind:    events.SessionCreated,
 		Space:   name,
 		Payload: events.SessionPayload(out.ID, string(out.Type), out.Title),
@@ -97,7 +98,7 @@ func (s *Server) handleDeleteSession(c *fiber.Ctx) error {
 		}
 		return writeError(c, fiber.StatusInternalServerError, err.Error())
 	}
-	s.events.Publish(events.Event{
+	s.events.Publish(event.Event{
 		Kind:    events.SessionDeleted,
 		Space:   name,
 		Payload: events.SessionPayload(id, "", ""),
@@ -140,7 +141,7 @@ func (s *Server) handleEventStream(c *fiber.Ctx) error {
 					return
 				}
 				fmt.Fprintf(w, "event: %s\ndata: ", ev.Kind)
-				if err := enc.Encode(ev.ToWire()); err != nil {
+				if err := enc.Encode(ev); err != nil {
 					return
 				}
 				fmt.Fprint(w, "\n")

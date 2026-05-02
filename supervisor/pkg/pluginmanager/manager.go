@@ -312,6 +312,6 @@ func (m *Installer) Search(query string) ([]PluginSearchItem, error) {
 }
 
 // GetHubInfo returns information about a plugin from the hub.
-func (m *Installer) GetHubInfo(name string) (*PluginInfo, error) {
+func (m *Installer) GetHubInfo(name string) (*HubPlugin, error) {
 	return m.hubClient.GetInfo(name)
 }

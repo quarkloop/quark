@@ -16,9 +16,24 @@ type Inferrer func(ctx context.Context, messages []plugin.Message, tools []plugi
 
 // Step is a single unit of work in a plan.
 type Step struct {
-	Description string `json:"description"`
-	Status      string `json:"status"` // pending, active, completed, failed
-	Result      string `json:"result,omitempty"`
+	description string
+	status      string
+	result      string
+}
+
+// Description returns the step description.
+func (s *Step) Description() string {
+	return s.description
+}
+
+// Status returns the step status.
+func (s *Step) Status() string {
+	return s.status
+}
+
+// Result returns the step result.
+func (s *Step) Result() string {
+	return s.result
 }
 
 // WorkContext holds accumulated history from autonomous work execution.
@@ -46,8 +61,8 @@ func (wc *WorkContext) GetHistory() []plugin.Message {
 // Plan holds the agent's autonomous work state and execution logic.
 type Plan struct {
 	mu       sync.RWMutex
-	Steps    []Step `json:"steps"`
-	Status   string `json:"status"` // idle, active, paused, completed
+	steps    []Step
+	status   string   // idle, active, paused, completed
 	workCtx  WorkContext
 	nextStep chan struct{}
 }
@@ -55,7 +70,7 @@ type Plan struct {
 // New creates a new idle Plan.
 func New() *Plan {
 	return &Plan{
-		Status:   "idle",
+		status:   "idle",
 		nextStep: make(chan struct{}, 1),
 	}
 }
@@ -69,8 +84,8 @@ func (p *Plan) NextStep() <-chan struct{} {
 func (p *Plan) SetSteps(steps []Step) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.Steps = steps
-	p.Status = "active"
+	p.steps = steps
+	p.status = "active"
 	p.workCtx = WorkContext{} // reset work context for new plan
 	if len(steps) > 0 {
 		select {
@@ -84,15 +99,15 @@ func (p *Plan) SetSteps(steps []Step) {
 func (p *Plan) Pause() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.Status = "paused"
+	p.status = "paused"
 }
 
 // Resume resumes a paused plan.
 func (p *Plan) Resume() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.Status == "paused" {
-		p.Status = "active"
+	if p.status == "paused" {
+		p.status = "active"
 		select {
 		case p.nextStep <- struct{}{}:
 		default:
@@ -104,15 +119,15 @@ func (p *Plan) Resume() {
 func (p *Plan) GetStatus() string {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	return p.Status
+	return p.status
 }
 
 // GetSteps returns a copy of the current steps.
 func (p *Plan) GetSteps() []Step {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	out := make([]Step, len(p.Steps))
-	copy(out, p.Steps)
+	out := make([]Step, len(p.steps))
+	copy(out, p.steps)
 	return out
 }
 
@@ -120,15 +135,15 @@ func (p *Plan) GetSteps() []Step {
 func (p *Plan) GetSummary() string {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	if p.Status == "idle" {
+	if p.status == "idle" {
 		return "No active work."
 	}
-	if p.Status == "paused" {
+	if p.status == "paused" {
 		return "Work paused."
 	}
-	for i, s := range p.Steps {
-		if s.Status == "pending" || s.Status == "active" {
-			return fmt.Sprintf("executing step %d/%d — %q", i+1, len(p.Steps), s.Description)
+	for i, s := range p.steps {
+		if s.status == "pending" || s.status == "active" {
+			return fmt.Sprintf("executing step %d/%d — %q", i+1, len(p.steps), s.description)
 		}
 	}
 	return "All steps completed."
@@ -139,10 +154,10 @@ func (p *Plan) ExecuteStep(ctx context.Context, infer Inferrer, systemPrompt str
 	// Find the current pending step index under the lock.
 	p.mu.Lock()
 	stepIdx := -1
-	for i := range p.Steps {
-		if p.Steps[i].Status == "pending" {
+	for i := range p.steps {
+		if p.steps[i].status == "pending" {
 			stepIdx = i
-			p.Steps[i].Status = "active"
+			p.steps[i].status = "active"
 			break
 		}
 	}
@@ -166,7 +181,7 @@ func (p *Plan) ExecuteStep(ctx context.Context, infer Inferrer, systemPrompt str
 	p.mu.Lock()
 	msgs = append(msgs, plugin.Message{
 		Role:    "user",
-		Content: fmt.Sprintf("Execute this step: %s", p.Steps[stepIdx].Description),
+		Content: fmt.Sprintf("Execute this step: %s", p.steps[stepIdx].description),
 	})
 	p.mu.Unlock()
 
@@ -176,11 +191,11 @@ func (p *Plan) ExecuteStep(ctx context.Context, infer Inferrer, systemPrompt str
 	// Write step outcome under lock.
 	p.mu.Lock()
 	if err != nil {
-		p.Steps[stepIdx].Status = "failed"
-		p.Steps[stepIdx].Result = err.Error()
+		p.steps[stepIdx].status = "failed"
+		p.steps[stepIdx].result = err.Error()
 	} else {
-		p.Steps[stepIdx].Status = "completed"
-		p.Steps[stepIdx].Result = result
+		p.steps[stepIdx].status = "completed"
+		p.steps[stepIdx].result = result
 	}
 	p.mu.Unlock()
 
@@ -189,7 +204,7 @@ func (p *Plan) ExecuteStep(ctx context.Context, infer Inferrer, systemPrompt str
 	}
 
 	// Store in work context
-	p.workCtx.AddEntry("user", fmt.Sprintf("Step: %s", p.Steps[stepIdx].Description))
+	p.workCtx.AddEntry("user", fmt.Sprintf("Step: %s", p.steps[stepIdx].description))
 	p.workCtx.AddEntry("assistant", result)
 
 	// Advance to next step
@@ -201,8 +216,8 @@ func (p *Plan) ExecuteStep(ctx context.Context, infer Inferrer, systemPrompt str
 func (p *Plan) advance() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	for _, s := range p.Steps {
-		if s.Status == "pending" {
+	for _, s := range p.steps {
+		if s.status == "pending" {
 			select {
 			case p.nextStep <- struct{}{}:
 			default:
@@ -210,5 +225,5 @@ func (p *Plan) advance() {
 			return
 		}
 	}
-	p.Status = "completed"
+	p.status = "completed"
 }

@@ -155,12 +155,8 @@ type CreateSessionRequest struct {
 // Event is the wire format for a supervisor → agent signal. The supervisor
 // publishes events on its space-scoped SSE stream and agents consume them to
 // stay in sync with supervisor state (sessions, plugins, quarkfile, etc).
-type Event struct {
-	Kind    event.Kind     `json:"kind"`
-	Space   string          `json:"space"`
-	Time    time.Time       `json:"time"`
-	Payload json.RawMessage `json:"payload,omitempty"`
-}
+// It is an alias for the canonical event.Event from pkg/event.
+type Event = event.Event
 
 // Event kinds are defined in pkg/event. Re-export for API backwards compatibility.
 const (
@@ -194,8 +190,7 @@ type ErrorResponse struct {
 // a supervisor-owned data namespace keyed by Name (from Quarkfile meta.name).
 // WorkingDir is the user workspace where the agent is launched.
 type SpaceInfo struct {
-	Name string `json:"name"`
-	// Version is meta.version from the latest stored Quarkfile.
+	Name       string    `json:"name"`
 	Version    string    `json:"version,omitempty"`
 	WorkingDir string    `json:"working_dir,omitempty"`
 	CreatedAt  time.Time `json:"created_at"`
