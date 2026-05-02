@@ -3,6 +3,8 @@ package api
 import (
 	"encoding/json"
 	"time"
+
+	event "github.com/quarkloop/pkg/event"
 )
 
 // --- Agent runtime types (returned by the agent's own HTTP API) ---
@@ -35,8 +37,8 @@ type SetModeRequest struct {
 // StatsResponse is returned by the stats endpoint.
 type StatsResponse map[string]any
 
-// ChatRequest is the request body for chat endpoints.
-type ChatRequest struct {
+// AgentChatRequest is the request body for chat endpoints.
+type AgentChatRequest struct {
 	Message    string           `json:"message"`
 	SessionKey string           `json:"session_key,omitempty"`
 	Stream     bool             `json:"stream,omitempty"`
@@ -84,8 +86,8 @@ const (
 	StepFailed   StepStatus = "failed"
 )
 
-// Step is a single unit of work within an execution plan.
-type Step struct {
+// PlanStep is a single unit of work within an execution plan.
+type PlanStep struct {
 	ID          string     `json:"id"`
 	Agent       string     `json:"agent"`
 	Description string     `json:"description"`
@@ -97,11 +99,11 @@ type Step struct {
 	FinishedAt  *time.Time `json:"finished_at,omitempty"`
 }
 
-// Plan represents an execution plan.
-type Plan struct {
+// PlanResponse represents an execution plan.
+type PlanResponse struct {
 	Goal      string     `json:"goal"`
 	Status    PlanStatus `json:"status"`
-	Steps     []Step     `json:"steps"`
+	Steps     []PlanStep `json:"steps"`
 	Complete  bool       `json:"complete"`
 	Summary   string     `json:"summary,omitempty"`
 	CreatedAt time.Time  `json:"created_at"`
@@ -154,20 +156,20 @@ type CreateSessionRequest struct {
 // publishes events on its space-scoped SSE stream and agents consume them to
 // stay in sync with supervisor state (sessions, plugins, quarkfile, etc).
 type Event struct {
-	Kind    string          `json:"kind"`
+	Kind    event.Kind     `json:"kind"`
 	Space   string          `json:"space"`
 	Time    time.Time       `json:"time"`
 	Payload json.RawMessage `json:"payload,omitempty"`
 }
 
-// Event kinds published by the supervisor on the space event stream.
+// Event kinds are defined in pkg/event. Re-export for API backwards compatibility.
 const (
-	EventSessionCreated   = "session.created"
-	EventSessionDeleted   = "session.deleted"
-	EventQuarkfileUpdated = "quarkfile.updated"
-	EventPluginInstalled  = "plugin.installed"
-	EventPluginRemoved    = "plugin.removed"
-	EventRuntimeShutdown  = "runtime.shutdown"
+	EventSessionCreated   = event.SessionCreated
+	EventSessionDeleted   = event.SessionDeleted
+	EventQuarkfileUpdated = event.QuarkfileUpdated
+	EventPluginInstalled  = event.PluginInstalled
+	EventPluginRemoved    = event.PluginRemoved
+	EventRuntimeShutdown  = event.RuntimeShutdown
 )
 
 // BudgetResponse is returned by budget endpoints.

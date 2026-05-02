@@ -10,16 +10,16 @@ import (
 	"github.com/quarkloop/runtime/pkg/loop"
 )
 
-// Runtime manages execution mode behavior at runtime.
-type Runtime struct {
+// ExecutionRuntime manages execution mode behavior at runtime.
+type ExecutionRuntime struct {
 	config Config
 	gate   *approval.Gate
 	dag    *dag.DAG
 }
 
-// NewRuntime creates a new execution runtime with the given configuration.
-func NewRuntime(config Config) (*Runtime, error) {
-	r := &Runtime{config: config}
+// NewExecutionRuntime creates a new execution runtime with the given configuration.
+func NewExecutionRuntime(config Config) (*ExecutionRuntime, error) {
+	r := &ExecutionRuntime{config: config}
 
 	switch config.Mode {
 	case ModeAssistive:
@@ -30,10 +30,10 @@ func NewRuntime(config Config) (*Runtime, error) {
 			return nil, fmt.Errorf("workflow mode requires DAG configuration")
 		}
 
-		// Convert config to dag.Step slice
-		steps := make([]dag.Step, len(config.DAGConfig.Steps))
+		// Convert config to dag.DAGStep slice
+		steps := make([]dag.DAGStep, len(config.DAGConfig.Steps))
 		for i, s := range config.DAGConfig.Steps {
-			steps[i] = dag.Step{
+			steps[i] = dag.DAGStep{
 				ID:         s.ID,
 				Name:       s.Name,
 				Action:     s.Action,
@@ -54,24 +54,24 @@ func NewRuntime(config Config) (*Runtime, error) {
 }
 
 // Mode returns the execution mode.
-func (r *Runtime) Mode() Mode {
+func (r *ExecutionRuntime) Mode() Mode {
 	return r.config.Mode
 }
 
 // Gate returns the approval gate for assistive mode.
 // Returns nil if not in assistive mode.
-func (r *Runtime) Gate() *approval.Gate {
+func (r *ExecutionRuntime) Gate() *approval.Gate {
 	return r.gate
 }
 
 // DAG returns the workflow DAG for workflow mode.
 // Returns nil if not in workflow mode.
-func (r *Runtime) DAG() *dag.DAG {
+func (r *ExecutionRuntime) DAG() *dag.DAG {
 	return r.dag
 }
 
 // ConfigureLoop applies execution mode configuration to the loop.
-func (r *Runtime) ConfigureLoop(l *loop.Loop) {
+func (r *ExecutionRuntime) ConfigureLoop(l *loop.Loop) {
 	// Always add mode context middleware
 	l.Use(ModeMiddleware(r.config.Mode))
 
@@ -86,7 +86,7 @@ func (r *Runtime) ConfigureLoop(l *loop.Loop) {
 
 // RunWorkflow starts the workflow DAG execution using the provided step executor.
 // This should only be called in workflow mode.
-func (r *Runtime) RunWorkflow(ctx context.Context, stepRunner dag.StepExecutor) error {
+func (r *ExecutionRuntime) RunWorkflow(ctx context.Context, stepRunner dag.StepExecutor) error {
 	if r.config.Mode != ModeWorkflow {
 		return fmt.Errorf("RunWorkflow called but mode is %s", r.config.Mode)
 	}
@@ -109,7 +109,7 @@ func (r *Runtime) RunWorkflow(ctx context.Context, stepRunner dag.StepExecutor) 
 }
 
 // Approve approves an approval request by ID. Only valid in assistive mode.
-func (r *Runtime) Approve(id, reason string) bool {
+func (r *ExecutionRuntime) Approve(id, reason string) bool {
 	if r.gate == nil {
 		return false
 	}
@@ -117,7 +117,7 @@ func (r *Runtime) Approve(id, reason string) bool {
 }
 
 // Deny denies an approval request by ID. Only valid in assistive mode.
-func (r *Runtime) Deny(id, reason string) bool {
+func (r *ExecutionRuntime) Deny(id, reason string) bool {
 	if r.gate == nil {
 		return false
 	}
@@ -125,7 +125,7 @@ func (r *Runtime) Deny(id, reason string) bool {
 }
 
 // PendingApprovals returns all pending approval requests. Only valid in assistive mode.
-func (r *Runtime) PendingApprovals() []*approval.Request {
+func (r *ExecutionRuntime) PendingApprovals() []*approval.Request {
 	if r.gate == nil {
 		return nil
 	}

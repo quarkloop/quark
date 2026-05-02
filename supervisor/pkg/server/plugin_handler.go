@@ -47,7 +47,7 @@ func (s *Server) handleGetPlugin(c *fiber.Ctx) error {
 	if err != nil {
 		return writeError(c, fiber.StatusNotFound, err.Error())
 	}
-	return writeJSON(c, fiber.StatusOK, toAPIPluginInfo(*p))
+	return writeJSON(c, fiber.StatusOK, toAPIPluginInfo(p))
 }
 
 // handleInstallPlugin serves POST /v1/spaces/:name/plugins.
@@ -149,10 +149,10 @@ func (s *Server) handleHubPluginInfo(c *fiber.Ctx) error {
 
 func toAPIPluginInfo(p pluginmanager.InstalledPlugin) api.PluginInfo {
 	return api.PluginInfo{
-		Name:        p.Name,
-		Version:     p.Version,
-		Type:        string(p.Type),
-		Mode:        string(p.Mode),
-		Description: p.Description,
+		Name:        p.Manifest.Name,
+		Version:     p.Manifest.Version,
+		Type:        string(p.Manifest.Type),
+		Mode:        string(p.Manifest.Mode),
+		Description: p.Manifest.Description,
 	}
 }

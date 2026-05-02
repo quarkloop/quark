@@ -87,7 +87,7 @@ func (c *Client) Stats(ctx context.Context) (*api.StatsResponse, error) {
 	return &resp, nil
 }
 
-func (c *Client) Chat(ctx context.Context, req api.ChatRequest) (*api.ChatResponse, error) {
+func (c *Client) Chat(ctx context.Context, req api.AgentChatRequest) (*api.ChatResponse, error) {
 	var resp api.ChatResponse
 	if err := c.transport.Post(ctx, c.path(api.PathChat), req, &resp); err != nil {
 		return nil, err
@@ -99,8 +99,8 @@ func (c *Client) Stop(ctx context.Context) error {
 	return c.transport.Post(ctx, c.path(api.PathStop), nil, nil)
 }
 
-func (c *Client) Plan(ctx context.Context) (*api.Plan, error) {
-	var resp api.Plan
+func (c *Client) Plan(ctx context.Context) (*api.PlanResponse, error) {
+	var resp api.PlanResponse
 	if err := c.transport.Get(ctx, c.path(api.PathPlan), &resp); err != nil {
 		return nil, err
 	}
@@ -119,8 +119,8 @@ func (c *Client) Activity(ctx context.Context, limit int) ([]api.ActivityRecord,
 	return resp, nil
 }
 
-func (c *Client) ApprovePlan(ctx context.Context, planID string) (*api.Plan, error) {
-	var resp api.Plan
+func (c *Client) ApprovePlan(ctx context.Context, planID string) (*api.PlanResponse, error) {
+	var resp api.PlanResponse
 	if err := c.transport.Post(ctx, c.path(api.PathPlanApprove), api.PlanActionRequest{PlanID: planID}, &resp); err != nil {
 		return nil, err
 	}
