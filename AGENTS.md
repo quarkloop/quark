@@ -129,7 +129,7 @@ Individual: `make build-runtime`, `make build-cli`, `make build-supervisor`.
 - **Workspace mode** (default): `go.work` at root with `use` and `replace` directives. All modules resolve locally.
 - **Standalone build**: `GOWORK=off go build -mod=vendor ./path/to/cmd` (requires vendored deps).
 - Each module's `go.mod` has `replace` directives for standalone builds outside the workspace.
-- **Go toolchain**: The `go.mod` files specify `go 1.26`. Go 1.21+ auto-downloads the required toolchain when the system Go is older (see `go env GOTOOLCHAIN`). To avoid auto-downloads, install Go 1.26.2 system-wide at `/mnt/devtools/tools/go`.
+- **Go toolchain**: The `go.mod` files specify `go 1.26`. Go 1.21+ auto-downloads the required toolchain when the system Go is older (see `go env GOTOOLCHAIN`). Install Go 1.26 system-wide to avoid auto-downloads.
 
 ## Runtime Package Structure
 
