@@ -4,7 +4,7 @@ Thank you for your interest in contributing. This guide covers everything you ne
 
 ## Prerequisites
 
-- **Go 1.22+** — Quark uses Go workspace mode; all 12 modules resolve locally
+- **Go 1.26+** — Quark uses Go workspace mode; all 14 modules resolve locally
 - An LLM provider API key if you want to run E2E tests (optional for unit tests)
 
 ## Getting started
@@ -12,21 +12,21 @@ Thank you for your interest in contributing. This guide covers everything you ne
 ```bash
 git clone https://github.com/quarkloop/quark
 cd quark
-make build        # builds all 9 binaries into ./bin/
+make build        # builds all 7 binaries into ./bin/
 export PATH="$PWD/bin:$PATH"
 ```
 
 ## Running tests
 
 ```bash
-make test         # unit tests across all 12 modules (no API key needed)
+make test         # unit tests across all 14 modules (no API key needed)
 make vet          # go vet across all modules
 make fmt          # gofmt all modules in-place
 ```
 
 ### E2E tests
 
-E2E tests start real agent, bash, read, and write processes and drive them through the shared HTTP client. They require an API key:
+E2E tests start real agent, bash, and fs processes and drive them through the shared HTTP client. They require an API key:
 
 ```bash
 cp .env.example .env
@@ -39,12 +39,13 @@ E2E tests run with a 10-minute timeout. See `agent/e2e/` for details.
 
 ## Module structure
 
-Quark is a Go workspace (`go.work`) containing 12 independent modules. The dependency graph is strict — no circular imports:
+Quark is a Go workspace (`go.work`) containing 14 independent modules. The dependency graph is strict — no circular imports:
 
 ```
-core → agent → tools/space
-agent-api → agent-client → api-server → cli
-core → tools/bash, tools/kb, tools/read, tools/write, tools/web-search
+pkg/plugin → supervisor/pkg/pluginmanager, plugins/tools/*, plugins/providers/*
+pkg/space → supervisor/pkg/space, cli/pkg/commands/*
+supervisor → cli (via supervisor/pkg/client)
+runtime → cli (via runtime/pkg/client)
 ```
 
 When adding code, place it in the lowest-level module that needs it. Shared types go in `core` or `agent-api`. Agent logic goes in the appropriate `agent/pkg/<package>`. New tools follow the pattern in `tools/bash` or `tools/read`.
