@@ -71,14 +71,14 @@ func (d *Delegator) Delegate(ctx context.Context, parentID string, work WorkItem
 	defer d.mu.Unlock()
 
 	// Validate parent exists
-	parent := d.registry.Get(parentID)
-	if parent == nil {
+	_, ok := d.registry.Get(parentID)
+	if !ok {
 		return nil, errors.New("parent agent not found")
 	}
 
 	// Validate target agent exists and is a child
-	target := d.registry.Get(work.AgentID)
-	if target == nil {
+	target, ok := d.registry.Get(work.AgentID)
+	if !ok {
 		return nil, fmt.Errorf("target agent %s not found", work.AgentID)
 	}
 	if target.Identity.ParentID != parentID {

@@ -10,7 +10,7 @@ import (
 )
 
 func TestDAGNew(t *testing.T) {
-	steps := []dag.Step{
+	steps := []dag.DAGStep{
 		{ID: "step-1", Name: "First", Action: "do step 1"},
 		{ID: "step-2", Name: "Second", Action: "do step 2", DependsOn: []string{"step-1"}},
 		{ID: "step-3", Name: "Third", Action: "do step 3", DependsOn: []string{"step-1"}},
@@ -28,7 +28,7 @@ func TestDAGNew(t *testing.T) {
 }
 
 func TestDAGMissingDependency(t *testing.T) {
-	steps := []dag.Step{
+	steps := []dag.DAGStep{
 		{ID: "step-1", Name: "First", Action: "do step 1", DependsOn: []string{"nonexistent"}},
 	}
 
@@ -39,7 +39,7 @@ func TestDAGMissingDependency(t *testing.T) {
 }
 
 func TestDAGCycleDetection(t *testing.T) {
-	steps := []dag.Step{
+	steps := []dag.DAGStep{
 		{ID: "a", Name: "A", Action: "do a", DependsOn: []string{"c"}},
 		{ID: "b", Name: "B", Action: "do b", DependsOn: []string{"a"}},
 		{ID: "c", Name: "C", Action: "do c", DependsOn: []string{"b"}},
@@ -52,7 +52,7 @@ func TestDAGCycleDetection(t *testing.T) {
 }
 
 func TestDAGReady(t *testing.T) {
-	steps := []dag.Step{
+	steps := []dag.DAGStep{
 		{ID: "step-1", Name: "First", Action: "do step 1"},
 		{ID: "step-2", Name: "Second", Action: "do step 2", DependsOn: []string{"step-1"}},
 	}
@@ -70,7 +70,7 @@ func TestDAGReady(t *testing.T) {
 }
 
 func TestDAGExecution(t *testing.T) {
-	steps := []dag.Step{
+	steps := []dag.DAGStep{
 		{ID: "step-1", Name: "First", Action: "do step 1"},
 		{ID: "step-2", Name: "Second", Action: "do step 2", DependsOn: []string{"step-1"}},
 	}
@@ -105,7 +105,7 @@ func TestDAGExecution(t *testing.T) {
 }
 
 func TestDAGParallelExecution(t *testing.T) {
-	steps := []dag.Step{
+	steps := []dag.DAGStep{
 		{ID: "step-1", Name: "First", Action: "do step 1"},
 		{ID: "step-2a", Name: "Second A", Action: "do step 2a", DependsOn: []string{"step-1"}},
 		{ID: "step-2b", Name: "Second B", Action: "do step 2b", DependsOn: []string{"step-1"}},
@@ -153,7 +153,7 @@ func TestDAGParallelExecution(t *testing.T) {
 }
 
 func TestDAGFailureSkipsDownstream(t *testing.T) {
-	steps := []dag.Step{
+	steps := []dag.DAGStep{
 		{ID: "step-1", Name: "First", Action: "do step 1"},
 		{ID: "step-2", Name: "Second", Action: "do step 2", DependsOn: []string{"step-1"}},
 	}
@@ -177,14 +177,17 @@ func TestDAGFailureSkipsDownstream(t *testing.T) {
 	}
 
 	// step-2 should be skipped
-	s2 := d.Get("step-2")
+	s2, ok := d.Get("step-2")
+	if !ok {
+		t.Fatal("expected step-2 to exist")
+	}
 	if s2.Status != dag.StepSkipped {
 		t.Errorf("expected step-2 to be skipped, got %s", s2.Status)
 	}
 }
 
 func TestDAGProgress(t *testing.T) {
-	steps := []dag.Step{
+	steps := []dag.DAGStep{
 		{ID: "step-1", Name: "First", Action: "do step 1"},
 		{ID: "step-2", Name: "Second", Action: "do step 2"},
 	}

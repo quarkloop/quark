@@ -21,10 +21,10 @@ type ExecutorConfig struct {
 	DefaultTimeout time.Duration
 
 	// OnStepStart is called when a step starts.
-	OnStepStart func(step *Step)
+	OnStepStart func(step DAGStep)
 
 	// OnStepComplete is called when a step completes (success or failure).
-	OnStepComplete func(step *Step)
+	OnStepComplete func(step DAGStep)
 }
 
 // Executor runs a DAG workflow with parallel step handling.
@@ -108,7 +108,7 @@ func (e *Executor) Start(ctx context.Context) error {
 			e.running++
 			e.mu.Unlock()
 
-			go func(s *Step) {
+			go func(s DAGStep) {
 				defer wg.Done()
 				defer func() {
 					e.mu.Lock()
@@ -152,7 +152,7 @@ func (e *Executor) Start(ctx context.Context) error {
 }
 
 // runStep runs a single step with timeout and retry handling.
-func (e *Executor) runStep(ctx context.Context, step *Step) error {
+func (e *Executor) runStep(ctx context.Context, step DAGStep) error {
 	// Acquire semaphore if limiting parallelism
 	if e.sem != nil {
 		select {
@@ -184,7 +184,10 @@ func (e *Executor) runStep(ctx context.Context, step *Step) error {
 	// Notify completion
 	defer func() {
 		if e.config.OnStepComplete != nil {
-			e.config.OnStepComplete(e.dag.Get(step.ID))
+			s, ok := e.dag.Get(step.ID)
+			if ok {
+				e.config.OnStepComplete(s)
+			}
 		}
 	}()
 
@@ -195,9 +198,7 @@ func (e *Executor) runStep(ctx context.Context, step *Step) error {
 				"step_id", step.ID, "attempt", step.Attempts, "retry_count", step.RetryCount+1, "error", err)
 
 			// Reset status to allow retry
-			e.dag.mu.Lock()
-			step.Status = StepReady
-			e.dag.mu.Unlock()
+			e.dag.ResetStep(step.ID)
 
 			return e.runStep(ctx, step)
 		}

@@ -20,8 +20,8 @@ const (
 	StepSkipped   StepStatus = "skipped" // skipped due to upstream failure
 )
 
-// Step represents a single step in the DAG workflow.
-type Step struct {
+// DAGStep represents a single step in the DAG workflow.
+type DAGStep struct {
 	// ID is the unique identifier for this step.
 	ID string
 
@@ -62,21 +62,20 @@ type Step struct {
 // DAG represents a directed acyclic graph of workflow steps.
 type DAG struct {
 	mu    sync.RWMutex
-	steps map[string]*Step
+	steps map[string]*DAGStep
 	order []string // topological order
 }
 
 // New creates a new DAG from the given steps.
-func New(steps []Step) (*DAG, error) {
+func New(steps []DAGStep) (*DAG, error) {
 	d := &DAG{
-		steps: make(map[string]*Step),
+		steps: make(map[string]*DAGStep),
 	}
 
-	// Copy steps into map
+	// Store pointers to slice elements directly (not copies)
 	for i := range steps {
-		s := steps[i]
-		s.Status = StepPending
-		d.steps[s.ID] = &s
+		steps[i].Status = StepPending
+		d.steps[steps[i].ID] = &steps[i]
 	}
 
 	// Validate dependencies exist
@@ -147,34 +146,38 @@ func (d *DAG) topologicalSort() ([]string, error) {
 }
 
 // Get returns the step with the given ID.
-func (d *DAG) Get(id string) *Step {
+func (d *DAG) Get(id string) (DAGStep, bool) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
-	return d.steps[id]
+	s, ok := d.steps[id]
+	if !ok {
+		return DAGStep{}, false
+	}
+	return *s, true
 }
 
-// Steps returns all steps in topological order.
-func (d *DAG) Steps() []*Step {
+// Steps returns copies of all steps in topological order.
+func (d *DAG) Steps() []DAGStep {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
-	result := make([]*Step, 0, len(d.order))
+	result := make([]DAGStep, 0, len(d.order))
 	for _, id := range d.order {
-		result = append(result, d.steps[id])
+		result = append(result, *d.steps[id])
 	}
 	return result
 }
 
-// Ready returns all steps that are ready to execute.
+// Ready returns copies of all steps that are ready to execute.
 // A step is ready if it has status StepReady (marked by UpdateReadySteps).
-func (d *DAG) Ready() []*Step {
+func (d *DAG) Ready() []DAGStep {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
-	var ready []*Step
+	var ready []DAGStep
 	for _, s := range d.steps {
 		if s.Status == StepReady {
-			ready = append(ready, s)
+			ready = append(ready, *s)
 		}
 	}
 	return ready
@@ -182,7 +185,7 @@ func (d *DAG) Ready() []*Step {
 
 // dependenciesSatisfied checks if all dependencies of a step are completed.
 // Caller must hold at least a read lock.
-func (d *DAG) dependenciesSatisfied(s *Step) bool {
+func (d *DAG) dependenciesSatisfied(s *DAGStep) bool {
 	for _, dep := range s.DependsOn {
 		depStep := d.steps[dep]
 		if depStep == nil || depStep.Status != StepCompleted {
@@ -194,7 +197,7 @@ func (d *DAG) dependenciesSatisfied(s *Step) bool {
 
 // anyDependencyFailed checks if any dependency has failed.
 // Caller must hold at least a read lock.
-func (d *DAG) anyDependencyFailed(s *Step) bool {
+func (d *DAG) anyDependencyFailed(s *DAGStep) bool {
 	for _, dep := range s.DependsOn {
 		depStep := d.steps[dep]
 		if depStep != nil && (depStep.Status == StepFailed || depStep.Status == StepSkipped) {
@@ -262,6 +265,23 @@ func (d *DAG) MarkFailed(id, errMsg string) bool {
 
 	// Skip downstream steps
 	d.skipDownstream(id)
+	return true
+}
+
+// ResetStep forces a failed step back to StepReady for retry.
+// Clears the error and result so the step can be re-executed.
+func (d *DAG) ResetStep(id string) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	s := d.steps[id]
+	if s == nil {
+		return false
+	}
+	s.Status = StepReady
+	s.Error = ""
+	s.Result = ""
+	s.CompletedAt = time.Time{}
 	return true
 }
 

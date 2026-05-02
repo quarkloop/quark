@@ -136,14 +136,21 @@ func (p *Plan) GetSummary() string {
 
 // ExecuteStep runs the current pending step using the provided infer function.
 func (p *Plan) ExecuteStep(ctx context.Context, infer Inferrer, systemPrompt string, tools []plugin.ToolSchema, onTool plugin.ToolHandler) error {
-	step := p.currentStep()
-	if step == nil {
+	// Find the current pending step index under the lock.
+	p.mu.Lock()
+	stepIdx := -1
+	for i := range p.Steps {
+		if p.Steps[i].Status == "pending" {
+			stepIdx = i
+			p.Steps[i].Status = "active"
+			break
+		}
+	}
+	p.mu.Unlock()
+
+	if stepIdx == -1 {
 		return nil
 	}
-
-	p.mu.Lock()
-	step.Status = "active"
-	p.mu.Unlock()
 
 	// Build work context messages
 	var msgs []plugin.Message
@@ -156,22 +163,24 @@ func (p *Plan) ExecuteStep(ctx context.Context, infer Inferrer, systemPrompt str
 		msgs = append(msgs, plugin.Message{Role: m.Role, Content: m.Content})
 	}
 
+	p.mu.Lock()
 	msgs = append(msgs, plugin.Message{
 		Role:    "user",
-		Content: fmt.Sprintf("Execute this step: %s", step.Description),
+		Content: fmt.Sprintf("Execute this step: %s", p.Steps[stepIdx].Description),
 	})
+	p.mu.Unlock()
 
 	// Call LLM (no user stream for work execution)
 	result, err := infer(ctx, msgs, tools, onTool, nil)
 
-	// Write step outcome under lock in one shot to avoid a lock gap.
+	// Write step outcome under lock.
 	p.mu.Lock()
 	if err != nil {
-		step.Status = "failed"
-		step.Result = err.Error()
+		p.Steps[stepIdx].Status = "failed"
+		p.Steps[stepIdx].Result = err.Error()
 	} else {
-		step.Status = "completed"
-		step.Result = result
+		p.Steps[stepIdx].Status = "completed"
+		p.Steps[stepIdx].Result = result
 	}
 	p.mu.Unlock()
 
@@ -180,23 +189,11 @@ func (p *Plan) ExecuteStep(ctx context.Context, infer Inferrer, systemPrompt str
 	}
 
 	// Store in work context
-	p.workCtx.AddEntry("user", fmt.Sprintf("Step: %s", step.Description))
+	p.workCtx.AddEntry("user", fmt.Sprintf("Step: %s", p.Steps[stepIdx].Description))
 	p.workCtx.AddEntry("assistant", result)
 
 	// Advance to next step
 	p.advance()
-	return nil
-}
-
-// currentStep returns the first pending step.
-func (p *Plan) currentStep() *Step {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	for i := range p.Steps {
-		if p.Steps[i].Status == "pending" {
-			return &p.Steps[i]
-		}
-	}
 	return nil
 }
 

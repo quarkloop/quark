@@ -200,13 +200,19 @@ func TestRegistryStatus(t *testing.T) {
 	r := hierarchy.NewRegistry()
 	r.RegisterMain("main", "Main", "desc", nil)
 
-	entry := r.Get("main")
+	entry, ok := r.Get("main")
+	if !ok {
+		t.Fatal("expected main agent to exist")
+	}
 	if entry.Status != hierarchy.StatusPending {
 		t.Errorf("expected pending status, got %s", entry.Status)
 	}
 
 	r.SetStatus("main", hierarchy.StatusRunning)
-	entry = r.Get("main")
+	entry, ok = r.Get("main")
+	if !ok {
+		t.Fatal("expected main agent to exist")
+	}
 	if entry.Status != hierarchy.StatusRunning {
 		t.Errorf("expected running status, got %s", entry.Status)
 	}
@@ -215,7 +221,10 @@ func TestRegistryStatus(t *testing.T) {
 	}
 
 	r.SetStatus("main", hierarchy.StatusComplete)
-	entry = r.Get("main")
+	entry, ok = r.Get("main")
+	if !ok {
+		t.Fatal("expected main agent to exist")
+	}
 	if entry.CompletedAt.IsZero() {
 		t.Error("CompletedAt should be set when complete")
 	}

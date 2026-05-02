@@ -135,17 +135,25 @@ func (r *Registry) Spawn(parentID string, config *SpawnConfig) (*AgentEntry, err
 }
 
 // Get returns the agent entry with the given ID.
-func (r *Registry) Get(id string) *AgentEntry {
+func (r *Registry) Get(id string) (AgentEntry, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.agents[id]
+	entry, ok := r.agents[id]
+	if !ok {
+		return AgentEntry{}, false
+	}
+	return *entry, true
 }
 
 // GetMain returns the main agent entry.
-func (r *Registry) GetMain() *AgentEntry {
+func (r *Registry) GetMain() (AgentEntry, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.agents[r.main]
+	entry, ok := r.agents[r.main]
+	if !ok {
+		return AgentEntry{}, false
+	}
+	return *entry, true
 }
 
 // Children returns the IDs of all children of the given parent.
@@ -275,27 +283,27 @@ func (r *Registry) Remove(id string) bool {
 	return true
 }
 
-// List returns all agent entries.
-func (r *Registry) List() []*AgentEntry {
+// List returns copies of all agent entries.
+func (r *Registry) List() []AgentEntry {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	result := make([]*AgentEntry, 0, len(r.agents))
+	result := make([]AgentEntry, 0, len(r.agents))
 	for _, entry := range r.agents {
-		result = append(result, entry)
+		result = append(result, *entry)
 	}
 	return result
 }
 
-// ListByStatus returns all agents with the given status.
-func (r *Registry) ListByStatus(status AgentStatus) []*AgentEntry {
+// ListByStatus returns copies of all agents with the given status.
+func (r *Registry) ListByStatus(status AgentStatus) []AgentEntry {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	var result []*AgentEntry
+	var result []AgentEntry
 	for _, entry := range r.agents {
 		if entry.Status == status {
-			result = append(result, entry)
+			result = append(result, *entry)
 		}
 	}
 	return result
