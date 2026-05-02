@@ -1,7 +1,7 @@
 # Quark
 
 <!-- [![CI](https://github.com/quarkloop/quark/actions/workflows/ci.yml/badge.svg)](https://github.com/quarkloop/quark/actions/workflows/ci.yml) -->
-[![Go 1.22+](https://img.shields.io/badge/go-1.22+-00ADD8.svg)](https://go.dev/dl/)
+[![Go 1.26+](https://img.shields.io/badge/go-1.26+-00ADD8.svg)](https://go.dev/dl/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
 > Autonomous AI Agents for Everyday Work - Your Agents. Your Machine. Your Control.
@@ -33,7 +33,7 @@ The agent runs a continuous planning cycle:
 ORIENT → PLAN → DISPATCH → MONITOR → ASSESS → (repeat)
 ```
 
-It reads the goal, produces an execution plan, fans out steps to subagents, invokes tools (`bash`, `read`, `write`, `web-search`), and iterates until complete.
+It reads the goal, produces an execution plan, fans out steps to subagents, invokes tools (`bash`, `fs`, `web-search`), and iterates until complete.
 
 Everything is a **plugin** - tools, providers, agents, skills. Tool plugins support both **lib mode** (loaded in-process as Go `.so` files) and **api mode** (run as separate HTTP server processes); the agent prefers lib mode and falls back to api when the `.so` is absent. Provider plugins are always lib mode. All follow a standard contract: `manifest.yaml` + `SKILL.md` + executable and/or `.so`.
 
@@ -57,11 +57,12 @@ Quark is a Go workspace. See [AGENTS.md](AGENTS.md) for the full package-level b
 | Module                             | Role                                                                          |
 | ---------------------------------- | ----------------------------------------------------------------------------- |
 | `supervisor`                       | Long-running daemon: space store, agent registry, plugin manager, HTTP API + Go SDK. |
-| `agent`                            | Agent runtime, planning loop, activity feed, subagent dispatch.                |
+| `runtime`                          | Agent runtime, planning loop, activity feed, subagent dispatch.                |
 | `cli`                              | `quark` CLI - HTTP-only client, reads and writes only the local Quarkfile.     |
 | `pkg/space`                        | Shared space directory model and Quarkfile schema, validation, and I/O.        |
 | `pkg/plugin`                       | Shared plugin interfaces, manifest parsing, lib/api loader.                 |
-| `plugins/tools/{bash,read,write,web-search}` | Tool plugins (lib-mode `.so` + api-mode HTTP daemon).             |
+| `pkg/toolkit`                      | Shared toolkit for tool plugins (Fiber server, CLI, pipe mode).               |
+| `plugins/tools/{bash,fs,web-search,build-release}` | Tool plugins (lib-mode `.so` + api-mode HTTP daemon).             |
 | `plugins/providers/{openrouter,openai,anthropic}` | Provider plugins (lib mode `.so`).                              |
 
 **Key layering:**
@@ -79,18 +80,18 @@ The CLI has no dependency on the `agent` module's internals - only on the public
 | Binary            | Module                              | Role                                                                |
 | ----------------- | ----------------------------------- | ------------------------------------------------------------------- |
 | `quark-supervisor`| `supervisor`                        | Long-running daemon managing all spaces and agent lifecycle         |
-| `agent`           | `agent`                             | Agent runtime process - launched on demand by the supervisor        |
+| `runtime`         | `runtime`                           | Agent runtime process - launched on demand by the supervisor        |
 | `quark`           | `cli`                               | CLI: init / run / stop / inspect / doctor / plugin / session / config / kb / plan / activity |
 | `bash`            | `plugins/tools/bash`                | Tool plugin: shell execution                                        |
-| `read`            | `plugins/tools/read`                | Tool plugin: read text files                                        |
-| `write`           | `plugins/tools/write`               | Tool plugin: write / edit text files                                |
+| `fs`              | `plugins/tools/fs`                  | Tool plugin: filesystem read/write operations                       |
 | `web-search`      | `plugins/tools/web-search`          | Tool plugin: web search via Brave / SerpAPI / stub                  |
+| `build-release`   | `plugins/tools/build-release`       | Tool plugin: build and release automation                           |
 
 ---
 
 ## Requirements
 
-- **Go 1.22+**
+- **Go 1.26+**
 - An API key for your LLM provider - or use `noop` provider settings to test without one
 
 ---
@@ -225,8 +226,7 @@ model:
 
 plugins:
   - ref: quark/tool-bash
-  - ref: quark/tool-read
-  - ref: quark/tool-write
+  - ref: quark/tool-fs
   - ref: quark/tool-web-search
   # - ref: quark/agent-researcher
   #   config:
@@ -333,15 +333,11 @@ quark plugin search <query>         Search the plugin hub
 bash run --cmd "ls -la"                  One-shot execution
 bash serve --addr 127.0.0.1:8091        HTTP server mode
 
-# read
-read run --path ./notes.txt
-read run --path ./app.py --start-line 10 --end-line 20
-read serve --addr 127.0.0.1:8093
-
-# write
-write run --path ./notes.txt --content "hello"
-write run --path ./notes.txt --operation replace --find hello --replace-with world
-write serve --addr 127.0.0.1:8092
+# fs
+fs run --path ./notes.txt
+fs run --path ./app.py --start-line 10 --end-line 20
+fs run --path ./notes.txt --operation write --content "hello"
+fs serve --addr 127.0.0.1:8093
 
 # web-search
 web-search run --query "..."
