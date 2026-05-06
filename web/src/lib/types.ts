@@ -11,6 +11,7 @@ export interface AgentConnection {
   port: number;
   status: AgentStatus;
   spaceId?: string;
+  runtimeId?: string;
   provider?: string;
   model?: string;
 }
@@ -47,7 +48,13 @@ export type StatsResponse = Record<string, unknown>;
 
 // ─── Plan ─────────────────────────────────────────────────────
 
-export type PlanStatus = "draft" | "approved";
+export type PlanStatus =
+  | "draft"
+  | "approved"
+  | "rejected"
+  | "executing"
+  | "succeeded"
+  | "failed";
 export type StepStatus = "pending" | "running" | "complete" | "failed";
 
 export interface Step {
@@ -109,8 +116,10 @@ export interface ActivityRecord {
 export type SessionType = "main" | "chat" | "subagent" | "cron";
 
 export interface SessionRecord {
+  id: string;
   key: string;
   agent_id: string;
+  space?: string;
   type: SessionType;
   status: string;
   title?: string;
@@ -125,7 +134,7 @@ export interface CreateSessionRequest {
 }
 
 export interface CreateSessionResponse {
-  session: SessionRecord;
+  session?: SessionRecord;
 }
 
 // ─── Space (api-server) ───────────────────────────────────────

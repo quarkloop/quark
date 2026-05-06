@@ -1,46 +1,55 @@
 import { type NextRequest, NextResponse } from "next/server";
+import {
+  forwardJSON,
+  jsonError,
+  mapUpstreamError,
+  normalizeSession,
+  resolveSpace,
+  supervisorURL,
+} from "@/lib/quark-api";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ sessionKey: string }> },
+  { params }: { params: Promise<{ agentId: string; sessionKey: string }> },
 ) {
-  const { sessionKey } = await params;
-  const baseUrl = request.nextUrl.searchParams.get("baseUrl");
-  if (!baseUrl) {
-    return NextResponse.json({ error: "baseUrl required" }, { status: 400 });
-  }
+  const { agentId, sessionKey } = await params;
+  const space = await resolveSpace(request, agentId);
+  if (!space) return jsonError("spaceId required", 400);
+
   try {
     const res = await fetch(
-      `${baseUrl}/api/v1/agent/sessions/${sessionKey}`,
+      supervisorURL(
+        `/v1/spaces/${encodeURIComponent(space)}/sessions/${encodeURIComponent(sessionKey)}`,
+      ),
     );
-    return NextResponse.json(await res.json(), { status: res.status });
-  } catch {
-    return NextResponse.json({ error: "Agent unreachable" }, { status: 502 });
+    if (!res.ok) return forwardJSON(res);
+    return NextResponse.json(normalizeSession(await res.json()), {
+      status: res.status,
+    });
+  } catch (error) {
+    return mapUpstreamError(error, "Supervisor unreachable");
   }
 }
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ sessionKey: string }> },
+  { params }: { params: Promise<{ agentId: string; sessionKey: string }> },
 ) {
-  const { sessionKey } = await params;
-  const baseUrl = request.nextUrl.searchParams.get("baseUrl");
-  if (!baseUrl) {
-    return NextResponse.json({ error: "baseUrl required" }, { status: 400 });
-  }
+  const { agentId, sessionKey } = await params;
+  const space = await resolveSpace(request, agentId);
+  if (!space) return jsonError("spaceId required", 400);
+
   try {
     const res = await fetch(
-      `${baseUrl}/api/v1/agent/sessions/${sessionKey}`,
+      supervisorURL(
+        `/v1/spaces/${encodeURIComponent(space)}/sessions/${encodeURIComponent(sessionKey)}`,
+      ),
       { method: "DELETE" },
     );
-    if (res.status === 204) {
-      return new NextResponse(null, { status: 204 });
-    }
-    const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
-  } catch {
-    return NextResponse.json({ error: "Agent unreachable" }, { status: 502 });
+    return forwardJSON(res);
+  } catch (error) {
+    return mapUpstreamError(error, "Supervisor unreachable");
   }
 }

@@ -1,7 +1,7 @@
-export const API_SERVER_PORT = 7070;
-export const AGENT_PORT_DEFAULT = 7100;
-export const AGENT_PORT_RANGE_START = 7100;
-export const AGENT_PORT_RANGE_END = 7199;
+export const SUPERVISOR_PORT_DEFAULT = 7200;
+export const RUNTIME_PORT_DEFAULT = 8765;
+export const RUNTIME_PORT_RANGE_START = 8765;
+export const RUNTIME_PORT_RANGE_END = 8865;
 export const DISCOVERY_TIMEOUT_MS = 500;
 export const CHAT_TIMEOUT_MS = 300_000;
 export const ACTIVITY_HISTORY_LIMIT = 128;

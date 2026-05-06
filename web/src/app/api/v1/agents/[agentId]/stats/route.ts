@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { runtimeURL } from "@/lib/quark-api";
 
 export const dynamic = "force-dynamic";
 
@@ -8,9 +9,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "baseUrl required" }, { status: 400 });
   }
   try {
-    const res = await fetch(`${baseUrl}/api/v1/agent/stats`);
+    const res = await fetch(runtimeURL(baseUrl, "/v1/info"));
     return NextResponse.json(await res.json(), { status: res.status });
-  } catch {
-    return NextResponse.json({ error: "Agent unreachable" }, { status: 502 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Runtime unreachable";
+    return NextResponse.json({ error: message }, { status: 502 });
   }
 }
