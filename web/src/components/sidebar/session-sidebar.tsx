@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useAgentContext } from "@/context/agent-context";
 import { useSessions, useCreateSession, useDeleteSession } from "@/hooks/use-sessions-query";
 import { Button } from "@/components/themed/button";
@@ -8,14 +8,37 @@ import { Plus, Trash2, MessageCircle, Bot } from "lucide-react";
 
 export function SessionSidebar() {
   const { dispatch, activeAgent, activeSession } = useAgentContext();
+  const initializedAgentRef = useRef<string | null>(null);
 
-  const { data: sessions = [] } = useSessions(activeAgent?.id, activeAgent?.baseUrl);
-  const createMut = useCreateSession(activeAgent?.id ?? "", activeAgent?.baseUrl ?? "");
-  const deleteMut = useDeleteSession(activeAgent?.id ?? "", activeAgent?.baseUrl ?? "");
+  const { data: sessions = [], isSuccess } = useSessions(
+    activeAgent?.id,
+    activeAgent?.baseUrl,
+    activeAgent?.spaceId,
+  );
+  const createMut = useCreateSession(
+    activeAgent?.id ?? "",
+    activeAgent?.baseUrl ?? "",
+    activeAgent?.spaceId,
+  );
+  const deleteMut = useDeleteSession(
+    activeAgent?.id ?? "",
+    activeAgent?.baseUrl ?? "",
+    activeAgent?.spaceId,
+  );
 
-  if (activeAgent && sessions.length > 0) {
+  useEffect(() => {
+    if (!activeAgent || !isSuccess) return;
     dispatch({ type: "SET_SESSIONS", sessions });
-  }
+
+    if (
+      sessions.length === 0 &&
+      initializedAgentRef.current !== activeAgent.id &&
+      !createMut.isPending
+    ) {
+      initializedAgentRef.current = activeAgent.id;
+      createMut.mutate({ type: "chat", title: "Chat" });
+    }
+  }, [activeAgent, createMut, dispatch, isSuccess, sessions]);
 
   const handleCreate = useCallback(() => {
     createMut.mutate({ type: "chat" });

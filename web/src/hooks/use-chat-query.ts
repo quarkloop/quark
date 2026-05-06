@@ -3,7 +3,11 @@ import { post, BASE } from "./http";
 import type { AgentMode, FileAttachment, ChatResponse } from "@/lib/types";
 import { CHAT_TIMEOUT_MS } from "@/lib/constants";
 
-export function useSendMessage(agentId: string | undefined, baseUrl: string | undefined) {
+export function useSendMessage(
+  agentId: string | undefined,
+  baseUrl: string | undefined,
+  spaceId?: string,
+) {
   return useMutation({
     mutationFn: async (vars: {
       message: string;
@@ -11,7 +15,7 @@ export function useSendMessage(agentId: string | undefined, baseUrl: string | un
       files?: FileAttachment[];
       sessionKey?: string;
     }): Promise<ChatResponse> => {
-      const url = `/api/v1/agents/${agentId}/chat?${BASE(baseUrl!)}`;
+      const url = `/api/v1/agents/${agentId}/chat?${BASE(baseUrl!, spaceId)}`;
       const { message, mode = "ask", files, sessionKey } = vars;
 
       if (files && files.length > 0) {

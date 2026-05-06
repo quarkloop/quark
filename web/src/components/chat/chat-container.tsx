@@ -39,7 +39,7 @@ export function ChatContainer() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Connection status — only show when disconnected */}
-      {!isConnected && (
+      {activeSession && !isConnected && (
         <div className="flex items-center gap-2 border-b border-border/40 px-4 py-1.5">
           <StatusIndicator status="offline" />
           <span className="text-xs text-muted-foreground">Disconnected</span>
@@ -49,7 +49,11 @@ export function ChatContainer() {
       {/* Activity stream */}
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl py-6">
-          {activities.length === 0 && !error ? (
+          {!activeSession ? (
+            <p className="py-16 text-center text-sm text-zinc-400">
+              Preparing a chat session...
+            </p>
+          ) : activities.length === 0 && !error ? (
             <p className="py-16 text-center text-sm text-zinc-400">
               Send a message to get started.
             </p>
@@ -64,7 +68,12 @@ export function ChatContainer() {
       </div>
 
       {/* Prompt */}
-      <PromptInput onSend={send} disabled={isSending} model={activeAgent?.model} provider={activeAgent?.provider} />
+      <PromptInput
+        onSend={send}
+        disabled={isSending || !activeSession}
+        model={activeAgent?.model}
+        provider={activeAgent?.provider}
+      />
     </div>
   );
 }

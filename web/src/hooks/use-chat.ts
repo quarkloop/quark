@@ -3,7 +3,9 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import type { ActivityRecord, AgentConnection, AgentMode, FileAttachment } from "@/lib/types";
 import { useSendMessage } from "@/hooks/use-chat-query";
-import { useActivity } from "@/hooks/use-activity-query";
+import { activityKey, useActivity } from "@/hooks/use-activity-query";
+import { useQueryClient } from "@tanstack/react-query";
+import { BASE } from "@/hooks/http";
 
 export function useChat(agent: AgentConnection | undefined, sessionKey?: string | null) {
   const [sseActivities, setSseActivities] = useState<ActivityRecord[]>([]);
@@ -11,9 +13,15 @@ export function useChat(agent: AgentConnection | undefined, sessionKey?: string 
   const eventSourceRef = useRef<EventSource | null>(null);
   const seenIdsRef = useRef(new Set<string>());
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const queryClient = useQueryClient();
 
-  const sendMut = useSendMessage(agent?.id, agent?.baseUrl);
-  const { data: history = [] } = useActivity(agent?.id, agent?.baseUrl);
+  const sendMut = useSendMessage(agent?.id, agent?.baseUrl, agent?.spaceId);
+  const { data: history = [] } = useActivity(
+    agent?.id,
+    agent?.baseUrl,
+    sessionKey,
+    agent?.spaceId,
+  );
 
   // Merge history + SSE activities.
   const allActivities = useMemo(() => {
@@ -36,7 +44,7 @@ export function useChat(agent: AgentConnection | undefined, sessionKey?: string 
 
   // SSE stream with reconnect.
   useEffect(() => {
-    if (!agent) {
+    if (!agent || !sessionKey) {
       setSseActivities([]);
       setIsConnected(false);
       seenIdsRef.current.clear();
@@ -48,6 +56,7 @@ export function useChat(agent: AgentConnection | undefined, sessionKey?: string 
     }
 
     let cancelled = false;
+    let attempt = 0;
 
     const connect = () => {
       if (cancelled) return;
@@ -58,12 +67,15 @@ export function useChat(agent: AgentConnection | undefined, sessionKey?: string 
       }
 
       const es = new EventSource(
-        `/api/v1/agents/${agent.id}/activity/stream?baseUrl=${encodeURIComponent(agent.baseUrl)}`,
+        `/api/v1/agents/${agent.id}/sessions/${encodeURIComponent(sessionKey)}/activity/stream?${BASE(agent.baseUrl, agent.spaceId)}`,
       );
       eventSourceRef.current = es;
 
       es.onopen = () => {
-        if (!cancelled) setIsConnected(true);
+        if (!cancelled) {
+          attempt = 0;
+          setIsConnected(true);
+        }
       };
 
       es.onmessage = (event) => {
@@ -85,7 +97,6 @@ export function useChat(agent: AgentConnection | undefined, sessionKey?: string 
         es.close();
         eventSourceRef.current = null;
 
-        let attempt = 0;
         const scheduleReconnect = () => {
           if (cancelled) return;
           const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
@@ -112,7 +123,7 @@ export function useChat(agent: AgentConnection | undefined, sessionKey?: string 
         reconnectTimerRef.current = null;
       }
     };
-  }, [agent]);
+  }, [agent, sessionKey]);
 
   // Filter activities by session key.
   const activities = useMemo(() => {
@@ -124,10 +135,19 @@ export function useChat(agent: AgentConnection | undefined, sessionKey?: string 
 
   const send = useCallback(
     (message: string, mode: AgentMode = "ask", files?: FileAttachment[]) => {
-      if (!agent || !message.trim()) return;
-      sendMut.mutate({ message, mode, files, sessionKey: sessionKey ?? undefined });
+      if (!agent || !sessionKey || !message.trim()) return;
+      sendMut.mutate(
+        { message, mode, files, sessionKey },
+        {
+          onSuccess: () => {
+            queryClient.invalidateQueries({
+              queryKey: activityKey(agent.id, sessionKey),
+            });
+          },
+        },
+      );
     },
-    [agent, sessionKey, sendMut],
+    [agent, sessionKey, sendMut, queryClient],
   );
 
   return {

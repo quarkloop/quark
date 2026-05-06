@@ -12,6 +12,7 @@ import { Button } from "@/components/themed/button";
 import { Input } from "@/components/themed/input";
 import { Plus } from "lucide-react";
 import type { AgentConnection } from "@/lib/types";
+import { RUNTIME_PORT_DEFAULT } from "@/lib/constants";
 
 interface AddAgentDialogProps {
   onAdd: (agent: AgentConnection) => void;
@@ -54,7 +55,7 @@ export function AddAgentDialog({ onAdd }: AddAgentDialogProps) {
         <form onSubmit={handleSubmit} className="mt-4 space-y-3">
           <Input
             type="number"
-            placeholder="Port (e.g. 7100)"
+            placeholder={`Port (e.g. ${RUNTIME_PORT_DEFAULT})`}
             value={port}
             onChange={(e) => setPort(e.target.value)}
             min={1}

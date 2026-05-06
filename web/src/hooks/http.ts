@@ -1,6 +1,10 @@
 // ─── HTTP helpers ────────────────────────────────────────────────
 
-export const BASE = (baseUrl: string) => `baseUrl=${encodeURIComponent(baseUrl)}`;
+export const BASE = (baseUrl: string, spaceId?: string) => {
+  const params = new URLSearchParams({ baseUrl });
+  if (spaceId) params.set("spaceId", spaceId);
+  return params.toString();
+};
 
 export async function get<T>(path: string): Promise<T> {
   const res = await fetch(path);
