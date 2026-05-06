@@ -59,6 +59,7 @@ func (s *Server) handleStartRuntime(c *fiber.Ctx) error {
 	}
 
 	agent := runtime.NewRuntime(generateRuntimeID(), req.Space, sp.WorkingDir, pluginsDir)
+	agent.SetPort(port)
 	s.registry.Register(agent)
 
 	env, err := s.store.AgentEnvironment(req.Space)

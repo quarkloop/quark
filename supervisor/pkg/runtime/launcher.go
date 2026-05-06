@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"syscall"
+	"time"
 
 	"github.com/quarkloop/supervisor/pkg/api"
 )
@@ -65,6 +66,7 @@ func (l *Launcher) Start(ctx context.Context, rt *Runtime, quarkfileEnv []string
 
 	rt.SetCmd(cmd)
 	rt.SetPID(cmd.Process.Pid)
+	rt.SetStartedAt(time.Now().UTC())
 	rt.SetStatus(api.RuntimeRunning)
 
 	go func() {
