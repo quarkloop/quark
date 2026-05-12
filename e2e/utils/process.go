@@ -158,6 +158,21 @@ func WaitForURL(t *testing.T, url string, timeout time.Duration) {
 	t.Fatalf("timed out waiting for %s", url)
 }
 
+// WaitForTCP polls addr until a TCP connection succeeds or timeout elapses.
+func WaitForTCP(t *testing.T, addr string, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+		if err == nil {
+			conn.Close()
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for tcp %s", addr)
+}
+
 // ProcessEnv returns os.Environ() plus the supplied overrides.
 func ProcessEnv(overrides map[string]string) []string {
 	env := os.Environ()

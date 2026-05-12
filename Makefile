@@ -5,6 +5,7 @@ LDFLAGS := -X github.com/quarkloop/cli/pkg/buildinfo.Version=$(VERSION)
 
 # Tool plugins
 TOOLS := bash fs web-search build-release
+SERVICES := indexer
 
 # Provider plugins
 PROVIDERS := openrouter openai anthropic
@@ -15,8 +16,10 @@ MODULES := \
 		runtime \
 		cli \
 		pkg/plugin \
+		pkg/serviceapi \
 		pkg/space \
 		pkg/toolkit \
+		services/indexer \
 		plugins/tools/bash \
 		plugins/tools/fs \
 		plugins/tools/web-search \
@@ -27,12 +30,12 @@ MODULES := \
 
 .PHONY: all build clean test test-e2e vet fmt fmt-check tidy \
 		build-supervisor build-runtime build-cli \
-		build-plugins build-tools build-tools-lib build-providers
+		build-plugins build-tools build-tools-lib build-providers build-services
 
 all: build
 
 ## Build all binaries
-build: build-supervisor build-runtime build-cli build-tools
+build: build-supervisor build-runtime build-cli build-tools build-services
 
 ## Build all plugins (tools as binary + lib, providers as lib)
 build-plugins: build-tools build-tools-lib build-providers
@@ -42,6 +45,12 @@ build-tools:
 		@for tool in $(TOOLS); do \
 			echo "--- Building tool (binary): $$tool ---"; \
 			go build -o $(BINARY_DIR)/$$tool ./$(PLUGIN_DIR)/tools/$$tool/cmd/$$tool; \
+		done
+
+build-services:
+		@for service in $(SERVICES); do \
+			echo "--- Building service: $$service ---"; \
+			go build -o $(BINARY_DIR)/$$service ./services/$$service/cmd/$$service; \
 		done
 
 ## Build tool plugins as .so files (lib mode, requires CGO)

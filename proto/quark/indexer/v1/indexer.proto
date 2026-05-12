@@ -1,0 +1,78 @@
+syntax = "proto3";
+
+package quark.indexer.v1;
+
+option go_package = "github.com/quarkloop/pkg/serviceapi/gen/quark/indexer/v1;indexerv1";
+
+// IndexerService stores and retrieves agent-produced structured GraphRAG data.
+//
+// The indexer never calls an LLM and never parses raw documents. Agents provide
+// text chunks, embeddings, entities, relationships, and query embeddings.
+service IndexerService {
+  rpc IndexDocument(IndexRequest) returns (IndexStatus);
+  rpc GetContext(QueryRequest) returns (ContextResponse);
+}
+
+message IndexRequest {
+  string chunk_id = 1;
+  string text_content = 2;
+  repeated float embedding = 3;
+  repeated Entity entities = 4;
+  repeated Relation relations = 5;
+  map<string, string> source_metadata = 6;
+}
+
+message Entity {
+  string id = 1;
+  string name = 2;
+  string type = 3;
+}
+
+message Relation {
+  string from_id = 1;
+  string to_id = 2;
+  string relation = 3;
+}
+
+message IndexStatus {
+  bool success = 1;
+  string message = 2;
+}
+
+message QueryRequest {
+  repeated float query_vector = 1;
+  int32 depth = 2;
+  int32 limit = 3;
+  map<string, string> filters = 4;
+}
+
+message ContextResponse {
+  string reasoning_context = 1;
+  repeated string citations = 2;
+  repeated Chunk chunks = 3;
+  GraphFragment graph = 4;
+}
+
+message Chunk {
+  string id = 1;
+  string text = 2;
+  float score = 3;
+  map<string, string> metadata = 4;
+}
+
+message GraphNode {
+  string id = 1;
+  string label = 2;
+  string type = 3;
+}
+
+message GraphEdge {
+  string from_id = 1;
+  string to_id = 2;
+  string relation = 3;
+}
+
+message GraphFragment {
+  repeated GraphNode nodes = 1;
+  repeated GraphEdge edges = 2;
+}

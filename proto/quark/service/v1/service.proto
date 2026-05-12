@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package quark.service.v1;
+
+import "google/protobuf/empty.proto";
+
+option go_package = "github.com/quarkloop/pkg/serviceapi/gen/quark/service/v1;servicev1";
+
+// ServiceRegistry provides runtime discovery for Quark gRPC services.
+service ServiceRegistry {
+  rpc ListServices(google.protobuf.Empty) returns (ListServicesResponse);
+  rpc GetService(GetServiceRequest) returns (ServiceDescriptor);
+}
+
+message ListServicesResponse {
+  repeated ServiceDescriptor services = 1;
+}
+
+message GetServiceRequest {
+  string name = 1;
+}
+
+message ServiceDescriptor {
+  string name = 1;
+  string type = 2;
+  string version = 3;
+  string address = 4;
+  repeated RpcDescriptor rpcs = 5;
+  repeated SkillDescriptor skills = 6;
+}
+
+message RpcDescriptor {
+  string service = 1;
+  string method = 2;
+  string request = 3;
+  string response = 4;
+  string description = 5;
+}
+
+message SkillDescriptor {
+  string name = 1;
+  string version = 2;
+  string markdown = 3;
+}

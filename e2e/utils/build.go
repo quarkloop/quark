@@ -19,6 +19,7 @@ type BuiltBinaries struct {
 	Agent      string
 	Bash       string
 	FS         string
+	Indexer    string
 
 	// Lib-mode tool .so paths. Empty if the build failed (e.g. no CGO);
 	// callers should fall back to api-mode installation.
@@ -91,6 +92,7 @@ func BuildAllOnce(t *testing.T) BuiltBinaries {
 		buildRes.Agent = build("./runtime/cmd/runtime", "runtime")
 		buildRes.Bash = build("./plugins/tools/bash/cmd/bash", "bash")
 		buildRes.FS = build("./plugins/tools/fs/cmd/fs", "fs")
+		buildRes.Indexer = build("./services/indexer/cmd/indexer", "indexer")
 
 		buildRes.BashLib = buildLib("./plugins/tools/bash", "bash")
 		buildRes.FSLib = buildLib("./plugins/tools/fs", "fs")

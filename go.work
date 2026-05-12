@@ -5,6 +5,7 @@ use (
 	./e2e
 	./pkg/event
 	./pkg/plugin
+	./pkg/serviceapi
 	./pkg/space
 	./pkg/toolkit
 	./plugins/providers/anthropic
@@ -15,6 +16,7 @@ use (
 	./plugins/tools/fs
 	./plugins/tools/web-search
 	./runtime
+	./services/indexer
 	./supervisor
 )
 
@@ -22,6 +24,7 @@ replace (
 	github.com/quarkloop/cli v0.0.0 => ./cli
 	github.com/quarkloop/pkg/event v0.0.0 => ./pkg/event
 	github.com/quarkloop/pkg/plugin v0.0.0 => ./pkg/plugin
+	github.com/quarkloop/pkg/serviceapi v0.0.0 => ./pkg/serviceapi
 	github.com/quarkloop/pkg/space v0.0.0 => ./pkg/space
 	github.com/quarkloop/pkg/toolkit v0.0.0 => ./pkg/toolkit
 	github.com/quarkloop/plugins/providers/anthropic v0.0.0 => ./plugins/providers/anthropic
@@ -32,5 +35,6 @@ replace (
 	github.com/quarkloop/plugins/tools/fs v0.0.0 => ./plugins/tools/fs
 	github.com/quarkloop/plugins/tools/web-search v0.0.0 => ./plugins/tools/web-search
 	github.com/quarkloop/runtime v0.0.0 => ./runtime
+	github.com/quarkloop/services/indexer v0.0.0 => ./services/indexer
 	github.com/quarkloop/supervisor v0.0.0 => ./supervisor
 )
