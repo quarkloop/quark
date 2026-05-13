@@ -97,20 +97,23 @@ func runStart(port int, channels []string) error {
 	}
 	slog.Info("using model", "provider", modelProvider, "model", modelName)
 
-	servicePrompt, serviceExecutor := discoverServices()
+	serviceCatalog := discoverServices()
+	var capabilities []agent.CapabilityProvider
+	if serviceCatalog != nil && !serviceCatalog.Empty() {
+		capabilities = append(capabilities, serviceCatalog)
+	}
 
 	// Create agent
 	a, err := agent.NewAgent(agent.Config{
-		ID:              "main",
-		Name:            "Main Agent",
-		ModelProvider:   modelProvider,
-		Model:           modelName,
-		ModelListURL:    os.Getenv("MODEL_LIST_URL"),
-		PluginsDir:      os.Getenv("QUARK_PLUGINS_DIR"),
-		SupervisorURL:   os.Getenv("QUARK_SUPERVISOR_URL"),
-		SpaceID:         os.Getenv("QUARK_SPACE"),
-		ServicesPrompt:  servicePrompt,
-		ServiceExecutor: serviceExecutor,
+		ID:            "main",
+		Name:          "Main Agent",
+		ModelProvider: modelProvider,
+		Model:         modelName,
+		ModelListURL:  os.Getenv("MODEL_LIST_URL"),
+		PluginsDir:    os.Getenv("QUARK_PLUGINS_DIR"),
+		SupervisorURL: os.Getenv("QUARK_SUPERVISOR_URL"),
+		SpaceID:       os.Getenv("QUARK_SPACE"),
+		Capabilities:  capabilities,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create agent: %w", err)
@@ -157,24 +160,24 @@ func runStart(port int, channels []string) error {
 	return srv.Run(ctx)
 }
 
-func discoverServices() (string, *runtimeservices.Executor) {
+func discoverServices() *runtimeservices.Catalog {
 	endpoints := runtimeservices.EndpointsFromEnv()
 	if len(endpoints) == 0 {
 		slog.Info("service discovery disabled")
-		return "", nil
+		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	descriptors, errs := runtimeservices.Discover(ctx, endpoints)
+	catalog, errs := runtimeservices.DiscoverCatalog(ctx, endpoints)
 	for _, err := range errs {
 		slog.Warn("service discovery failed", "error", err)
 	}
-	if len(descriptors) == 0 {
+	if catalog == nil || catalog.Empty() {
 		slog.Warn("no service descriptors discovered", "endpoints", fmt.Sprintf("%v", endpoints))
-		return "", nil
+		return nil
 	}
-	for _, desc := range descriptors {
+	for _, desc := range catalog.Descriptors() {
 		slog.Info("service discovered", "name", desc.GetName(), "type", desc.GetType(), "addr", desc.GetAddress())
 	}
-	return runtimeservices.PromptBlock(descriptors), runtimeservices.NewExecutor(descriptors)
+	return catalog
 }

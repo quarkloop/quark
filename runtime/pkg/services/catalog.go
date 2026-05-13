@@ -126,7 +126,8 @@ func PromptBlock(descriptors []*servicev1.ServiceDescriptor) string {
 	}
 	var b strings.Builder
 	b.WriteString("\n\n## Available gRPC Services\n\n")
-	b.WriteString("The following services are available through their gRPC interfaces. Use the RPC contracts and service skills below when a task calls for service-backed capabilities.\n")
+	b.WriteString("The runtime has discovered the following gRPC services. Call them with the `grpc-service` tool when a task needs service-backed capabilities.\n")
+	b.WriteString("\n`grpc-service` arguments must be JSON with `service`, `method`, and `request` fields. The `request` field must match the protobuf JSON shape for the RPC request message.\n")
 	for _, desc := range descriptors {
 		fmt.Fprintf(&b, "\n### %s\n\n", desc.GetName())
 		fmt.Fprintf(&b, "- Type: `%s`\n", desc.GetType())
@@ -149,6 +150,7 @@ func PromptBlock(descriptors []*servicev1.ServiceDescriptor) string {
 			fmt.Fprintf(&b, "\nService skill `%s`:\n\n%s\n", skill.GetName(), strings.TrimSpace(skill.GetMarkdown()))
 		}
 	}
+	b.WriteString("\nUse service skills together with tool results. Do not invent service responses; call `grpc-service` and use its returned JSON.\n")
 	return b.String()
 }
 

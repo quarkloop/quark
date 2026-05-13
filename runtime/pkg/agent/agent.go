@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	event "github.com/quarkloop/pkg/event"
@@ -20,22 +21,20 @@ import (
 	"github.com/quarkloop/runtime/pkg/plan"
 	"github.com/quarkloop/runtime/pkg/pluginmanager"
 	"github.com/quarkloop/runtime/pkg/prompt"
-	runtimeservices "github.com/quarkloop/runtime/pkg/services"
 	"github.com/quarkloop/runtime/pkg/session"
 	supclient "github.com/quarkloop/supervisor/pkg/client"
 )
 
 // Config holds agent configuration.
 type Config struct {
-	ID              string
-	Name            string
-	Description     string
-	ModelProvider   string
-	Model           string
-	ModelListURL    string
-	PluginsDir      string
-	ServicesPrompt  string
-	ServiceExecutor *runtimeservices.Executor
+	ID            string
+	Name          string
+	Description   string
+	ModelProvider string
+	Model         string
+	ModelListURL  string
+	PluginsDir    string
+	Capabilities  []CapabilityProvider
 
 	// Execution mode configuration
 	ExecutionMode execution.Mode
@@ -410,28 +409,46 @@ func (a *Agent) processWork(ctx context.Context, agentID, task string) (string, 
 // defaultTools returns the available tools.
 func (a *Agent) defaultTools() []plugin.ToolSchema {
 	tools := a.Plugins.GetTools()
-	if a.config.ServiceExecutor != nil {
-		tools = append(tools, a.config.ServiceExecutor.ToolSchemas()...)
+	for _, provider := range a.config.Capabilities {
+		if provider == nil {
+			continue
+		}
+		tools = append(tools, provider.ToolSchemas()...)
 	}
 	return tools
 }
 
 func (a *Agent) systemPrompt() string {
-	base := prompt.GetSystemPrompt()
-	if a.config.ServicesPrompt == "" {
-		return base
+	var b strings.Builder
+	b.WriteString(prompt.GetSystemPrompt())
+	for _, provider := range a.config.Capabilities {
+		if provider == nil {
+			continue
+		}
+		addendum := strings.TrimSpace(provider.Prompt())
+		if addendum == "" {
+			continue
+		}
+		b.WriteString("\n\n")
+		b.WriteString(addendum)
 	}
-	return base + a.config.ServicesPrompt
+	return b.String()
 }
 
-// executeTool executes a requested tool via pluginmanager.
+// executeTool executes a requested tool via runtime capabilities or pluginmanager.
 func (a *Agent) executeTool(ctx context.Context, name, arguments string) (string, error) {
 	// Check permissions
 	if err := a.permissions.ValidateTool(name); err != nil {
 		return "", err
 	}
-	if name == runtimeservices.ToolName && a.config.ServiceExecutor != nil {
-		return a.config.ServiceExecutor.Execute(ctx, arguments)
+	for _, provider := range a.config.Capabilities {
+		if provider == nil {
+			continue
+		}
+		result, handled, err := provider.ExecuteTool(ctx, name, arguments)
+		if handled {
+			return result, err
+		}
 	}
 	return a.Plugins.ExecuteTool(ctx, name, arguments)
 }

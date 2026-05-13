@@ -83,7 +83,7 @@ func (c *Client) Infer(ctx context.Context, messages []plugin.Message, tools []p
 			return fullContent, nil
 		}
 
-		slog.Info("tool calls", "count", len(toolCalls))
+		slog.Info("tool calls", "count", len(toolCalls), "names", toolCallNames(toolCalls))
 
 		// Append assistant message with tool calls
 		messages = append(messages, plugin.Message{
@@ -104,6 +104,12 @@ func (c *Client) Infer(ctx context.Context, messages []plugin.Message, tools []p
 			result, err := onTool(ctx, tc.Function.Name, tc.Function.Arguments)
 			if err != nil {
 				result = fmt.Sprintf("error: %v", err)
+			}
+			if onMessage != nil {
+				onMessage("tool_result", map[string]string{
+					"name":   tc.Function.Name,
+					"result": preview(result, 2000),
+				})
 			}
 			messages = append(messages, plugin.Message{
 				Role:       "tool",
@@ -141,4 +147,23 @@ func mergeToolCalls(existing []plugin.ToolCall, deltas []plugin.ToolCall) []plug
 		tc.Function.Arguments += d.Function.Arguments
 	}
 	return existing
+}
+
+func toolCallNames(calls []plugin.ToolCall) []string {
+	names := make([]string, 0, len(calls))
+	for _, call := range calls {
+		names = append(names, call.Function.Name)
+	}
+	return names
+}
+
+func preview(value string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	runes := []rune(value)
+	if len(runes) <= limit {
+		return value
+	}
+	return string(runes[:limit]) + "...(truncated)"
 }

@@ -50,17 +50,17 @@ func TestPromptBlockIncludesServiceSkillsAndRPCs(t *testing.T) {
 		}},
 	}})
 
-	for _, want := range []string{"Available gRPC Services", "indexer", "GetContext", "service-indexer", "Use query vectors."} {
+	for _, want := range []string{"Available gRPC Services", "grpc-service", "indexer", "GetContext", "service-indexer", "Use query vectors."} {
 		if !strings.Contains(block, want) {
 			t.Fatalf("prompt block missing %q:\n%s", want, block)
 		}
 	}
 }
 
-func TestExecutorExposesGenericGRPCTool(t *testing.T) {
+func TestCatalogExposesGenericGRPCTool(t *testing.T) {
 	t.Parallel()
 
-	executor := NewExecutor([]*servicev1.ServiceDescriptor{{
+	catalog := NewCatalog([]*servicev1.ServiceDescriptor{{
 		Name:    "indexer",
 		Address: "127.0.0.1:7301",
 		Rpcs: []*servicev1.RpcDescriptor{{
@@ -70,11 +70,17 @@ func TestExecutorExposesGenericGRPCTool(t *testing.T) {
 			Response: "quark.indexer.v1.ContextResponse",
 		}},
 	}})
-	tools := executor.ToolSchemas()
+	tools := catalog.ToolSchemas()
 	if len(tools) != 1 || tools[0].Name != ToolName {
 		t.Fatalf("tools = %+v", tools)
 	}
-	if _, _, err := executor.resolve("indexer", "GetContext"); err != nil {
-		t.Fatalf("resolve: %v", err)
+	if catalog.Prompt() == "" {
+		t.Fatal("catalog prompt is empty")
+	}
+	if len(catalog.Descriptors()) != 1 {
+		t.Fatalf("descriptors = %d, want 1", len(catalog.Descriptors()))
+	}
+	if _, handled, err := catalog.ExecuteTool(nil, "fs", "{}"); handled || err != nil {
+		t.Fatalf("non-service tool handled=%v err=%v", handled, err)
 	}
 }
