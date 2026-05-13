@@ -51,7 +51,7 @@ func PostMessage(t *testing.T, ctx context.Context, env *E2EEnv, sessionID, cont
 	for {
 		line, err := reader.ReadBytes('\n')
 		if err != nil {
-			if err == io.EOF {
+			if err == io.EOF || err == io.ErrUnexpectedEOF {
 				break
 			}
 			t.Fatalf("read stream: %v", err)

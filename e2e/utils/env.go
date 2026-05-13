@@ -145,6 +145,9 @@ type StartOptions struct {
 	// installed space so the agent's pluginmanager must fall back to
 	// api-mode loading. Used to test binary fallback end-to-end.
 	ForceBinaryTools bool
+	// DisableServiceDiscovery keeps legacy provider/tool E2Es focused on plugin
+	// behavior instead of adding the runtime service catalog tool.
+	DisableServiceDiscovery bool
 }
 
 // StartE2E boots a supervisor, registers a space, installs plugins, and
@@ -166,6 +169,9 @@ func StartE2E(t *testing.T, withProvider bool, opts ...StartOptions) *E2EEnv {
 	bins := BuildAllOnce(t)
 	if opt.ForceBinaryTools {
 		bins.BashLib, bins.FSLib = "", ""
+	}
+	if opt.DisableServiceDiscovery {
+		t.Setenv("QUARK_DISABLE_SERVICE_DISCOVERY", "true")
 	}
 	sup, supURL, spacesDir, proc := startSupervisor(t, bins)
 

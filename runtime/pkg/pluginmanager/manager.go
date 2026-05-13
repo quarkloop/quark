@@ -457,7 +457,26 @@ func (m *Manager) executeBinary(ctx context.Context, name, endpoint, arguments s
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("plugin %q returned HTTP %d: %s", name, resp.StatusCode, string(data))
 	}
-	return string(data), nil
+	return normalizeToolResponse(data), nil
+}
+
+func normalizeToolResponse(data []byte) string {
+	var out struct {
+		Data  json.RawMessage `json:"data"`
+		Error string          `json:"error"`
+	}
+	if err := json.Unmarshal(data, &out); err != nil {
+		return string(data)
+	}
+	if out.Error != "" {
+		resp := map[string]any{"error": out.Error, "is_error": true}
+		normalized, _ := json.Marshal(resp)
+		return string(normalized)
+	}
+	if len(out.Data) > 0 && string(out.Data) != "null" {
+		return string(out.Data)
+	}
+	return string(data)
 }
 
 // removeToolSchemaLocked removes the tool schema for the given name.
