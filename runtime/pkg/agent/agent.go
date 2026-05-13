@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"time"
 
+	event "github.com/quarkloop/pkg/event"
+	"github.com/quarkloop/pkg/plugin"
 	"github.com/quarkloop/runtime/pkg/channel"
 	"github.com/quarkloop/runtime/pkg/execution"
 	"github.com/quarkloop/runtime/pkg/hierarchy"
@@ -18,21 +20,22 @@ import (
 	"github.com/quarkloop/runtime/pkg/plan"
 	"github.com/quarkloop/runtime/pkg/pluginmanager"
 	"github.com/quarkloop/runtime/pkg/prompt"
+	runtimeservices "github.com/quarkloop/runtime/pkg/services"
 	"github.com/quarkloop/runtime/pkg/session"
-	"github.com/quarkloop/pkg/plugin"
-	event "github.com/quarkloop/pkg/event"
 	supclient "github.com/quarkloop/supervisor/pkg/client"
 )
 
 // Config holds agent configuration.
 type Config struct {
-	ID            string
-	Name          string
-	Description   string
-	ModelProvider string
-	Model         string
-	ModelListURL  string
-	PluginsDir    string
+	ID              string
+	Name            string
+	Description     string
+	ModelProvider   string
+	Model           string
+	ModelListURL    string
+	PluginsDir      string
+	ServicesPrompt  string
+	ServiceExecutor *runtimeservices.Executor
 
 	// Execution mode configuration
 	ExecutionMode execution.Mode
@@ -289,7 +292,7 @@ func (a *Agent) handleUserMessage(ctx context.Context, msg loop.Message) error {
 		ctx,
 		history,
 		client,
-		prompt.GetSystemPrompt(),
+		a.systemPrompt(),
 		a.Plan.GetSummary(),
 		a.defaultTools(),
 		a.executeTool,
@@ -366,7 +369,7 @@ func (a *Agent) handleWorkStep(ctx context.Context, msg loop.Message) error {
 		return nil
 	}
 
-	if err := a.Plan.ExecuteStep(ctx, client.Infer, prompt.GetSystemPrompt(), a.defaultTools(), a.executeTool); err != nil {
+	if err := a.Plan.ExecuteStep(ctx, client.Infer, a.systemPrompt(), a.defaultTools(), a.executeTool); err != nil {
 		slog.Error("work step error", "error", err)
 		return err
 	}
@@ -397,7 +400,7 @@ func (a *Agent) processWork(ctx context.Context, agentID, task string) (string, 
 
 	// Simple inference for sub-agent work
 	msgs := []plugin.Message{
-		{Role: "system", Content: prompt.GetSystemPrompt()},
+		{Role: "system", Content: a.systemPrompt()},
 		{Role: "user", Content: task},
 	}
 
@@ -406,7 +409,19 @@ func (a *Agent) processWork(ctx context.Context, agentID, task string) (string, 
 
 // defaultTools returns the available tools.
 func (a *Agent) defaultTools() []plugin.ToolSchema {
-	return a.Plugins.GetTools()
+	tools := a.Plugins.GetTools()
+	if a.config.ServiceExecutor != nil {
+		tools = append(tools, a.config.ServiceExecutor.ToolSchemas()...)
+	}
+	return tools
+}
+
+func (a *Agent) systemPrompt() string {
+	base := prompt.GetSystemPrompt()
+	if a.config.ServicesPrompt == "" {
+		return base
+	}
+	return base + a.config.ServicesPrompt
 }
 
 // executeTool executes a requested tool via pluginmanager.
@@ -414,6 +429,9 @@ func (a *Agent) executeTool(ctx context.Context, name, arguments string) (string
 	// Check permissions
 	if err := a.permissions.ValidateTool(name); err != nil {
 		return "", err
+	}
+	if name == runtimeservices.ToolName && a.config.ServiceExecutor != nil {
+		return a.config.ServiceExecutor.Execute(ctx, arguments)
 	}
 	return a.Plugins.ExecuteTool(ctx, name, arguments)
 }

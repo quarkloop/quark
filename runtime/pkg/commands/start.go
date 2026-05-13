@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/quarkloop/runtime/pkg/channel/telegram"
 	"github.com/quarkloop/runtime/pkg/channel/web"
 	"github.com/quarkloop/runtime/pkg/runtime"
+	runtimeservices "github.com/quarkloop/runtime/pkg/services"
 )
 
 const CmdStartDefaultPort = 8765
@@ -95,16 +97,20 @@ func runStart(port int, channels []string) error {
 	}
 	slog.Info("using model", "provider", modelProvider, "model", modelName)
 
+	servicePrompt, serviceExecutor := discoverServices()
+
 	// Create agent
 	a, err := agent.NewAgent(agent.Config{
-		ID:            "main",
-		Name:          "Main Agent",
-		ModelProvider: modelProvider,
-		Model:         modelName,
-		ModelListURL:  os.Getenv("MODEL_LIST_URL"),
-		PluginsDir:    os.Getenv("QUARK_PLUGINS_DIR"),
-		SupervisorURL: os.Getenv("QUARK_SUPERVISOR_URL"),
-		SpaceID:       os.Getenv("QUARK_SPACE"),
+		ID:              "main",
+		Name:            "Main Agent",
+		ModelProvider:   modelProvider,
+		Model:           modelName,
+		ModelListURL:    os.Getenv("MODEL_LIST_URL"),
+		PluginsDir:      os.Getenv("QUARK_PLUGINS_DIR"),
+		SupervisorURL:   os.Getenv("QUARK_SUPERVISOR_URL"),
+		SpaceID:         os.Getenv("QUARK_SPACE"),
+		ServicesPrompt:  servicePrompt,
+		ServiceExecutor: serviceExecutor,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create agent: %w", err)
@@ -149,4 +155,26 @@ func runStart(port int, channels []string) error {
 	slog.Info("runtime server is running, press Ctrl+C to exit")
 	// Start all channels via ChannelBus and block
 	return srv.Run(ctx)
+}
+
+func discoverServices() (string, *runtimeservices.Executor) {
+	endpoints := runtimeservices.EndpointsFromEnv()
+	if len(endpoints) == 0 {
+		slog.Info("service discovery disabled")
+		return "", nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	descriptors, errs := runtimeservices.Discover(ctx, endpoints)
+	for _, err := range errs {
+		slog.Warn("service discovery failed", "error", err)
+	}
+	if len(descriptors) == 0 {
+		slog.Warn("no service descriptors discovered", "endpoints", fmt.Sprintf("%v", endpoints))
+		return "", nil
+	}
+	for _, desc := range descriptors {
+		slog.Info("service discovered", "name", desc.GetName(), "type", desc.GetType(), "addr", desc.GetAddress())
+	}
+	return runtimeservices.PromptBlock(descriptors), runtimeservices.NewExecutor(descriptors)
 }
