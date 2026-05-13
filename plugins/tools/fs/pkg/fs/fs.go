@@ -20,22 +20,31 @@ func (t *Tool) SetManifest(m *plugin.Manifest) {
 
 // Name returns the tool name.
 func (t *Tool) Name() string {
+	if t.manifest == nil {
+		return "fs"
+	}
 	return t.manifest.Name
 }
 
 // Version returns the tool version.
 func (t *Tool) Version() string {
+	if t.manifest == nil {
+		return "1.0.0"
+	}
 	return t.manifest.Version
 }
 
 // Description returns the tool description.
 func (t *Tool) Description() string {
+	if t.manifest == nil {
+		return "Filesystem operations"
+	}
 	return t.manifest.Description
 }
 
 // Schema returns the tool schema for LLM function calling.
 func (t *Tool) Schema() plugin.ToolSchema {
-	if t.manifest.Tool != nil {
+	if t.manifest != nil && t.manifest.Tool != nil {
 		return t.manifest.Tool.Schema
 	}
 	return plugin.ToolSchema{

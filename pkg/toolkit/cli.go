@@ -8,14 +8,17 @@ import (
 	"os"
 	"strings"
 
+	"github.com/quarkloop/pkg/plugin"
 	"github.com/spf13/cobra"
 )
 
 // BuildCLI generates a cobra command tree for the given tool.
 func BuildCLI(tool AgentTool) *cobra.Command {
+	loadToolManifest(tool)
+
 	root := &cobra.Command{
-		Use:   tool.Name(),
-		Short: tool.Description(),
+		Use:          tool.Name(),
+		Short:        tool.Description(),
 		SilenceUsage: true,
 	}
 
@@ -104,6 +107,22 @@ func BuildCLI(tool AgentTool) *cobra.Command {
 	}
 
 	return root
+}
+
+type manifestSetter interface {
+	SetManifest(*plugin.Manifest)
+}
+
+func loadToolManifest(tool AgentTool) {
+	setter, ok := tool.(manifestSetter)
+	if !ok {
+		return
+	}
+	manifest, err := LoadManifest()
+	if err != nil {
+		return
+	}
+	setter.SetManifest(manifest)
 }
 
 func buildUseLine(cmd Command) string {

@@ -25,6 +25,8 @@ type BuiltBinaries struct {
 	// callers should fall back to api-mode installation.
 	BashLib string
 	FSLib   string
+
+	OpenRouterLib string
 }
 
 var (
@@ -96,6 +98,7 @@ func BuildAllOnce(t *testing.T) BuiltBinaries {
 
 		buildRes.BashLib = buildLib("./plugins/tools/bash", "bash")
 		buildRes.FSLib = buildLib("./plugins/tools/fs", "fs")
+		buildRes.OpenRouterLib = buildLib("./plugins/providers/openrouter", "openrouter")
 	})
 	if buildErr != nil {
 		t.Fatal(buildErr)

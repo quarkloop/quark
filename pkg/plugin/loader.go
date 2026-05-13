@@ -174,7 +174,7 @@ func (l *Loader) loadLib(ctx context.Context, manifest *Manifest, dir string) (*
 			return nil, fmt.Errorf("NewPlugin is not func() Plugin")
 		}
 		plugin := factory()
-		if err := plugin.Initialize(ctx, nil); err != nil {
+		if err := plugin.Initialize(ctx, l.initConfig(dir)); err != nil {
 			return nil, fmt.Errorf("initialize plugin: %w", err)
 		}
 		l.libCache[manifest.Name] = p
@@ -201,7 +201,7 @@ func (l *Loader) loadLib(ctx context.Context, manifest *Manifest, dir string) (*
 		return nil, fmt.Errorf("QuarkPlugin is not Plugin type (got %T)", sym)
 	}
 
-	if err := plugin.Initialize(ctx, nil); err != nil {
+	if err := plugin.Initialize(ctx, l.initConfig(dir)); err != nil {
 		return nil, fmt.Errorf("initialize plugin: %w", err)
 	}
 
@@ -213,6 +213,13 @@ func (l *Loader) loadLib(ctx context.Context, manifest *Manifest, dir string) (*
 		Mode:     ModeLib,
 		Dir:      dir,
 	}, nil
+}
+
+func (l *Loader) initConfig(dir string) map[string]any {
+	return map[string]any{
+		ConfigManifestPath: filepath.Join(dir, "manifest.yaml"),
+		ConfigPluginDir:    dir,
+	}
 }
 
 // loadCLI verifies a CLI-mode plugin binary exists.

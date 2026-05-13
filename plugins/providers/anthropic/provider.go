@@ -24,13 +24,13 @@ type AnthropicProvider struct {
 	client   *http.Client
 }
 
-func (p *AnthropicProvider) Name() string    { return p.manifest.Name }
-func (p *AnthropicProvider) Version() string { return p.manifest.Version }
+func (p *AnthropicProvider) Name() string            { return p.manifest.Name }
+func (p *AnthropicProvider) Version() string         { return p.manifest.Version }
 func (p *AnthropicProvider) Type() plugin.PluginType { return p.manifest.Type }
 func (p *AnthropicProvider) ProviderID() string      { return p.manifest.Name }
 
 func (p *AnthropicProvider) Initialize(ctx context.Context, config map[string]any) error {
-	manifest, err := plugin.ParseManifest("manifest.yaml")
+	manifest, err := plugin.ParseManifest(plugin.ManifestPathFromConfig(config))
 	if err != nil {
 		return fmt.Errorf("load manifest: %w", err)
 	}

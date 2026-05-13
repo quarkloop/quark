@@ -24,11 +24,11 @@ type BuildReleaseTool struct {
 	tool     *buildrelease.Tool
 }
 
-func (t *BuildReleaseTool) Name() string    { return t.manifest.Name }
-func (t *BuildReleaseTool) Version() string { return t.manifest.Version }
+func (t *BuildReleaseTool) Name() string            { return t.manifest.Name }
+func (t *BuildReleaseTool) Version() string         { return t.manifest.Version }
 func (t *BuildReleaseTool) Type() plugin.PluginType { return t.manifest.Type }
 func (t *BuildReleaseTool) Initialize(ctx context.Context, cfg map[string]any) error {
-	manifest, err := plugin.ParseManifest("manifest.yaml")
+	manifest, err := plugin.ParseManifest(plugin.ManifestPathFromConfig(cfg))
 	if err != nil {
 		return err
 	}

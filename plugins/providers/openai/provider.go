@@ -24,13 +24,13 @@ type OpenAIProvider struct {
 	client   *http.Client
 }
 
-func (p *OpenAIProvider) Name() string    { return p.manifest.Name }
-func (p *OpenAIProvider) Version() string { return p.manifest.Version }
+func (p *OpenAIProvider) Name() string            { return p.manifest.Name }
+func (p *OpenAIProvider) Version() string         { return p.manifest.Version }
 func (p *OpenAIProvider) Type() plugin.PluginType { return p.manifest.Type }
 func (p *OpenAIProvider) ProviderID() string      { return p.manifest.Name }
 
 func (p *OpenAIProvider) Initialize(ctx context.Context, config map[string]any) error {
-	manifest, err := plugin.ParseManifest("manifest.yaml")
+	manifest, err := plugin.ParseManifest(plugin.ManifestPathFromConfig(config))
 	if err != nil {
 		return fmt.Errorf("load manifest: %w", err)
 	}

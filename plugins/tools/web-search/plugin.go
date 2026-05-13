@@ -21,11 +21,11 @@ type WebSearchTool struct {
 	manifest *plugin.Manifest
 }
 
-func (t *WebSearchTool) Name() string    { return t.manifest.Name }
-func (t *WebSearchTool) Version() string { return t.manifest.Version }
+func (t *WebSearchTool) Name() string            { return t.manifest.Name }
+func (t *WebSearchTool) Version() string         { return t.manifest.Version }
 func (t *WebSearchTool) Type() plugin.PluginType { return t.manifest.Type }
 func (t *WebSearchTool) Initialize(ctx context.Context, cfg map[string]any) error {
-	manifest, err := plugin.ParseManifest("manifest.yaml")
+	manifest, err := plugin.ParseManifest(plugin.ManifestPathFromConfig(cfg))
 	if err != nil {
 		return err
 	}

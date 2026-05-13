@@ -3,6 +3,7 @@ package api
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 
 	"github.com/gofiber/fiber/v2"
 
@@ -74,11 +75,11 @@ func (h *MessageHandler) Send(c *fiber.Ctx) error {
 				if err != nil {
 					return
 				}
-				ctx.Write([]byte("event: " + msgData.Type + "\ndata: "))
+				fmt.Fprintf(w, "event: %s\ndata: ", msgData.Type)
 				if err := enc.Encode(json.RawMessage(payload)); err != nil {
 					return
 				}
-				ctx.Write([]byte("\n\n"))
+				fmt.Fprint(w, "\n")
 				w.Flush()
 			case <-ctx.Done():
 				return
@@ -113,11 +114,11 @@ func (h *MessageHandler) Stream(c *fiber.Ctx) error {
 				if !ok {
 					return
 				}
-				ctx.Write([]byte("event: message\ndata: "))
+				fmt.Fprint(w, "event: message\ndata: ")
 				if err := enc.Encode(msg); err != nil {
 					return
 				}
-				ctx.Write([]byte("\n"))
+				fmt.Fprint(w, "\n")
 				w.Flush()
 			case <-ctx.Done():
 				return

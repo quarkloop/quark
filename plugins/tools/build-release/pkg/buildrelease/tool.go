@@ -19,19 +19,28 @@ func (t *Tool) SetManifest(m *plugin.Manifest) {
 }
 
 func (t *Tool) Name() string {
+	if t.manifest == nil {
+		return "build-release"
+	}
 	return t.manifest.Name
 }
 
 func (t *Tool) Version() string {
+	if t.manifest == nil {
+		return "1.0.0"
+	}
 	return t.manifest.Version
 }
 
 func (t *Tool) Description() string {
+	if t.manifest == nil {
+		return "Build Go release artifacts with cross-compilation, checksums, and install scripts"
+	}
 	return t.manifest.Description
 }
 
 func (t *Tool) Schema() plugin.ToolSchema {
-	if t.manifest.Tool != nil {
+	if t.manifest != nil && t.manifest.Tool != nil {
 		return t.manifest.Tool.Schema
 	}
 	return plugin.ToolSchema{

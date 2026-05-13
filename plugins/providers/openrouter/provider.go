@@ -26,13 +26,13 @@ type OpenRouterProvider struct {
 	client   *http.Client
 }
 
-func (p *OpenRouterProvider) Name() string    { return p.manifest.Name }
-func (p *OpenRouterProvider) Version() string { return p.manifest.Version }
+func (p *OpenRouterProvider) Name() string            { return p.manifest.Name }
+func (p *OpenRouterProvider) Version() string         { return p.manifest.Version }
 func (p *OpenRouterProvider) Type() plugin.PluginType { return p.manifest.Type }
 func (p *OpenRouterProvider) ProviderID() string      { return p.manifest.Name }
 
 func (p *OpenRouterProvider) Initialize(ctx context.Context, config map[string]any) error {
-	manifest, err := plugin.ParseManifest("manifest.yaml")
+	manifest, err := plugin.ParseManifest(plugin.ManifestPathFromConfig(config))
 	if err != nil {
 		return fmt.Errorf("load manifest: %w", err)
 	}

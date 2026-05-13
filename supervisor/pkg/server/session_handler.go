@@ -123,10 +123,11 @@ func (s *Server) handleEventStream(c *fiber.Ctx) error {
 	c.Set("X-Accel-Buffering", "no")
 
 	ch, cancel := s.events.Subscribe(name)
-	defer cancel()
 
 	ctx := c.Context()
 	ctx.SetBodyStreamWriter(func(w *bufio.Writer) {
+		defer cancel()
+
 		// Send initial comment so clients know the stream is live.
 		fmt.Fprintf(w, ": connected\n\n")
 		w.Flush()

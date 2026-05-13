@@ -59,13 +59,17 @@ func installSpacePlugins(t *testing.T, env *E2EEnv, bins BuiltBinaries) {
 	installTool("fs", bins.FS, bins.FSLib)
 
 	providerSrc := filepath.Join(srcRoot, "providers", "openrouter")
-	if _, err := os.Stat(filepath.Join(providerSrc, "plugin.so")); err == nil {
+	providerLib := bins.OpenRouterLib
+	if providerLib == "" {
+		providerLib = filepath.Join(providerSrc, "plugin.so")
+	}
+	if _, err := os.Stat(providerLib); err == nil {
 		dst := filepath.Join(pluginsDir, "providers", "openrouter")
 		if err := os.MkdirAll(dst, 0o755); err != nil {
 			t.Fatalf("mkdir %s: %v", dst, err)
 		}
 		copyFile(t, filepath.Join(providerSrc, "manifest.yaml"), filepath.Join(dst, "manifest.yaml"), 0o644)
-		copyFile(t, filepath.Join(providerSrc, "plugin.so"), filepath.Join(dst, "plugin.so"), 0o755)
+		copyFile(t, providerLib, filepath.Join(dst, "plugin.so"), 0o755)
 	}
 }
 
@@ -122,7 +126,7 @@ func startSupervisor(t *testing.T, bins BuiltBinaries) (*supclient.Client, strin
 	proc := StartProcess(t, "supervisor", bins.Supervisor, []string{
 		"start",
 		"--port", fmt.Sprint(port),
-		"--agent", bins.Agent,
+		"--runtime", bins.Agent,
 	}, env)
 
 	supURL := fmt.Sprintf("http://127.0.0.1:%d", port)
@@ -203,7 +207,7 @@ func StartE2E(t *testing.T, withProvider bool, opts ...StartOptions) *E2EEnv {
 	// Wait for the agent's SSE subscription to the supervisor to go live,
 	// otherwise the very first session event can be published before any
 	// subscriber is attached and silently dropped.
-	proc.WaitForLog(t, "agent: supervisor event stream ready", 10*time.Second)
+	proc.WaitForLog(t, "supervisor event stream ready", 10*time.Second)
 	t.Logf("supervisor at %s, agent at %s (space=%s)", supURL, env.AgentURL, spaceName)
 	return env
 }

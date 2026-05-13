@@ -24,12 +24,12 @@ type FSTool struct {
 	tool     *fs.Tool
 }
 
-func (t *FSTool) Name() string    { return t.manifest.Name }
-func (t *FSTool) Version() string { return t.manifest.Version }
+func (t *FSTool) Name() string            { return t.manifest.Name }
+func (t *FSTool) Version() string         { return t.manifest.Version }
 func (t *FSTool) Type() plugin.PluginType { return t.manifest.Type }
 
 func (t *FSTool) Initialize(ctx context.Context, cfg map[string]any) error {
-	manifest, err := plugin.ParseManifest("manifest.yaml")
+	manifest, err := plugin.ParseManifest(plugin.ManifestPathFromConfig(cfg))
 	if err != nil {
 		return err
 	}
