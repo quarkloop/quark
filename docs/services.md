@@ -96,10 +96,13 @@ The runtime discovers services from environment variables:
 | `QUARK_DISABLE_SERVICE_DISCOVERY` | set to `true` to leave the runtime service catalog off |
 
 At startup, `runtime/pkg/services` dials each endpoint, calls
-`ServiceRegistry.ListServices`, loads descriptors and skills, and appends an
-"Available gRPC Services" block to the agent system prompt. If no endpoints
-are configured, runtime behavior is unchanged. Discovery failures are logged
-and do not prevent the runtime from starting.
+`ServiceRegistry.ListServices`, loads descriptors and skills, and builds a
+`services.Catalog`. The runtime passes that catalog to the agent as a generic
+capability provider. The agent loop only sees capability prompts, tool schemas,
+and dispatch functions; it does not import service packages or special-case
+individual services. If no endpoints are configured, runtime behavior is
+unchanged. Discovery failures are logged and do not prevent the runtime from
+starting.
 
 When descriptors exist, the runtime exposes a `grpc-service` tool:
 
@@ -203,16 +206,17 @@ go test -tags e2e -v -run '^TestIndexerServiceWithRealDgraph$' ./e2e
 go test -tags e2e -v -run '^TestAgentServiceCatalogIndexesUltimateBrochurePDF$' ./e2e
 ```
 
-The PDF test requires Docker/Dgraph through the E2E helper and `pdftotext` in
-`PATH`. It extracts `docs/ultimate-brochure.pdf`, indexes structured content
-through the runtime service executor, queries the real indexer service, asserts
-chunks/citations/graph context, and logs temporary artifact paths for manual
-inspection.
+The PDF test requires Docker/Dgraph through the E2E helper, `pdftotext` in
+`PATH`, and an available real provider quota. It sends the PDF path to the
+runtime agent, expects the agent to call `fs extract_pdf`, structure the
+content with the LLM, call `grpc-service` for `IndexDocument` and `GetContext`,
+then verifies the Dgraph-backed indexer state. Provider rate limits are treated
+as unavailable external dependencies.
 
 ## Migration Notes
 
-- Runtime service awareness now lives in `runtime/pkg/services`, not in
-  plugin loading code.
+- Runtime service awareness now lives in `runtime/pkg/services` as a catalog
+  capability provider, not in plugin loading code or agent service branches.
 - `SpaceService` owns space storage behavior; supervisor HTTP handlers keep
   the existing CLI-facing API stable.
 - Build-release business logic lives in `services/build-release/pkg`; the tool

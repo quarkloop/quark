@@ -175,10 +175,12 @@ Run the service-backed indexer PDF E2E:
 go test -tags e2e -v -run '^TestAgentServiceCatalogIndexesUltimateBrochurePDF$' ./e2e
 ```
 
-The PDF test requires Docker/Dgraph through the E2E helper and `pdftotext` in
-`PATH`. It extracts `docs/ultimate-brochure.pdf`, indexes the result through the
-runtime service executor, queries the real Dgraph-backed indexer, and logs
-artifact paths for manual verification.
+The PDF test requires Docker/Dgraph through the E2E helper, `pdftotext` in
+`PATH`, and available provider quota. It sends the PDF path to the runtime
+agent, verifies the agent uses tool/service calls, queries the real
+Dgraph-backed indexer after the agent run, and logs artifact paths for manual
+verification. Provider 429 responses are treated as unavailable external
+dependencies.
 
 ## 10. Debugging Tips
 
@@ -187,8 +189,9 @@ artifact paths for manual verification.
 - Port conflicts usually show up as `bind: address already in use`; stop the
   old process or choose another port.
 - Runtime service discovery logs one line per discovered service. If a service
-  is missing from the agent prompt, check the relevant `QUARK_*_ADDR`
-  environment variable and that `ServiceRegistry.ListServices` is reachable.
+  is missing from the agent prompt or `grpc-service` cannot resolve it, check
+  the relevant `QUARK_*_ADDR` environment variable and that
+  `ServiceRegistry.ListServices` is reachable.
 - Provider errors such as 405, 429, or "Function calling is not enabled" are
   upstream model/provider issues. Try a model that supports tool calling or
   wait for rate limits to clear.
