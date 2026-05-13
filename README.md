@@ -19,11 +19,12 @@ quark activity query -f   # stream agent activity
 
 ## How it works
 
-Quark has three processes:
+Quark has three core processes plus optional gRPC services:
 
 - **`quark-supervisor`** - a long-running local daemon. Owns every space's latest Quarkfile state, KB, installed plugins, sessions, and the registry of running agents. Speaks HTTP.
 - **`agent`** - a child process launched by the supervisor for a specific space. Runs the LLM loop, handles chat and plans. Speaks HTTP.
 - **`quark`** - a thin CLI. Talks only to the supervisor (and, for chat/session/plan/activity, to the supervisor-resolved agent URL). The CLI reads and writes exactly one local file: the `Quarkfile` in the current directory.
+- **Services** - independently deployable gRPC capabilities such as `indexer`, `build-release`, and `space`. Services publish descriptors and `SKILL.md` content through `quark.service.v1.ServiceRegistry`.
 
 A **space** is identified by its `meta.name` in the Quarkfile. The supervisor keeps the authoritative copy under `$QUARK_SPACES_ROOT` (default `~/.quarkloop/spaces/<name>/`); the Quarkfile you edit in your working directory is re-submitted to the supervisor when you update it.
 
@@ -35,7 +36,7 @@ ORIENT → PLAN → DISPATCH → MONITOR → ASSESS → (repeat)
 
 It reads the goal, produces an execution plan, fans out steps to subagents, invokes tools (`bash`, `fs`, `web-search`), and iterates until complete.
 
-Everything is a **plugin** - tools, providers, agents, skills. Tool plugins support both **lib mode** (loaded in-process as Go `.so` files) and **api mode** (run as separate HTTP server processes); the agent prefers lib mode and falls back to api when the `.so` is absent. Provider plugins are always lib mode. All follow a standard contract: `manifest.yaml` + `SKILL.md` + executable and/or `.so`.
+Everything user-installable is a **plugin** - tools, providers, agents, skills. Tool plugins support both **lib mode** (loaded in-process as Go `.so` files) and **api mode** (run as separate HTTP server processes); the agent prefers lib mode and falls back to api when the `.so` is absent. Provider plugins are always lib mode. Services are not plugins: they are platform processes with protobuf contracts, service registry metadata, and service-owned skills.
 
 ### Sessions
 
@@ -61,7 +62,11 @@ Quark is a Go workspace. See [AGENTS.md](AGENTS.md) for the full package-level b
 | `cli`                              | `quark` CLI - HTTP-only client, reads and writes only the local Quarkfile.     |
 | `pkg/space`                        | Shared space directory model and Quarkfile schema, validation, and I/O.        |
 | `pkg/plugin`                       | Shared plugin interfaces, manifest parsing, lib/api loader.                 |
+| `pkg/serviceapi`                   | Shared protobuf/gRPC stubs and service helper utilities.                      |
 | `pkg/toolkit`                      | Shared toolkit for tool plugins (Fiber server, CLI, pipe mode).               |
+| `services/indexer`                 | Dgraph-backed GraphRAG indexing and retrieval service.                        |
+| `services/build-release`           | Standalone build and release automation service.                              |
+| `services/space`                   | Space metadata, Quarkfile, path, environment, and doctor service.             |
 | `plugins/tools/{bash,fs,web-search,build-release}` | Tool plugins (lib-mode `.so` + api-mode HTTP daemon).             |
 | `plugins/providers/{openrouter,openai,anthropic}` | Provider plugins (lib mode `.so`).                              |
 
@@ -86,6 +91,9 @@ The CLI has no dependency on the `agent` module's internals - only on the public
 | `fs`              | `plugins/tools/fs`                  | Tool plugin: filesystem read/write operations                       |
 | `web-search`      | `plugins/tools/web-search`          | Tool plugin: web search via Brave / SerpAPI / stub                  |
 | `build-release`   | `plugins/tools/build-release`       | Tool plugin: build and release automation                           |
+| `indexer-service` | `services/indexer`                  | gRPC GraphRAG indexing service backed by Dgraph                     |
+| `build-release-service` | `services/build-release`      | gRPC build and release automation service                           |
+| `space-service`   | `services/space`                    | gRPC space metadata and Quarkfile service                           |
 
 ---
 
@@ -120,7 +128,7 @@ export PATH="$PWD/bin:$PATH"
 quark-supervisor start
 ```
 
-Override storage location with `QUARK_SPACES_ROOT`, or the listen port with `--port`. The CLI finds the supervisor at `QUARK_SUPERVISOR_URL` (default `http://127.0.0.1:7200`).
+Override storage location with `QUARK_SPACES_ROOT`, or the listen port with `--port`. The CLI finds the supervisor at `QUARK_SUPERVISOR_URL` (default `http://127.0.0.1:7200`). The supervisor starts an embedded `SpaceService` by default; pass `--space-service <host:port>` to use an external one.
 
 **2. Scaffold and register a space:**
 
@@ -269,6 +277,7 @@ All `quark` commands operate on the space defined by the Quarkfile in the curren
 quark-supervisor start              Start the HTTP daemon
   --port <n>                          Listen port (default 7200)
   --agent <path>                      Path to agent binary (default "agent")
+  --space-service <addr>              External SpaceService gRPC address
   [spaces-dir]                        Override QUARK_SPACES_ROOT
 quark-supervisor stop               Stop a running supervisor
 ```
@@ -348,12 +357,38 @@ Set `BRAVE_API_KEY` or `SERPAPI_KEY` for real results; stub used otherwise.
 
 ---
 
+## Services
+
+Service architecture, runtime discovery, protobuf conventions, lifecycle, and
+E2E instructions are documented in [docs/services.md](docs/services.md).
+
+Quick local examples:
+
+```bash
+# Dgraph must already be listening on 127.0.0.1:9080
+indexer-service --addr 127.0.0.1:7301 --dgraph 127.0.0.1:9080 --skill-dir services/indexer
+export QUARK_INDEXER_ADDR=127.0.0.1:7301
+
+build-release-service --addr 127.0.0.1:7302 --skill-dir services/build-release
+export QUARK_BUILD_RELEASE_ADDR=127.0.0.1:7302
+
+space-service --addr 127.0.0.1:7303 --root /tmp/quark-spaces --skill-dir services/space
+quark-supervisor start --space-service 127.0.0.1:7303
+```
+
+---
+
 ## Environment variables
 
 | Variable               | Default                       | Description                                             |
 | ---------------------- | ----------------------------- | ------------------------------------------------------- |
 | `QUARK_SUPERVISOR_URL` | `http://127.0.0.1:7200`       | Supervisor base URL used by the CLI and agent           |
 | `QUARK_SPACES_ROOT`    | `~/.quarkloop/spaces`         | Supervisor's on-disk root for space storage             |
+| `QUARK_SERVICE_ADDRS`  | —                             | Additional runtime service endpoints (`name=host:port`) |
+| `QUARK_INDEXER_ADDR`   | —                             | Runtime discovery endpoint for `IndexerService`         |
+| `QUARK_BUILD_RELEASE_ADDR` | —                         | Runtime discovery endpoint for `BuildReleaseService`    |
+| `QUARK_SPACE_SERVICE_ADDR` | —                         | Runtime discovery endpoint for `SpaceService`           |
+| `QUARK_DISABLE_SERVICE_DISCOVERY` | —                    | Disable runtime service discovery when set to `true`    |
 | `ANTHROPIC_API_KEY`    | —                             | Forwarded to agents that declare it in `env`            |
 | `OPENAI_API_KEY`       | —                             | Forwarded to agents that declare it in `env`            |
 | `OPENROUTER_API_KEY`   | —                             | Forwarded to agents that declare it in `env`            |

@@ -1,181 +1,150 @@
 # Running & Debugging
 
-Practical techniques for running, testing, and debugging the Quark agent runtime locally.
-
----
+Practical techniques for running, testing, and debugging Quark locally.
 
 ## 1. Building
 
 ```bash
-# Build all 9 binaries into ./bin/
 make build
 ```
 
-Binaries land in `./bin/`: `supervisor`, `agent`, `quark`, `bash`, `fs`, `web-search`.
+Binaries land in `./bin/`:
 
----
+| Binary | Role |
+| --- | --- |
+| `supervisor` | HTTP supervisor daemon |
+| `runtime` | agent runtime process |
+| `quark` | CLI |
+| `bash`, `fs`, `web-search`, `build-release` | tool plugin binaries |
+| `indexer-service`, `build-release-service`, `space-service` | gRPC services |
 
-## 2. Starting Tool Servers
-
-Each tool runs as a standalone HTTP server. Start them before the agent:
+Tool plugin `.so` files and provider `.so` files are built with:
 
 ```bash
-./bin/bash serve --addr 127.0.0.1:8091 &
-./bin/read serve --addr 127.0.0.1:8092 &
-./bin/write serve --addr 127.0.0.1:8093 &
+make build-plugins
 ```
 
-The `--addr` flag sets the listen address (not `--port`). Defaults:
-
-| Tool  | Default Address |
-| ----- | --------------- |
-| bash  | 127.0.0.1:8091  |
-| read  | 127.0.0.1:8092  |
-| write | 127.0.0.1:8093  |
-
-Check tool help with `./bin/bash serve --help`.
-
-Logs go to stdout. Redirect to files for debugging:
+Regenerate protobuf/gRPC stubs after proto changes:
 
 ```bash
-./bin/bash serve --addr 127.0.0.1:8091 > /tmp/bash.log 2>&1 &
+make proto
 ```
 
-### Common Issue: Address Already in Use
+## 2. Starting The Supervisor
 
-If a tool fails with `bind: address already in use`, find and kill the existing process:
+The supervisor is the normal entrypoint for local development. It starts an
+embedded `SpaceService` by default and launches runtimes on demand.
 
 ```bash
-pgrep -f 'bin/bash' | xargs kill
-# or
-lsof -i :8091
+./bin/supervisor start --port 7200 --agent ./bin/runtime
 ```
 
----
-
-## 3. Starting the Agent
-
-The agent needs an API key exported in the environment. It reads tools from the Quarkfile.
+Use an external space service when debugging service boundaries:
 
 ```bash
+./bin/space-service --addr 127.0.0.1:7303 --root /tmp/quark-spaces --skill-dir services/space
+./bin/supervisor start --port 7200 --agent ./bin/runtime --space-service 127.0.0.1:7303
+```
+
+The CLI finds the supervisor through `QUARK_SUPERVISOR_URL`; the default is
+`http://127.0.0.1:7200`.
+
+## 3. Starting Services
+
+Services are gRPC processes that publish `ServiceRegistry` metadata and service
+skills. The runtime discovers them through environment variables.
+
+```bash
+# Requires Dgraph Alpha on 127.0.0.1:9080
+./bin/indexer-service --addr 127.0.0.1:7301 --dgraph 127.0.0.1:9080 --skill-dir services/indexer
+export QUARK_INDEXER_ADDR=127.0.0.1:7301
+
+./bin/build-release-service --addr 127.0.0.1:7302 --skill-dir services/build-release
+export QUARK_BUILD_RELEASE_ADDR=127.0.0.1:7302
+```
+
+Multiple arbitrary services can also be passed with:
+
+```bash
+export QUARK_SERVICE_ADDRS='indexer=127.0.0.1:7301,build-release=127.0.0.1:7302'
+```
+
+See [services.md](services.md) for service topology, protobuf conventions,
+lifecycle, and E2E instructions.
+
+## 4. Tool Servers
+
+Tool plugins can run in api mode as standalone HTTP servers. The runtime prefers
+lib mode when a `.so` is installed next to the manifest and falls back to api
+mode otherwise.
+
+```bash
+./bin/bash serve --addr 127.0.0.1:8091
+./bin/fs serve --addr 127.0.0.1:8093
+./bin/web-search serve --addr 127.0.0.1:8090
+```
+
+Set `BRAVE_API_KEY` or `SERPAPI_KEY` for real web search results; otherwise the
+web-search plugin uses its stub behavior.
+
+## 5. Starting A Runtime Directly
+
+Most workflows should use `quark run`, which asks the supervisor to launch the
+runtime with the correct space and service environment. Direct runtime startup
+is useful for debugging the agent process itself.
+
+```bash
+export QUARK_MODEL_PROVIDER=openrouter
+export QUARK_MODEL_NAME=openai/gpt-4o-mini
+export QUARK_SUPERVISOR_URL=http://127.0.0.1:7200
+export QUARK_SPACE=my-space
+export QUARK_PLUGINS_DIR=/tmp/quark-spaces/my-space/plugins
 export OPENROUTER_API_KEY=sk-or-v1-...
-./bin/agent run --dir /tmp/test-space --port 7100 --id supervisor
+
+./bin/runtime start --port 8765 --channel web
 ```
 
-| Flag           | Description                                | Default |
-| -------------- | ------------------------------------------ | ------- |
-| `--dir`        | Space directory containing the Quarkfile   | `.`     |
-| `--port`       | HTTP API port                              | 7100    |
-| `--id`         | Agent ID (required)                        | —       |
-| `--api-server` | Optional api-server URL for health reports | —       |
+The web channel exposes the runtime HTTP API on the selected port.
 
-### Environment Variables
-
-The agent reads env vars listed in the Quarkfile's `env:` section. For OpenRouter:
+## 6. CLI Flow
 
 ```bash
-export OPENROUTER_API_KEY=sk-or-v1-...
+export QUARK_SUPERVISOR_URL=http://127.0.0.1:7200
+
+mkdir /tmp/my-space
+cd /tmp/my-space
+quark init --name my-space
+quark run --timeout 30s
+quark activity query --follow
+quark stop
 ```
 
-The `.env` file at the workspace root has keys for E2E tests but is **not** auto-loaded by the agent binary. You must `source .env` or `export` the key manually.
+All `quark` commands operate on the space named by the local `Quarkfile`.
 
-### Background with Logs
+## 7. Testing Via curl
+
+Health:
 
 ```bash
-export OPENROUTER_API_KEY=sk-or-v1-...
-: > /tmp/agent.log
-./bin/agent run --dir /tmp/test-space --port 7100 --id supervisor >> /tmp/agent.log 2>&1 &
-tail -f /tmp/agent.log
+curl -s http://127.0.0.1:8765/api/v1/agent/health | jq .
 ```
 
----
-
-## 4. Initializing a Test Space
+Chat:
 
 ```bash
-rm -rf /tmp/test-space
-./bin/space init /tmp/test-space
-```
-
-This creates a Quarkfile and prompt directory. Edit `/tmp/test-space/Quarkfile` to set the model and provider.
-
----
-
-## 5. Changing the Model
-
-Edit the `model:` section in the Quarkfile:
-
-```yaml
-model:
-  provider: openrouter
-  name: stepfun/step-3.5-flash:free
-```
-
-The agent must be restarted after changing the model — it reads the Quarkfile at startup.
-
-### Free Models on OpenRouter
-
-Not all free models support function/tool calling. If you see errors like `Function calling is not enabled`, switch to a model that supports it. StepFun's free models generally support tool calling via text parsing (fenced blocks).
-
----
-
-## 6. Testing via curl
-
-### Chat (ask mode)
-
-```bash
-curl -s -X POST http://127.0.0.1:7100/api/v1/agent/chat \
+curl -s -X POST http://127.0.0.1:8765/api/v1/agent/chat \
   -H 'Content-Type: application/json' \
   -d '{"message":"what time is it?","mode":"ask","session_key":"agent:supervisor:main"}' | jq .
 ```
 
-### List Sessions
+Activity:
 
 ```bash
-curl -s http://127.0.0.1:7100/api/v1/agent/sessions | jq .
+curl -s http://127.0.0.1:8765/api/v1/agent/activity | jq .
+curl -N http://127.0.0.1:8765/api/v1/agent/activity/stream
 ```
 
-### Create a Chat Session
-
-```bash
-curl -s -X POST http://127.0.0.1:7100/api/v1/agent/sessions \
-  -H 'Content-Type: application/json' \
-  -d '{"type":"chat","title":"debug session"}' | jq .
-```
-
-### Get Activity (all events)
-
-```bash
-curl -s http://127.0.0.1:7100/api/v1/agent/activity | jq .
-```
-
-### Get Session-Scoped Activity
-
-```bash
-curl -s http://127.0.0.1:7100/api/v1/agent/sessions/agent:supervisor:main/activity | jq .
-```
-
-### Filter Activity by Type
-
-```bash
-# Tool events only
-curl -s http://127.0.0.1:7100/api/v1/agent/activity | \
-  jq '.[] | select(.type == "tool.called" or .type == "tool.completed")'
-
-# Check that tool events have session_id
-curl -s http://127.0.0.1:7100/api/v1/agent/activity | \
-  jq '.[] | select(.type == "tool.called") | {id, type, session_id, tool: .data.tool}'
-```
-
-### Health Check
-
-```bash
-curl -s http://127.0.0.1:7100/api/v1/agent/health | jq .
-```
-
----
-
-## 7. Running the Web UI
+## 8. Running The Web UI
 
 ```bash
 cd web
@@ -183,138 +152,45 @@ bun install
 bun run dev
 ```
 
-The dev server runs on `http://localhost:3000`. It proxies API calls to the agent via Next.js API routes.
+The dev server runs on `http://localhost:3000` and proxies API calls to the
+runtime.
 
-Build for production:
+## 9. Tests
 
-```bash
-cd web && bun run build
-```
-
----
-
-## 8. Full Local Stack
-
-Complete startup sequence:
+Run workspace unit tests:
 
 ```bash
-# 1. Build everything
-make build
-
-# 2. Start tool servers
-./bin/bash serve --addr 127.0.0.1:8091 > /tmp/bash.log 2>&1 &
-./bin/read serve --addr 127.0.0.1:8092 > /tmp/read.log 2>&1 &
-./bin/write serve --addr 127.0.0.1:8093 > /tmp/write.log 2>&1 &
-
-# 3. Init a space (skip if already exists)
-./bin/space init /tmp/test-space
-
-# 4. Start agent
-export OPENROUTER_API_KEY=sk-or-v1-...
-./bin/agent run --dir /tmp/test-space --port 7100 --id supervisor > /tmp/agent.log 2>&1 &
-
-# 5. Start web UI
-cd web && bun run dev &
-
-# 6. Open browser
-open http://localhost:3000
+make test
 ```
 
-### Teardown
+Run E2E tests:
 
 ```bash
-pkill -f 'bin/agent'
-pkill -f 'bin/bash.*serve'
-pkill -f 'bin/read.*serve'
-pkill -f 'bin/write.*serve'
-pkill -f 'next dev'
+go test -tags e2e -v -timeout 10m ./e2e
 ```
 
----
-
-## 9. Debugging Techniques
-
-### Agent Not Responding
-
-1. Check the agent log: `tail -f /tmp/agent.log`
-2. Verify tool servers are running: `pgrep -a 'bin/bash|bin/read|bin/write'`
-3. Test the agent directly: `curl http://127.0.0.1:7100/api/v1/agent/health`
-
-### Tool Calls Not Appearing in UI
-
-The UI filters activity events by `session_id`. If tool events don't have a `session_id`, they are invisible.
-
-Verify events have `session_id`:
+Run the service-backed indexer PDF E2E:
 
 ```bash
-curl -s http://127.0.0.1:7100/api/v1/agent/activity | \
-  jq '.[] | select(.type == "tool.called") | {id, session_id}'
+go test -tags e2e -v -run '^TestAgentServiceCatalogIndexesUltimateBrochurePDF$' ./e2e
 ```
 
-If `session_id` is empty/null, the issue is in `emitActivity` — it must receive and set the session key.
+The PDF test requires Docker/Dgraph through the E2E helper and `pdftotext` in
+`PATH`. It extracts `docs/ultimate-brochure.pdf`, indexes the result through the
+runtime service executor, queries the real Dgraph-backed indexer, and logs
+artifact paths for manual verification.
 
-### Model Returning JSON Instead of Plain Text
+## 10. Debugging Tips
 
-Some models (especially cheaper/free ones) wrap plain text answers in JSON like `{"message":"Hello!"}`. The `unwrapJSONMessage` helper in `chat/mode_ask.go` handles this. If a model keeps doing it:
-
-1. Check the system prompt — it should say "Do NOT wrap your response in JSON"
-2. Check `FencedBlockParser.FormatHint()` — it instructs models on output format
-3. The `unwrapJSONMessage` function recursively extracts string values from JSON objects
-
-### Model Using Wrong Fence Labels
-
-Models may use ` ```bash ` or ` ```json ` instead of ` ```tool ` for tool calls. The `FencedBlockParser` in `model/parser_fenced.go` accepts multiple fence labels: `tool`, `skill`, `json`, `bash`.
-
-### Provider Errors (405, 429, etc.)
-
-These are upstream provider issues, not bugs in Quark:
-
-- **405**: Provider WAF blocking requests (seen with StepFun/Alibaba). Usually transient — retry later or switch models.
-- **429**: Rate limited. The free tier on OpenRouter has strict limits.
-- **400 "Function calling is not enabled"**: The model doesn't support native tool calling. Quark falls back to text-parsed tool calls via fenced blocks, but the gateway may still try native calls first.
-
-### Context Snapshot Issues
-
-The agent saves context snapshots to KB. If restoring from a stale snapshot causes issues:
-
-```bash
-# Check stored snapshots
-ls /tmp/test-space/.quark/store/
-
-# Nuclear option: wipe state and restart fresh
-rm -rf /tmp/test-space/.quark/
-./bin/agent run --dir /tmp/test-space --port 7100 --id supervisor
-```
-
-### SSE Stream Debugging
-
-The web UI uses Server-Sent Events for real-time activity. To debug the stream directly:
-
-```bash
-curl -N http://127.0.0.1:7100/api/v1/agent/activity/stream
-```
-
-This shows raw SSE events as they arrive. Each event is a JSON-encoded `ActivityRecord`.
-
----
-
-## 10. E2E Tests
-
-```bash
-# Run all E2E tests (requires API key)
-OPENROUTER_API_KEY=sk-or-v1-... go test -tags e2e -v -timeout 10m ./agent/e2e
-
-# The e2e helpers auto-load .env from the workspace root
-go test -tags e2e -v -timeout 10m ./agent/e2e
-```
-
-E2E tests start real binary processes (agent, bash, read, write) and drive them through the HTTP client.
-
----
-
-## 11. Process Management Tips
-
-- Use `pgrep -f 'bin/agent'` to find running agent processes (not just `pgrep agent` which matches too broadly).
-- Always kill old processes before starting new ones — port conflicts give `bind: address already in use`.
-- The `exit code 144` from bash backgrounding is normal (SIGTERM + 128) — it means the previous process was killed.
-- Clear log files before restarting: `: > /tmp/agent.log` (truncates without removing).
+- Use `pgrep -af 'bin/runtime|bin/supervisor|indexer-service|space-service'`
+  to find running Quark processes.
+- Port conflicts usually show up as `bind: address already in use`; stop the
+  old process or choose another port.
+- Runtime service discovery logs one line per discovered service. If a service
+  is missing from the agent prompt, check the relevant `QUARK_*_ADDR`
+  environment variable and that `ServiceRegistry.ListServices` is reachable.
+- Provider errors such as 405, 429, or "Function calling is not enabled" are
+  upstream model/provider issues. Try a model that supports tool calling or
+  wait for rate limits to clear.
+- If old session or context data causes confusion, stop the runtime and inspect
+  the space's `sessions/` and KB directories under the configured space root.
