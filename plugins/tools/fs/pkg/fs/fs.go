@@ -2,12 +2,17 @@ package fs
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/quarkloop/pkg/plugin"
 	"github.com/quarkloop/pkg/toolkit"
 )
+
+const defaultPDFMaxChars = 30000
 
 // Tool implements filesystem operations.
 type Tool struct {
@@ -49,13 +54,13 @@ func (t *Tool) Schema() plugin.ToolSchema {
 	}
 	return plugin.ToolSchema{
 		Name:        "fs",
-		Description: "Read, write, append, replace, list, stat, remove files and directories",
+		Description: "Read, write, append, replace, list, stat, remove files and directories, and extract text from PDFs",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"command": map[string]any{
 					"type": "string",
-					"enum": []string{"read", "write", "append", "replace", "list", "stat", "rm"},
+					"enum": []string{"read", "write", "append", "replace", "list", "stat", "rm", "extract_pdf"},
 				},
 				"path": map[string]any{
 					"type": "string",
@@ -76,6 +81,10 @@ func (t *Tool) Schema() plugin.ToolSchema {
 				"end_line": map[string]any{
 					"type":        "integer",
 					"description": "1-based inclusive end line for partial read",
+				},
+				"max_chars": map[string]any{
+					"type":        "integer",
+					"description": "Maximum characters to return for PDF extraction; 0 means no limit",
 				},
 			},
 			"required": []string{"command", "path"},
@@ -98,6 +107,19 @@ func (t *Tool) Commands() []toolkit.Command {
 			},
 			Handler: func(ctx context.Context, input toolkit.Input) (toolkit.Output, error) {
 				return handleRead(input)
+			},
+		},
+		{
+			Name:        "extract_pdf",
+			Description: "Extract text from a PDF file using pdftotext",
+			Args: []toolkit.Arg{
+				{Name: "path", Description: "PDF file path", Required: true},
+			},
+			Flags: []toolkit.Flag{
+				{Name: "max-chars", Type: "int", Description: "Maximum characters to return (0 = unlimited)", Default: defaultPDFMaxChars},
+			},
+			Handler: func(ctx context.Context, input toolkit.Input) (toolkit.Output, error) {
+				return handleExtractPDF(ctx, input)
 			},
 		},
 		{
@@ -214,6 +236,44 @@ func (t *Tool) Commands() []toolkit.Command {
 	}
 }
 
+func handleExtractPDF(ctx context.Context, input toolkit.Input) (toolkit.Output, error) {
+	path := input.Args["path"]
+	if strings.TrimSpace(path) == "" {
+		return toolkit.Output{Error: "missing required argument: path"}, nil
+	}
+
+	maxChars, err := intFlag(input.Flags, "max-chars", defaultPDFMaxChars)
+	if err != nil {
+		return toolkit.Output{Error: err.Error()}, nil
+	}
+
+	cmd := exec.CommandContext(ctx, "pdftotext", path, "-")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		if msg != "" {
+			return toolkit.Output{Error: fmt.Sprintf("pdftotext %s: %v: %s", path, err, msg)}, nil
+		}
+		return toolkit.Output{Error: fmt.Sprintf("pdftotext %s: %v", path, err)}, nil
+	}
+
+	content := strings.TrimSpace(string(out))
+	runes := []rune(content)
+	originalChars := len(runes)
+	truncated := false
+	if maxChars > 0 && originalChars > maxChars {
+		content = string(runes[:maxChars])
+		truncated = true
+	}
+
+	return toolkit.Output{Data: map[string]any{
+		"content":        content,
+		"chars":          len([]rune(content)),
+		"original_chars": originalChars,
+		"truncated":      truncated,
+	}}, nil
+}
+
 func handleRead(input toolkit.Input) (toolkit.Output, error) {
 	path := input.Args["path"]
 	data, err := os.ReadFile(path)
@@ -254,4 +314,41 @@ func handleRead(input toolkit.Input) (toolkit.Output, error) {
 		}}, nil
 	}
 	return toolkit.Output{Data: map[string]any{"content": content}}, nil
+}
+
+func intFlag(flags map[string]any, name string, fallback int) (int, error) {
+	value, ok := flagValue(flags, name)
+	if !ok || value == nil {
+		return fallback, nil
+	}
+	switch v := value.(type) {
+	case int:
+		return v, nil
+	case int32:
+		return int(v), nil
+	case int64:
+		return int(v), nil
+	case float64:
+		return int(v), nil
+	case string:
+		if strings.TrimSpace(v) == "" {
+			return fallback, nil
+		}
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return 0, fmt.Errorf("flag %s must be an int", name)
+		}
+		return n, nil
+	default:
+		return 0, fmt.Errorf("flag %s must be an int", name)
+	}
+}
+
+func flagValue(flags map[string]any, name string) (any, bool) {
+	for _, candidate := range []string{name, strings.ReplaceAll(name, "-", "_"), strings.ReplaceAll(name, "_", "-")} {
+		if v, ok := flags[candidate]; ok {
+			return v, true
+		}
+	}
+	return nil, false
 }

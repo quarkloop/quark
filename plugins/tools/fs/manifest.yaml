@@ -14,13 +14,13 @@ build:
 tool:
   schema:
     name: fs
-    description: "Read, write, append, replace, list, stat, remove files"
+    description: "Read, write, append, replace, list, stat, remove files, and extract text from PDFs"
     parameters:
       type: object
       properties:
         command:
           type: string
-          enum: [read, write, append, replace, list, stat, rm]
+          enum: [read, write, append, replace, list, stat, rm, extract_pdf]
         path:
           type: string
         content:
@@ -35,6 +35,9 @@ tool:
         end_line:
           type: integer
           description: "1-based inclusive end line for partial read"
+        max_chars:
+          type: integer
+          description: "Maximum characters to return for PDF extraction; 0 means no limit"
       required: [command, path]
   permissions:
     filesystem: ["*"]
