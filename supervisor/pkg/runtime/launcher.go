@@ -20,6 +20,7 @@ type StopCallback func(runtimeID string)
 type Launcher struct {
 	runtimeBin    string
 	supervisorURL string
+	serviceEnv    []string
 	onStop        StopCallback
 }
 
@@ -27,8 +28,8 @@ type Launcher struct {
 // forwarded to the child as QUARK_SUPERVISOR_URL so the runtime can subscribe to
 // supervisor SSE events and issue KB/config reads.
 // onStop is called under the registry lock when a runtime process exits.
-func NewLauncher(runtimeBin, supervisorURL string, onStop StopCallback) *Launcher {
-	return &Launcher{runtimeBin: runtimeBin, supervisorURL: supervisorURL, onStop: onStop}
+func NewLauncher(runtimeBin, supervisorURL string, serviceEnv []string, onStop StopCallback) *Launcher {
+	return &Launcher{runtimeBin: runtimeBin, supervisorURL: supervisorURL, serviceEnv: append([]string(nil), serviceEnv...), onStop: onStop}
 }
 
 // Start launches a runtime process for the registry entry. On success it
@@ -51,6 +52,7 @@ func (l *Launcher) Start(ctx context.Context, rt *Runtime, quarkfileEnv []string
 		fmt.Sprintf("QUARK_SPACE=%s", rt.Space()),
 	)
 	cmd.Env = append(cmd.Env, quarkfileEnv...)
+	cmd.Env = append(cmd.Env, l.serviceEnv...)
 	if l.supervisorURL != "" {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("QUARK_SUPERVISOR_URL=%s", l.supervisorURL))
 	}

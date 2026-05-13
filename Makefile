@@ -5,12 +5,11 @@ LDFLAGS := -X github.com/quarkloop/cli/pkg/buildinfo.Version=$(VERSION)
 
 # Tool plugins
 TOOLS := bash fs web-search build-release
-SERVICES := indexer
 
 # Provider plugins
 PROVIDERS := openrouter openai anthropic
 
-# All modules for testing/vetting (13 modules; e2e tested separately)
+# All modules for testing/vetting (17 modules; e2e tested separately)
 MODULES := \
 		supervisor \
 		runtime \
@@ -19,7 +18,9 @@ MODULES := \
 		pkg/serviceapi \
 		pkg/space \
 		pkg/toolkit \
+		services/build-release \
 		services/indexer \
+		services/space \
 		plugins/tools/bash \
 		plugins/tools/fs \
 		plugins/tools/web-search \
@@ -28,7 +29,7 @@ MODULES := \
 		plugins/providers/openai \
 		plugins/providers/anthropic
 
-.PHONY: all build clean test test-e2e vet fmt fmt-check tidy \
+.PHONY: all build clean test test-e2e vet fmt fmt-check tidy proto \
 		build-supervisor build-runtime build-cli \
 		build-plugins build-tools build-tools-lib build-providers build-services
 
@@ -48,10 +49,12 @@ build-tools:
 		done
 
 build-services:
-		@for service in $(SERVICES); do \
-			echo "--- Building service: $$service ---"; \
-			go build -o $(BINARY_DIR)/$$service ./services/$$service/cmd/$$service; \
-		done
+		@echo "--- Building service: indexer ---"
+		go build -o $(BINARY_DIR)/indexer-service ./services/indexer/cmd/indexer
+		@echo "--- Building service: build-release ---"
+		go build -o $(BINARY_DIR)/build-release-service ./services/build-release/cmd/build-release
+		@echo "--- Building service: space ---"
+		go build -o $(BINARY_DIR)/space-service ./services/space/cmd/space
 
 ## Build tool plugins as .so files (lib mode, requires CGO)
 build-tools-lib:
@@ -81,6 +84,10 @@ build-runtime:
 
 build-cli:
 		go build -ldflags "$(LDFLAGS)" -o $(BINARY_DIR)/quark ./cli/cmd/quark
+
+## Regenerate protobuf/gRPC Go stubs
+proto:
+		buf generate
 
 ## Run tests across all modules (providers are tested under the `plugin` build
 ## tag since all their sources are gated on it)
@@ -124,7 +131,7 @@ fmt-check:
 
 ## Run go mod tidy across all modules
 tidy:
-		@for mod in $(MODULES); do \
+		@set -e; for mod in $(MODULES); do \
 			echo "--- Tidying $$mod ---"; \
 			(cd $$mod && go mod tidy); \
 		done
@@ -148,7 +155,7 @@ clean:
 $(BINARY_DIR):
 		mkdir -p $(BINARY_DIR)
 
-build-supervisor build-runtime build-cli build-tools: | $(BINARY_DIR)
+build-supervisor build-runtime build-cli build-tools build-services: | $(BINARY_DIR)
 
 ## Show available targets
 help:

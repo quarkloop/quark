@@ -6,6 +6,8 @@ require (
 	github.com/go-git/go-git/v5 v5.17.2
 	github.com/gofiber/fiber/v2 v2.52.13
 	github.com/spf13/cobra v1.8.0
+	google.golang.org/grpc v1.76.0
+	google.golang.org/protobuf v1.36.10
 )
 
 require (
@@ -40,18 +42,24 @@ require (
 	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/net v0.51.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
+	golang.org/x/text v0.34.0 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20250804133106-a7a43d27e69b // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
 require (
-	github.com/quarkloop/pkg/event v0.0.0-00010101000000-000000000000
+	github.com/quarkloop/pkg/event v0.0.0
 	github.com/quarkloop/pkg/plugin v0.0.0
+	github.com/quarkloop/pkg/serviceapi v0.0.0
 	github.com/quarkloop/pkg/space v0.0.0
+	github.com/quarkloop/services/space v0.0.0
 )
 
 replace (
 	github.com/quarkloop/pkg/event => ../pkg/event
 	github.com/quarkloop/pkg/plugin => ../pkg/plugin
+	github.com/quarkloop/pkg/serviceapi => ../pkg/serviceapi
 	github.com/quarkloop/pkg/space => ../pkg/space
+	github.com/quarkloop/services/space => ../services/space
 )

@@ -10,6 +10,7 @@ import (
 
 var port int
 var runtimeBin string
+var spaceServiceAddr string
 
 // StartCmd creates the "supervisor start" command.
 func StartCmd() *cobra.Command {
@@ -25,6 +26,7 @@ Example:
 
 	cmd.Flags().IntVarP(&port, "port", "p", 7200, "HTTP listen port")
 	cmd.Flags().StringVar(&runtimeBin, "runtime", "runtime", "Path to agent runtime binary")
+	cmd.Flags().StringVar(&spaceServiceAddr, "space-service", "", "Existing SpaceService gRPC address (default: start embedded service)")
 
 	return cmd
 }
@@ -39,9 +41,10 @@ func runStart(cmd *cobra.Command, args []string) error {
 	}
 
 	cfg := server.Config{
-		Port:       port,
-		SpacesDir:  spacesDir,
-		RuntimeBin: runtimeBin,
+		Port:             port,
+		SpacesDir:        spacesDir,
+		RuntimeBin:       runtimeBin,
+		SpaceServiceAddr: spaceServiceAddr,
 	}
 	srv, err := server.New(cfg)
 	if err != nil {
