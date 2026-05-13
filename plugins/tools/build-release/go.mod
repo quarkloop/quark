@@ -5,6 +5,7 @@ go 1.26
 require (
 	github.com/quarkloop/pkg/plugin v0.0.0
 	github.com/quarkloop/pkg/toolkit v0.0.0
+	github.com/quarkloop/services/build-release v0.0.0
 )
 
 require (
@@ -29,4 +30,5 @@ require (
 replace (
 	github.com/quarkloop/pkg/plugin v0.0.0 => ../../../pkg/plugin
 	github.com/quarkloop/pkg/toolkit v0.0.0 => ../../../pkg/toolkit
+	github.com/quarkloop/services/build-release v0.0.0 => ../../../services/build-release
 )

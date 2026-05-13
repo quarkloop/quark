@@ -1,0 +1,19 @@
+# {{.PackageName}} v{{.Version}}
+
+{{.Description}}
+
+## Artifacts
+
+| Platform | Architecture | Archive | Size | SHA256 |
+| --- | --- | --- | --- | --- |
+{{- range .Artifacts}}
+| {{.Target.OS}} | {{.Target.Arch}}{{if .Target.ARM}}v{{.Target.ARM}}{{end}} | {{.ArchiveName}} | {{humanSize .Size}} | `{{.Checksum}}` |
+{{- end}}
+
+## Install
+
+```bash
+curl -sSL {{.Homepage}}/releases/download/v{{.Version}}/install.sh | bash
+```
+
+{{.License}} License.

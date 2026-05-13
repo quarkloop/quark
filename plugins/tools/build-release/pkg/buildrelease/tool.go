@@ -2,16 +2,19 @@ package buildrelease
 
 import (
 	"context"
-	"encoding/json"
 	"os"
+	"time"
 
 	"github.com/quarkloop/pkg/plugin"
 	"github.com/quarkloop/pkg/toolkit"
+	core "github.com/quarkloop/services/build-release/pkg/buildrelease"
 )
 
-// Tool implements the build-release plugin.
+// Tool is the backwards-compatible plugin adapter for the build-release
+// service pipeline.
 type Tool struct {
 	manifest *plugin.Manifest
+	runner   *core.Runner
 }
 
 func (t *Tool) SetManifest(m *plugin.Manifest) {
@@ -76,6 +79,7 @@ func (t *Tool) Schema() plugin.ToolSchema {
 }
 
 func (t *Tool) Commands() []toolkit.Command {
+	t.ensureRunner()
 	return []toolkit.Command{
 		{
 			Name:        "release",
@@ -110,109 +114,124 @@ func (t *Tool) Commands() []toolkit.Command {
 }
 
 func (t *Tool) handleRelease(ctx context.Context, input toolkit.Input) (toolkit.Output, error) {
-	pipeCtx := t.makeContext(input, false)
-	pipeline := NewPipeline(
-		LoadConfigStage{ConfigFile: pipeCtx.ConfigFile},
-		ResolveVersionStage{},
-		ValidateStage{},
-		TestStage{},
-		PrepareStage{},
-		BuildStage{},
-		InstallScriptStage{},
-		ChecksumStage{},
-		SignStage{},
-		ReadmeStage{},
-		MetadataStage{},
-	)
-	if err := pipeline.Run(pipeCtx); err != nil {
+	t.ensureRunner()
+	req, err := releaseRequestFromInput(input)
+	if err != nil {
+		return toolkit.Output{Error: err.Error()}, nil
+	}
+	result, err := t.runner.Release(ctx, req)
+	if err != nil {
 		return toolkit.Output{Error: err.Error()}, nil
 	}
 	return toolkit.Output{Data: map[string]any{
-		"version":     pipeCtx.Version,
-		"artifacts":   len(pipeCtx.Artifacts),
-		"release_dir": pipeCtx.Config.ReleaseDir,
+		"version":     result.Version,
+		"artifacts":   artifactsForOutput(result.Artifacts),
+		"release_dir": result.ReleaseDir,
 	}}, nil
 }
 
 func (t *Tool) handleDryRun(ctx context.Context, input toolkit.Input) (toolkit.Output, error) {
-	pipeCtx := t.makeContext(input, true)
-	pipeline := NewPipeline(
-		LoadConfigStage{ConfigFile: pipeCtx.ConfigFile},
-		ResolveVersionStage{},
-		ValidateStage{},
-		BuildStage{},
-	)
-	if err := pipeline.Run(pipeCtx); err != nil {
+	t.ensureRunner()
+	req, err := dryRunRequestFromInput(input)
+	if err != nil {
 		return toolkit.Output{Error: err.Error()}, nil
 	}
-	var planned []map[string]any
-	for _, a := range pipeCtx.Artifacts {
-		planned = append(planned, map[string]any{
-			"archive": a.ArchiveName,
-			"os":      a.OS,
-			"arch":    a.Arch,
-		})
+	result, err := t.runner.DryRun(ctx, req)
+	if err != nil {
+		return toolkit.Output{Error: err.Error()}, nil
 	}
 	return toolkit.Output{Data: map[string]any{
-		"version": pipeCtx.Version,
-		"planned": planned,
+		"version": result.Version,
+		"planned": artifactsForOutput(result.Planned),
 	}}, nil
 }
 
 func (t *Tool) handleInit(ctx context.Context, input toolkit.Input) (toolkit.Output, error) {
-	cfg := ReleaseConfig{
-		PackageName: "mytool",
-		ReleaseDir:  "dist",
-		LDFlags:     "-s -w",
-		Builds: []BuildTarget{
-			{Name: "mytool", SourcePath: ".", BinaryName: "mytool", SourceDir: "."},
-		},
-		Targets: []Target{
-			{OS: "linux", Arch: "amd64"},
-			{OS: "linux", Arch: "arm64"},
-			{OS: "darwin", Arch: "amd64"},
-			{OS: "darwin", Arch: "arm64"},
-		},
-	}
-	data, _ := json.MarshalIndent(cfg, "", "  ")
-	if err := os.WriteFile("build_release.json", data, 0644); err != nil {
+	t.ensureRunner()
+	workingDir, err := os.Getwd()
+	if err != nil {
 		return toolkit.Output{Error: err.Error()}, nil
 	}
-	return toolkit.Output{Data: map[string]any{"created": "build_release.json"}}, nil
+	result, err := t.runner.Init(ctx, core.InitRequest{WorkingDir: workingDir})
+	if err != nil {
+		return toolkit.Output{Error: err.Error()}, nil
+	}
+	return toolkit.Output{Data: map[string]any{
+		"config_path": result.ConfigPath,
+		"created":     result.Created,
+	}}, nil
 }
 
-func (t *Tool) makeContext(input toolkit.Input, dryRun bool) *PipelineContext {
-	ctx := &PipelineContext{
-		Config: ReleaseConfig{
-			PackageName: "mytool",
-			ReleaseDir:  "dist",
-			LDFlags:     "-s -w",
-			Builds: []BuildTarget{
-				{Name: "mytool", SourcePath: ".", BinaryName: "mytool", SourceDir: "."},
-			},
-			Targets: []Target{
-				{OS: "linux", Arch: "amd64"},
-				{OS: "linux", Arch: "arm64"},
-				{OS: "darwin", Arch: "amd64"},
-				{OS: "darwin", Arch: "arm64"},
-			},
-		},
-		DryRun:      dryRun,
+func (t *Tool) ensureRunner() {
+	if t.runner == nil {
+		t.runner = core.NewRunner()
+	}
+}
+
+func releaseRequestFromInput(input toolkit.Input) (core.ReleaseRequest, error) {
+	workingDir, err := os.Getwd()
+	if err != nil {
+		return core.ReleaseRequest{}, err
+	}
+	req := core.ReleaseRequest{
+		WorkingDir:  workingDir,
+		ConfigPath:  configFromInput(input),
 		Parallelism: 4,
 	}
-	cfgFile := input.Args["config"]
-	if cfgFile == "" {
-		cfgFile = "build_release.json"
-	}
-	ctx.ConfigFile = cfgFile
 	if v, ok := input.Flags["version"].(string); ok && v != "" {
-		ctx.Config.Version = v
+		req.Version = v
 	}
 	if p, ok := input.Flags["parallel"].(int); ok && p > 0 {
-		ctx.Parallelism = p
+		req.Parallelism = p
 	}
 	if s, ok := input.Flags["skip-tests"].(bool); ok {
-		ctx.SkipTests = s
+		req.SkipTests = s
 	}
-	return ctx
+	return req, nil
+}
+
+func dryRunRequestFromInput(input toolkit.Input) (core.DryRunRequest, error) {
+	workingDir, err := os.Getwd()
+	if err != nil {
+		return core.DryRunRequest{}, err
+	}
+	req := core.DryRunRequest{
+		WorkingDir:  workingDir,
+		ConfigPath:  configFromInput(input),
+		Parallelism: 4,
+	}
+	if v, ok := input.Flags["version"].(string); ok && v != "" {
+		req.Version = v
+	}
+	if p, ok := input.Flags["parallel"].(int); ok && p > 0 {
+		req.Parallelism = p
+	}
+	return req, nil
+}
+
+func configFromInput(input toolkit.Input) string {
+	cfgFile := input.Args["config"]
+	if cfgFile == "" {
+		return "build_release.json"
+	}
+	return cfgFile
+}
+
+func artifactsForOutput(artifacts []core.Artifact) []map[string]any {
+	out := make([]map[string]any, 0, len(artifacts))
+	for _, artifact := range artifacts {
+		out = append(out, map[string]any{
+			"build":           artifact.BuildName,
+			"os":              artifact.Target.OS,
+			"arch":            artifact.Target.Arch,
+			"arm":             artifact.Target.ARM,
+			"archive":         artifact.ArchiveName,
+			"filename":        artifact.Filename,
+			"checksum":        artifact.Checksum,
+			"size":            artifact.Size,
+			"duration_millis": artifact.Duration.Round(time.Millisecond).Milliseconds(),
+			"error":           artifact.Error,
+		})
+	}
+	return out
 }

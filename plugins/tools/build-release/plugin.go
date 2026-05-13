@@ -7,6 +7,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/quarkloop/pkg/plugin"
 	"github.com/quarkloop/pkg/toolkit"
@@ -59,6 +60,11 @@ func (t *BuildReleaseTool) Execute(ctx context.Context, args map[string]any) (pl
 		}
 		for _, flag := range cmd.Flags {
 			if v, ok := args[flag.Name]; ok {
+				input.Flags[flag.Name] = v
+				continue
+			}
+			alias := strings.ReplaceAll(flag.Name, "-", "_")
+			if v, ok := args[alias]; ok {
 				input.Flags[flag.Name] = v
 			}
 		}

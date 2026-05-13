@@ -1,8 +1,10 @@
 package buildrelease
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
-// BuildTarget describes a single binary to compile.
 type BuildTarget struct {
 	Name         string   `json:"name"`
 	SourcePath   string   `json:"source_path"`
@@ -13,26 +15,23 @@ type BuildTarget struct {
 	IncludeFiles []string `json:"include_files,omitempty"`
 }
 
-// Target describes a single cross-compilation target.
 type Target struct {
 	OS   string `json:"os"`
 	Arch string `json:"arch"`
 	ARM  string `json:"arm,omitempty"`
 }
 
-// Artifact is a completed build: an archive on disk with metadata.
 type Artifact struct {
-	BuildName   string
-	Target
-	Filename    string
-	ArchiveName string
-	Checksum    string
-	Size        int64
-	Duration    time.Duration
-	Error       string
+	BuildName   string        `json:"build_name"`
+	Target      Target        `json:"target"`
+	Filename    string        `json:"filename,omitempty"`
+	ArchiveName string        `json:"archive_name"`
+	Checksum    string        `json:"checksum,omitempty"`
+	Size        int64         `json:"size,omitempty"`
+	Duration    time.Duration `json:"duration,omitempty"`
+	Error       string        `json:"error,omitempty"`
 }
 
-// ReleaseConfig holds every knob a user might want to tweak.
 type ReleaseConfig struct {
 	PackageName  string        `json:"package_name"`
 	Version      string        `json:"version"`
@@ -53,10 +52,48 @@ type ReleaseConfig struct {
 	Targets      []Target      `json:"targets"`
 }
 
-// PipelineContext is shared mutable state threaded through every stage.
+type ReleaseRequest struct {
+	WorkingDir  string
+	ConfigPath  string
+	Version     string
+	Parallelism int
+	SkipTests   bool
+}
+
+type DryRunRequest struct {
+	WorkingDir  string
+	ConfigPath  string
+	Version     string
+	Parallelism int
+}
+
+type InitRequest struct {
+	WorkingDir string
+	Overwrite  bool
+}
+
+type ReleaseResult struct {
+	Success    bool
+	Message    string
+	Version    string
+	ReleaseDir string
+	Artifacts  []Artifact
+}
+
+type DryRunResult struct {
+	Version string
+	Planned []Artifact
+}
+
+type InitResult struct {
+	ConfigPath string
+	Created    bool
+}
+
 type PipelineContext struct {
 	Config      ReleaseConfig
 	ConfigFile  string
+	WorkingDir  string
 	Version     string
 	Commit      string
 	BuildTime   string
@@ -67,26 +104,32 @@ type PipelineContext struct {
 	SkipTests   bool
 }
 
-// Stage is a single, named unit of pipeline work.
 type Stage interface {
 	Name() string
-	Run(ctx *PipelineContext) error
+	Run(ctx *PipelineContext, runCtx RunContext) error
 }
 
-// Pipeline runs a sequence of Stages, halting on the first error.
+type RunContext struct {
+	Context context.Context
+	Clock   func() time.Time
+}
+
 type Pipeline struct {
 	stages []Stage
 }
 
-// NewPipeline constructs a Pipeline from an ordered list of stages.
 func NewPipeline(stages ...Stage) *Pipeline {
 	return &Pipeline{stages: stages}
 }
 
-// Run executes each stage in order.
-func (p *Pipeline) Run(ctx *PipelineContext) error {
+func (p *Pipeline) Run(ctx *PipelineContext, runCtx RunContext) error {
 	for _, s := range p.stages {
-		if err := s.Run(ctx); err != nil {
+		if runCtx.Context != nil {
+			if err := runCtx.Context.Err(); err != nil {
+				return err
+			}
+		}
+		if err := s.Run(ctx, runCtx); err != nil {
 			return err
 		}
 	}
