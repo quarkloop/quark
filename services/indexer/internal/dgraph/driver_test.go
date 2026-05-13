@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	indexerv1 "github.com/quarkloop/pkg/serviceapi/gen/quark/indexer/v1"
-	"github.com/quarkloop/services/indexer/internal/server"
+	"github.com/quarkloop/services/indexer/internal/indexing"
+	"github.com/quarkloop/services/indexer/pkg/indexer"
 )
 
 func TestDgraphHelpersBuildVectorAndFilters(t *testing.T) {
@@ -57,41 +57,41 @@ func TestIndexerWithDgraph(t *testing.T) {
 	}
 	defer driver.Close()
 
-	srv, err := server.New(driver)
+	svc, err := indexing.New(driver)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := srv.IndexDocument(ctx, &indexerv1.IndexRequest{
-		ChunkId:     "chunk-1",
-		TextContent: "Quark extracts services behind gRPC contracts.",
-		Embedding:   []float32{1, 0},
-		Entities: []*indexerv1.Entity{
-			{Id: "quark", Name: "Quark", Type: "PROJECT"},
-			{Id: "grpc", Name: "gRPC", Type: "TECH"},
+	if err := svc.IndexDocument(ctx, indexing.IndexCommand{
+		ChunkID: "chunk-1",
+		Text:    "Quark extracts services behind gRPC contracts.",
+		Vector:  []float32{1, 0},
+		Entities: []indexer.Entity{
+			{ID: "quark", Name: "Quark", Type: "PROJECT"},
+			{ID: "grpc", Name: "gRPC", Type: "TECH"},
 		},
-		Relations: []*indexerv1.Relation{
-			{FromId: "quark", ToId: "grpc", Relation: "USES"},
+		Relations: []indexer.Relation{
+			{FromID: "quark", ToID: "grpc", Relation: "USES"},
 		},
-		SourceMetadata: map[string]string{"source": "docs/plan.md", "tenant": "test"},
+		Metadata: map[string]string{"source": "docs/plan.md", "tenant": "test"},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	resp, err := srv.GetContext(ctx, &indexerv1.QueryRequest{
-		QueryVector: []float32{1, 0},
-		Limit:       3,
-		Depth:       2,
-		Filters:     map[string]string{"tenant": "test"},
+	resp, err := svc.GetContext(ctx, indexing.ContextQuery{
+		Vector:  []float32{1, 0},
+		Limit:   3,
+		Depth:   2,
+		Filters: map[string]string{"tenant": "test"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := len(resp.GetChunks()); got != 1 {
+	if got := len(resp.Chunks); got != 1 {
 		t.Fatalf("chunks = %d, want 1", got)
 	}
-	if resp.GetChunks()[0].GetId() != "chunk-1" {
-		t.Fatalf("top chunk = %q, want chunk-1", resp.GetChunks()[0].GetId())
+	if resp.Chunks[0].ID != "chunk-1" {
+		t.Fatalf("top chunk = %q, want chunk-1", resp.Chunks[0].ID)
 	}
-	if !strings.Contains(resp.GetReasoningContext(), "Graph relationships") {
-		t.Fatalf("reasoning context missing graph: %q", resp.GetReasoningContext())
+	if !strings.Contains(resp.ReasoningContext, "Graph relationships") {
+		t.Fatalf("reasoning context missing graph: %q", resp.ReasoningContext)
 	}
 }

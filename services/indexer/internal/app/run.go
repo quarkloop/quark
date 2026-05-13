@@ -11,6 +11,7 @@ import (
 	indexerv1 "github.com/quarkloop/pkg/serviceapi/gen/quark/indexer/v1"
 	servicev1 "github.com/quarkloop/pkg/serviceapi/gen/quark/service/v1"
 	"github.com/quarkloop/pkg/serviceapi/servicekit"
+	"github.com/quarkloop/services/indexer/internal/indexing"
 	"github.com/quarkloop/services/indexer/internal/server"
 	"github.com/quarkloop/services/indexer/pkg/indexer"
 	"google.golang.org/grpc"
@@ -32,7 +33,11 @@ func Run(ctx context.Context, cfg Config) error {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
-	indexerServer, err := server.New(cfg.Driver)
+	indexingService, err := indexing.New(cfg.Driver)
+	if err != nil {
+		return err
+	}
+	indexerServer, err := server.New(indexingService)
 	if err != nil {
 		return err
 	}
