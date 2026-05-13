@@ -27,6 +27,16 @@ type E2EEnv struct {
 	HTTPC     *http.Client
 }
 
+// RuntimeSetup is the read-only setup state exposed to a StartOptions hook
+// before the runtime process is launched.
+type RuntimeSetup struct {
+	Root       string
+	SpacesDir  string
+	Space      string
+	SupURL     string
+	WorkingDir string
+}
+
 // installSpacePlugins populates the space's plugins directory with the
 // plugin manifests and their pre-built artifacts (tool binaries and provider
 // .so files). The agent's api-mode loader detects the co-located binary
@@ -111,7 +121,7 @@ plugins:
 // root and returns the client, base URL, spaces dir, and process handle. The
 // handle lets tests wait for log markers from the supervisor or its agent
 // child (whose stdio is inherited into the same buffer).
-func startSupervisor(t *testing.T, bins BuiltBinaries) (*supclient.Client, string, string, *StartedProcess) {
+func startSupervisor(t *testing.T, bins BuiltBinaries, extraEnv map[string]string) (*supclient.Client, string, string, *StartedProcess) {
 	t.Helper()
 
 	spacesDir := filepath.Join(t.TempDir(), "spaces")
@@ -120,9 +130,13 @@ func startSupervisor(t *testing.T, bins BuiltBinaries) (*supclient.Client, strin
 	}
 	port := ReservePort(t)
 
-	env := ProcessEnv(map[string]string{
+	overrides := map[string]string{
 		"QUARK_SPACES_ROOT": spacesDir,
-	})
+	}
+	for k, v := range extraEnv {
+		overrides[k] = v
+	}
+	env := ProcessEnv(overrides)
 	proc := StartProcess(t, "supervisor", bins.Supervisor, []string{
 		"start",
 		"--port", fmt.Sprint(port),
@@ -148,6 +162,17 @@ type StartOptions struct {
 	// DisableServiceDiscovery keeps legacy provider/tool E2Es focused on plugin
 	// behavior instead of adding the runtime service catalog tool.
 	DisableServiceDiscovery bool
+	// SupervisorEnv is appended to the supervisor process environment. Runtime
+	// children inherit these values, so service discovery addresses should be
+	// supplied here before StartRuntime is called.
+	SupervisorEnv map[string]string
+	// WorkingDir is the space working directory registered with the supervisor.
+	// When empty, StartE2E creates an isolated temp directory.
+	WorkingDir string
+	// BeforeRuntime runs after the space and plugins are ready, but before the
+	// runtime child is started. Use it to start external services whose
+	// addresses were already supplied through SupervisorEnv.
+	BeforeRuntime func(t *testing.T, setup RuntimeSetup, bins BuiltBinaries)
 }
 
 // StartE2E boots a supervisor, registers a space, installs plugins, and
@@ -170,10 +195,15 @@ func StartE2E(t *testing.T, withProvider bool, opts ...StartOptions) *E2EEnv {
 	if opt.ForceBinaryTools {
 		bins.BashLib, bins.FSLib = "", ""
 	}
-	if opt.DisableServiceDiscovery {
-		t.Setenv("QUARK_DISABLE_SERVICE_DISCOVERY", "true")
+
+	supervisorEnv := make(map[string]string, len(opt.SupervisorEnv)+1)
+	for k, v := range opt.SupervisorEnv {
+		supervisorEnv[k] = v
 	}
-	sup, supURL, spacesDir, proc := startSupervisor(t, bins)
+	if opt.DisableServiceDiscovery {
+		supervisorEnv["QUARK_DISABLE_SERVICE_DISCOVERY"] = "true"
+	}
+	sup, supURL, spacesDir, proc := startSupervisor(t, bins, supervisorEnv)
 
 	spaceName := fmt.Sprintf("e2e-%d", time.Now().UnixNano())
 	provider := "openrouter"
@@ -183,10 +213,16 @@ func StartE2E(t *testing.T, withProvider bool, opts ...StartOptions) *E2EEnv {
 		model = cfg.Model
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	workingDir := t.TempDir()
-	if _, err := sup.CreateSpace(ctx, spaceName, quarkfileFor(spaceName, provider, model), workingDir); err != nil {
+	workingDir := opt.WorkingDir
+	if workingDir == "" {
+		workingDir = t.TempDir()
+	}
+	if err := os.MkdirAll(workingDir, 0o755); err != nil {
+		t.Fatalf("mkdir working dir: %v", err)
+	}
+	createCtx, createCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer createCancel()
+	if _, err := sup.CreateSpace(createCtx, spaceName, quarkfileFor(spaceName, provider, model), workingDir); err != nil {
 		t.Fatalf("create space: %v", err)
 	}
 
@@ -200,9 +236,20 @@ func StartE2E(t *testing.T, withProvider bool, opts ...StartOptions) *E2EEnv {
 	}
 
 	installSpacePlugins(t, env, bins)
+	if opt.BeforeRuntime != nil {
+		opt.BeforeRuntime(t, RuntimeSetup{
+			Root:       env.Root,
+			SpacesDir:  env.SpacesDir,
+			Space:      env.Space,
+			SupURL:     env.SupURL,
+			WorkingDir: workingDir,
+		}, bins)
+	}
 
 	agentPort := ReservePort(t)
-	info, err := sup.StartRuntime(ctx, spaceName, agentPort)
+	runtimeCtx, runtimeCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer runtimeCancel()
+	info, err := sup.StartRuntime(runtimeCtx, spaceName, agentPort)
 	if err != nil {
 		t.Fatalf("start runtime: %v", err)
 	}

@@ -69,6 +69,12 @@ func startIndexerService(t *testing.T, binary, dgraphAddr string) string {
 	t.Helper()
 	port := utils.ReservePort(t)
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	startIndexerServiceAt(t, binary, dgraphAddr, addr)
+	return addr
+}
+
+func startIndexerServiceAt(t *testing.T, binary, dgraphAddr, addr string) {
+	t.Helper()
 	utils.StartProcess(t, "indexer", binary, []string{
 		"--addr", addr,
 		"--dgraph", dgraphAddr,
@@ -87,10 +93,9 @@ func startIndexerService(t *testing.T, binary, dgraphAddr string) string {
 		}
 		cancel()
 		if err == nil {
-			return addr
+			return
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
 	t.Fatalf("indexer service did not become healthy at %s", addr)
-	return ""
 }

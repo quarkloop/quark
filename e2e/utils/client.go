@@ -19,6 +19,20 @@ import (
 // returns the concatenated "text" payload received on the stream.
 func PostMessage(t *testing.T, ctx context.Context, env *E2EEnv, sessionID, content string) string {
 	t.Helper()
+	return PostMessageTrace(t, ctx, env, sessionID, content).Text
+}
+
+// MessageTrace is the observable response stream produced by PostMessageTrace.
+type MessageTrace struct {
+	Text        string
+	ToolStarts  []string
+	ToolResults []string
+}
+
+// PostMessageTrace POSTs a user message and returns streamed text plus tool
+// progress events emitted by the runtime.
+func PostMessageTrace(t *testing.T, ctx context.Context, env *E2EEnv, sessionID, content string) MessageTrace {
+	t.Helper()
 
 	body, err := json.Marshal(map[string]string{"content": content})
 	if err != nil {
@@ -44,6 +58,7 @@ func PostMessage(t *testing.T, ctx context.Context, env *E2EEnv, sessionID, cont
 		t.Fatalf("POST %s: status=%d body=%s", url, resp.StatusCode, string(data))
 	}
 
+	var trace MessageTrace
 	var full strings.Builder
 	reader := bufio.NewReader(resp.Body)
 	var dataBuf bytes.Buffer
@@ -65,7 +80,18 @@ func PostMessage(t *testing.T, ctx context.Context, env *E2EEnv, sessionID, cont
 					if err := json.Unmarshal(dataBuf.Bytes(), &payload); err == nil {
 						full.WriteString(payload)
 					}
+				} else if currentEvent == "tool_start" {
+					if name := toolEventName(dataBuf.Bytes()); name != "" {
+						trace.ToolStarts = append(trace.ToolStarts, name)
+					}
+				} else if currentEvent == "tool_result" {
+					if name := toolEventName(dataBuf.Bytes()); name != "" {
+						trace.ToolResults = append(trace.ToolResults, name)
+					}
 				} else if currentEvent == "error" {
+					if IsRateLimitText(dataBuf.String()) {
+						t.Skipf("provider rate limited the e2e run: %s", dataBuf.String())
+					}
 					t.Fatalf("agent returned error event: %s", dataBuf.String())
 				}
 			}
@@ -87,7 +113,16 @@ func PostMessage(t *testing.T, ctx context.Context, env *E2EEnv, sessionID, cont
 			dataBuf.Write(bytes.TrimPrefix(rest, []byte(" ")))
 		}
 	}
-	return full.String()
+	trace.Text = full.String()
+	return trace
+}
+
+func toolEventName(data []byte) string {
+	var payload map[string]string
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return ""
+	}
+	return payload["name"]
 }
 
 // AgentSessionsCount reads GET /v1/info on the agent and returns the session

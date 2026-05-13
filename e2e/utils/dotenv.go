@@ -13,8 +13,15 @@ import (
 
 // IsRateLimit reports whether err looks like an upstream rate-limit response.
 func IsRateLimit(err error) bool {
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "429") || strings.Contains(msg, "rate-limited")
+	return IsRateLimitText(err.Error())
+}
+
+func IsRateLimitText(msg string) bool {
+	msg = strings.ToLower(msg)
+	return strings.Contains(msg, "429") ||
+		strings.Contains(msg, "rate limit") ||
+		strings.Contains(msg, "rate-limit") ||
+		strings.Contains(msg, "rate-limited")
 }
 
 func loadDotEnv(path string) {

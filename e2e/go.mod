@@ -9,7 +9,7 @@ require (
 )
 
 require (
-	github.com/quarkloop/pkg/event v0.0.0-00010101000000-000000000000 // indirect
+	github.com/quarkloop/pkg/event v0.0.0 // indirect
 	golang.org/x/net v0.51.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/text v0.34.0 // indirect
@@ -20,7 +20,6 @@ require (
 replace (
 	github.com/quarkloop/cli v0.0.0 => ../cli
 	github.com/quarkloop/pkg/event => ../pkg/event
-	github.com/quarkloop/pkg/event v0.0.0-00010101000000-000000000000 => ../pkg/event
 	github.com/quarkloop/pkg/plugin => ../pkg/plugin
 	github.com/quarkloop/pkg/serviceapi v0.0.0 => ../pkg/serviceapi
 	github.com/quarkloop/pkg/space => ../pkg/space
