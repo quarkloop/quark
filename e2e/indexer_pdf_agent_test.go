@@ -21,6 +21,31 @@ import (
 )
 
 func TestAgentIndexesUploadedPDFDataset(t *testing.T) {
+	runAgentIndexesUploadedPDFDataset(t, utils.EmbeddingOptions{
+		Plugin:     "embedding",
+		Mode:       "local",
+		Provider:   "local",
+		Model:      "local-hash-v1",
+		Dimensions: 32,
+	})
+}
+
+func TestAgentIndexesUploadedPDFDatasetOpenRouterEmbedding(t *testing.T) {
+	model := strings.TrimSpace(os.Getenv("OPENROUTER_E2E_EMBEDDING_MODEL"))
+	if model == "" {
+		t.Skip("set OPENROUTER_E2E_EMBEDDING_MODEL to run OpenRouter embedding e2e coverage")
+	}
+	runAgentIndexesUploadedPDFDataset(t, utils.EmbeddingOptions{
+		Plugin:     "embedding-openrouter",
+		Mode:       "online",
+		Provider:   "openrouter",
+		Model:      model,
+		Dimensions: 2048,
+	})
+}
+
+func runAgentIndexesUploadedPDFDataset(t *testing.T, embedding utils.EmbeddingOptions) {
+	t.Helper()
 	if _, err := exec.LookPath("pdftotext"); err != nil {
 		t.Skip("pdftotext is required by the fs extract_pdf tool")
 	}
@@ -49,6 +74,7 @@ func TestAgentIndexesUploadedPDFDataset(t *testing.T) {
 
 	env := utils.StartE2E(t, true, utils.StartOptions{
 		WorkingDir: workingDir,
+		Embedding:  embedding,
 		SupervisorEnv: map[string]string{
 			"QUARK_INDEXER_ADDR":   indexerAddr,
 			"QUARK_EMBEDDING_ADDR": embeddingAddr,
@@ -57,8 +83,15 @@ func TestAgentIndexesUploadedPDFDataset(t *testing.T) {
 			t.Helper()
 			dgraphAddr := utils.StartDgraph(t)
 			startIndexerServiceAt(t, bins.Indexer, dgraphAddr, indexerAddr)
-			startEmbeddingServiceAt(t, bins.Embedding, embeddingAddr)
+			startEmbeddingServiceAt(t, bins.Embedding, embeddingAddr, embedding)
 		},
+	})
+	writeJSONArtifact(t, workingDir, "embedding-profile.json", map[string]any{
+		"plugin":     env.Embedding.Plugin,
+		"mode":       env.Embedding.Mode,
+		"provider":   env.Embedding.Provider,
+		"model":      env.Embedding.Model,
+		"dimensions": env.Embedding.Dimensions,
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
@@ -88,6 +121,7 @@ func TestAgentIndexesUploadedPDFDataset(t *testing.T) {
 	assertToolStarted(t, indexTrace, "indexer_IndexDocument")
 	assertNoToolErrors(t, indexTrace, "embedding_Embed", "indexer_IndexDocument")
 	assertToolSuccessCount(t, indexTrace, "indexer_IndexDocument", len(documents))
+	assertIndexDocumentArgumentsContainEmbeddingProfile(t, indexTrace, env.Embedding, len(documents))
 	for _, document := range documents {
 		if !containsText(indexTrace.Text, document.Filename) {
 			t.Fatalf("index confirmation missing filename %q:\n%s", document.Filename, indexTrace.Text)
@@ -154,11 +188,15 @@ func TestAgentIndexesUploadedPDFDataset(t *testing.T) {
 	}
 }
 
-func startEmbeddingServiceAt(t *testing.T, binary, addr string) {
+func startEmbeddingServiceAt(t *testing.T, binary, addr string, embedding utils.EmbeddingOptions) {
 	t.Helper()
+	embedding = embedding.WithDefaults()
 	utils.StartProcess(t, "embedding", binary, []string{
 		"--addr", addr,
-		"--skill-dir", filepath.Join(utils.QuarkRoot(t), "plugins", "services", "embedding"),
+		"--skill-dir", filepath.Join(utils.QuarkRoot(t), "plugins", "services", embedding.Plugin),
+		"--provider", embedding.Provider,
+		"--model", embedding.Model,
+		"--dimensions", fmt.Sprint(embedding.Dimensions),
 	}, utils.ProcessEnv(nil))
 
 	deadline := time.Now().Add(30 * time.Second)
@@ -221,7 +259,7 @@ func indexPDFDocumentsPrompt(documents []indexedPDFDocument) string {
 	for _, document := range documents {
 		fmt.Fprintf(&b, "- %s (%s)\n", document.Path, document.Name)
 	}
-	fmt.Fprintf(&b, "\nRequired workflow: process the files one at a time in the listed order. For each file, extract its PDF text with fs extract_pdf using max_chars 2000, create one compact searchable text chunk from that extracted text, call embedding_Embed without setting dimensions, then immediately call indexer_IndexDocument using that returned embeddingRef and sourceMetadata that includes filename and path before moving to the next file. Do not batch all embeddings before indexing. Do not send a final answer until there are %d successful indexer_IndexDocument results, one for each listed file. Reply briefly with the filenames that are ready for questions.", len(documents))
+	fmt.Fprintf(&b, "\nRequired workflow: process the files one at a time in the listed order. For each file, extract its PDF text with fs extract_pdf using max_chars 2000, create one compact searchable text chunk from that extracted text, call embedding_Embed without setting dimensions, then immediately call indexer_IndexDocument using that returned embeddingRef before moving to the next file. In sourceMetadata include filename, path, embedding_provider, embedding_model, embedding_dimensions, and embedding_content_hash from the embedding result. Do not batch all embeddings before indexing. Do not send a final answer until there are %d successful indexer_IndexDocument results, one for each listed file. Reply briefly with the filenames that are ready for questions.", len(documents))
 	return b.String()
 }
 
@@ -267,6 +305,15 @@ func writeTraceArtifact(t *testing.T, dir, name string, trace utils.MessageTrace
 	data, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
 		t.Fatalf("marshal trace artifact: %v", err)
+	}
+	writeArtifact(t, dir, name, string(data))
+}
+
+func writeJSONArtifact(t *testing.T, dir, name string, payload any) {
+	t.Helper()
+	data, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal artifact %s: %v", name, err)
 	}
 	writeArtifact(t, dir, name, string(data))
 }
@@ -367,6 +414,33 @@ func assertToolSuccessCount(t *testing.T, trace utils.MessageTrace, tool string,
 	}
 	if count < want {
 		t.Fatalf("%s successful results = %d, want at least %d: %+v", tool, count, want, trace.ToolResultEvents)
+	}
+}
+
+func assertIndexDocumentArgumentsContainEmbeddingProfile(t *testing.T, trace utils.MessageTrace, embedding utils.EmbeddingOptions, want int) {
+	t.Helper()
+	embedding = embedding.WithDefaults()
+	checked := 0
+	for _, event := range trace.ToolStartEvents {
+		if event.Name != "indexer_IndexDocument" {
+			continue
+		}
+		checked++
+		for _, wantText := range []string{
+			"embedding_provider",
+			embedding.Provider,
+			"embedding_model",
+			embedding.Model,
+			"embedding_dimensions",
+			fmt.Sprint(embedding.Dimensions),
+		} {
+			if !strings.Contains(event.Arguments, wantText) {
+				t.Fatalf("indexer_IndexDocument arguments missing embedding metadata %q for %s profile:\n%s", wantText, embedding.Provider, event.Arguments)
+			}
+		}
+	}
+	if checked < want {
+		t.Fatalf("indexer_IndexDocument argument events = %d, want at least %d", checked, want)
 	}
 }
 

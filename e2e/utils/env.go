@@ -25,6 +25,7 @@ type E2EEnv struct {
 	Agent     api.RuntimeInfo
 	AgentURL  string
 	HTTPC     *http.Client
+	Embedding EmbeddingOptions
 }
 
 // RuntimeSetup is the read-only setup state exposed to a StartOptions hook
@@ -78,7 +79,11 @@ func installSpacePlugins(t *testing.T, env *E2EEnv, bins BuiltBinaries) {
 		copyFile(t, filepath.Join(src, "SKILL.md"), filepath.Join(dst, "SKILL.md"), 0o644)
 	}
 	installService("indexer")
-	installService("embedding")
+	embeddingPlugin := env.Embedding.Plugin
+	if embeddingPlugin == "" {
+		embeddingPlugin = "embedding"
+	}
+	installService(embeddingPlugin)
 
 	providerSrc := filepath.Join(srcRoot, "providers", "openrouter")
 	providerLib := bins.OpenRouterLib
@@ -107,13 +112,14 @@ func copyFile(t *testing.T, src, dst string, mode os.FileMode) {
 }
 
 // quarkfileFor returns the raw bytes of a minimal Quarkfile for a space.
-func quarkfileFor(name, provider, model string) []byte {
+func quarkfileFor(name, provider, model string, embedding EmbeddingOptions) []byte {
 	env := ""
 	if provider != "noop" {
 		env = `  env:
     - OPENROUTER_API_KEY
 `
 	}
+	embedding = embedding.withDefaults()
 	qf := fmt.Sprintf(`quark: "1.0"
 meta:
   name: %s
@@ -126,23 +132,58 @@ plugins:
   - ref: quark/tool-bash
   - ref: quark/tool-fs
   - ref: quark/service-indexer
-  - ref: quark/service-embedding
+  - ref: quark/service-%s
 services:
   - name: indexer
     ref: quark/service-indexer
     mode: local
     address_env: QUARK_INDEXER_ADDR
   - name: embedding
-    ref: quark/service-embedding
-    mode: local
+    ref: quark/service-%s
+    mode: %s
     address_env: QUARK_EMBEDDING_ADDR
 embedding:
   service: embedding
-  provider: local
-  model: local-hash-v1
-  dimensions: 32
-`, name, provider, model, env)
+  provider: %s
+  model: %s
+  dimensions: %d
+`, name, provider, model, env, embedding.Plugin, embedding.Plugin, embedding.Mode, embedding.Provider, embedding.Model, embedding.Dimensions)
 	return []byte(qf)
+}
+
+// EmbeddingOptions selects which embedding service plugin/profile the e2e
+// space declares. The service process must be started by the test hook.
+type EmbeddingOptions struct {
+	Plugin     string
+	Mode       string
+	Provider   string
+	Model      string
+	Dimensions int
+}
+
+// WithDefaults returns a fully populated embedding profile for callers outside
+// the utils package that need to start the matching service process.
+func (o EmbeddingOptions) WithDefaults() EmbeddingOptions {
+	return o.withDefaults()
+}
+
+func (o EmbeddingOptions) withDefaults() EmbeddingOptions {
+	if o.Plugin == "" {
+		o.Plugin = "embedding"
+	}
+	if o.Mode == "" {
+		o.Mode = "local"
+	}
+	if o.Provider == "" {
+		o.Provider = "local"
+	}
+	if o.Model == "" {
+		o.Model = "local-hash-v1"
+	}
+	if o.Dimensions == 0 {
+		o.Dimensions = 32
+	}
+	return o
 }
 
 // startSupervisor launches a supervisor subprocess with an isolated spaces
@@ -197,6 +238,9 @@ type StartOptions struct {
 	// WorkingDir is the space working directory registered with the supervisor.
 	// When empty, StartE2E creates an isolated temp directory.
 	WorkingDir string
+	// Embedding declares the embedding service plugin/profile that the test
+	// space should expose to the runtime catalog.
+	Embedding EmbeddingOptions
 	// BeforeRuntime runs after the space and plugins are ready, but before the
 	// runtime child is started. Use it to start external services whose
 	// addresses were already supplied through SupervisorEnv.
@@ -223,6 +267,7 @@ func StartE2E(t *testing.T, withProvider bool, opts ...StartOptions) *E2EEnv {
 	if opt.ForceBinaryTools {
 		bins.BashLib, bins.FSLib = "", ""
 	}
+	embedding := opt.Embedding.withDefaults()
 
 	supervisorEnv := make(map[string]string, len(opt.SupervisorEnv)+1)
 	for k, v := range opt.SupervisorEnv {
@@ -250,7 +295,7 @@ func StartE2E(t *testing.T, withProvider bool, opts ...StartOptions) *E2EEnv {
 	}
 	createCtx, createCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer createCancel()
-	if _, err := sup.CreateSpace(createCtx, spaceName, quarkfileFor(spaceName, provider, model), workingDir); err != nil {
+	if _, err := sup.CreateSpace(createCtx, spaceName, quarkfileFor(spaceName, provider, model, embedding), workingDir); err != nil {
 		t.Fatalf("create space: %v", err)
 	}
 
@@ -261,6 +306,7 @@ func StartE2E(t *testing.T, withProvider bool, opts ...StartOptions) *E2EEnv {
 		SupURL:    supURL,
 		Sup:       sup,
 		HTTPC:     &http.Client{Timeout: 30 * time.Second},
+		Embedding: embedding,
 	}
 
 	installSpacePlugins(t, env, bins)
