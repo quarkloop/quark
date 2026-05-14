@@ -73,8 +73,12 @@ func TestAgentIndexesUploadedPDFDataset(t *testing.T) {
 	}
 	utils.WaitForAgentSession(t, env, indexSession.ID, 10*time.Second)
 
-	indexTrace := utils.PostMessageTrace(t, ctx, env, indexSession.ID, indexPDFDocumentsPrompt(documents))
-	t.Logf("index reply: %s", indexTrace.Text)
+	indexTrace := utils.PostMessageTraceWithOptions(t, ctx, env, indexSession.ID, indexPDFDocumentsPrompt(documents), utils.MessageTraceOptions{
+		Label:          "index uploaded PDF dataset",
+		OverallTimeout: 5 * time.Minute,
+		IdleTimeout:    90 * time.Second,
+	})
+	utils.Logf(t, "index reply: %s", indexTrace.Text)
 	writeArtifact(t, workingDir, "agent-index-reply.txt", indexTrace.Text)
 	writeArtifact(t, workingDir, "agent-index-tools.txt", strings.Join(indexTrace.ToolStarts, "\n"))
 	writeTraceArtifact(t, workingDir, "agent-index-tool-events.json", indexTrace)
@@ -125,8 +129,12 @@ func TestAgentIndexesUploadedPDFDataset(t *testing.T) {
 		}
 		utils.WaitForAgentSession(t, env, querySession.ID, 10*time.Second)
 
-		queryTrace := utils.PostMessageTrace(t, ctx, env, querySession.ID, indexedPDFQuestionPrompt(queryCase.Question, len(documents)))
-		t.Logf("%s query reply: %s", queryCase.Title, queryTrace.Text)
+		queryTrace := utils.PostMessageTraceWithOptions(t, ctx, env, querySession.ID, indexedPDFQuestionPrompt(queryCase.Question, len(documents)), utils.MessageTraceOptions{
+			Label:          "query indexed PDF dataset: " + queryCase.Title,
+			OverallTimeout: 3 * time.Minute,
+			IdleTimeout:    90 * time.Second,
+		})
+		utils.Logf(t, "%s query reply: %s", queryCase.Title, queryTrace.Text)
 		artifactPrefix := "agent-query-" + queryCase.Title
 		writeArtifact(t, workingDir, artifactPrefix+"-reply.txt", queryTrace.Text)
 		writeArtifact(t, workingDir, artifactPrefix+"-tools.txt", strings.Join(queryTrace.ToolStarts, "\n"))
@@ -246,7 +254,7 @@ func writeArtifact(t *testing.T, dir, name, content string) {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write artifact %s: %v", path, err)
 	}
-	t.Logf("manual verification artifact: %s", path)
+	utils.Logf(t, "manual verification artifact: %s", path)
 }
 
 func writeTraceArtifact(t *testing.T, dir, name string, trace utils.MessageTrace) {

@@ -21,13 +21,49 @@ type Client struct {
 	provider      Provider
 	model         string
 	ContextWindow int // token limit from the model entry (0 = unknown)
+	limits        InferenceLimits
 }
 
 type FinalGuard func(content string) (instruction string, retry bool)
 
+// InferenceLimits bounds one user-visible inference request. They prevent a
+// provider from keeping the runtime in an endless tool/finalization loop.
+type InferenceLimits struct {
+	MaxTurns             int
+	MaxFinalGuardRetries int
+}
+
+func defaultInferenceLimits() InferenceLimits {
+	return InferenceLimits{
+		MaxTurns:             48,
+		MaxFinalGuardRetries: 8,
+	}
+}
+
+func normalizeInferenceLimits(limits InferenceLimits) InferenceLimits {
+	defaults := defaultInferenceLimits()
+	if limits.MaxTurns <= 0 {
+		limits.MaxTurns = defaults.MaxTurns
+	}
+	if limits.MaxFinalGuardRetries <= 0 {
+		limits.MaxFinalGuardRetries = defaults.MaxFinalGuardRetries
+	}
+	return limits
+}
+
 // NewClient creates a new LLM client.
 func NewClient(p Provider, model string, contextWindow int) *Client {
-	return &Client{provider: p, model: model, ContextWindow: contextWindow}
+	return NewClientWithLimits(p, model, contextWindow, InferenceLimits{})
+}
+
+// NewClientWithLimits creates a client with explicit inference limits.
+func NewClientWithLimits(p Provider, model string, contextWindow int, limits InferenceLimits) *Client {
+	return &Client{
+		provider:      p,
+		model:         model,
+		ContextWindow: contextWindow,
+		limits:        normalizeInferenceLimits(limits),
+	}
 }
 
 // Infer runs the full inference loop:
@@ -37,7 +73,14 @@ func NewClient(p Provider, model string, contextWindow int) *Client {
 // It fires onMessage for streamed text and tool execution data.
 // If onTool is nil, tool calls are ignored.
 func (c *Client) Infer(ctx context.Context, messages []plugin.Message, tools []plugin.ToolSchema, onTool plugin.ToolHandler, onMessage func(msgType string, data any), finalGuard FinalGuard) (string, error) {
+	turns := 0
+	finalGuardRetries := 0
 	for {
+		turns++
+		if turns > c.limits.MaxTurns {
+			return "", fmt.Errorf("inference loop exceeded %d model turns for model %q", c.limits.MaxTurns, c.model)
+		}
+
 		stream, err := c.provider.ChatCompletionStream(ctx, &plugin.ChatRequest{
 			Model:    c.model,
 			Messages: messages,
@@ -80,6 +123,10 @@ func (c *Client) Infer(ctx context.Context, messages []plugin.Message, tools []p
 			if finalGuard != nil {
 				instruction, retry := finalGuard(fullContent)
 				if retry {
+					finalGuardRetries++
+					if finalGuardRetries > c.limits.MaxFinalGuardRetries {
+						return "", fmt.Errorf("finalization guard exceeded %d retries for model %q", c.limits.MaxFinalGuardRetries, c.model)
+					}
 					messages = append(messages,
 						plugin.Message{Role: "assistant", Content: fullContent},
 						plugin.Message{Role: "system", Content: instruction},
@@ -90,6 +137,7 @@ func (c *Client) Infer(ctx context.Context, messages []plugin.Message, tools []p
 			}
 			return fullContent, nil
 		}
+		finalGuardRetries = 0
 
 		// No handler — return what we have
 		if onTool == nil {

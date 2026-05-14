@@ -32,7 +32,7 @@ func TestAskMode(t *testing.T) {
 	utils.WaitForAgentSession(t, env, sess.ID, 10*time.Second)
 
 	reply := utils.PostMessage(t, ctx, env, sess.ID, "What is 2+2? Reply with just the number.")
-	t.Logf("reply: %q", reply)
+	utils.Logf(t, "reply: %q", reply)
 	if reply == "" {
 		t.Fatal("expected non-empty reply")
 	}

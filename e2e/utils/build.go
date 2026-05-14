@@ -60,7 +60,7 @@ func BuildAllOnce(t *testing.T) BuiltBinaries {
 			buildErr = fmt.Errorf("create bin dir: %w", err)
 			return
 		}
-		t.Logf("building binaries into %s", binDir)
+		Logf(t, "building binaries into %s", binDir)
 
 		build := func(pkg, name string) string {
 			if buildErr != nil {
@@ -85,7 +85,7 @@ func BuildAllOnce(t *testing.T) BuiltBinaries {
 			cmd.Dir = root
 			cmd.Env = append(os.Environ(), "CGO_ENABLED=1")
 			if output, err := cmd.CombinedOutput(); err != nil {
-				t.Logf("build %s lib mode failed (will fall back to binary): %v\n%s", pkg, err, string(output))
+				Logf(t, "build %s lib mode failed (will fall back to binary): %v\n%s", pkg, err, string(output))
 				return ""
 			}
 			return out

@@ -50,7 +50,7 @@ func runBashTool(t *testing.T, forceBinary bool) {
 
 	reply := utils.PostMessage(t, ctx, env, sess.ID,
 		"Use the bash tool to run `echo quark-ok` and reply with the tool output verbatim.")
-	t.Logf("reply: %q", reply)
+	utils.Logf(t, "reply: %q", reply)
 	if reply == "" {
 		t.Fatal("expected non-empty reply")
 	}

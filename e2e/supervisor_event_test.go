@@ -31,7 +31,7 @@ func TestSupervisorSessionEventReachesAgent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	t.Logf("created session id=%s", sess.ID)
+	utils.Logf(t, "created session id=%s", sess.ID)
 
 	deadline := time.Now().Add(10 * time.Second)
 	attempts := 0
@@ -39,10 +39,10 @@ func TestSupervisorSessionEventReachesAgent(t *testing.T) {
 		n := utils.AgentSessionsCount(t, env)
 		attempts++
 		if attempts == 1 || attempts%10 == 0 {
-			t.Logf("poll %d: agent sessions=%d (want > %d)", attempts, n, before)
+			utils.Logf(t, "poll %d: agent sessions=%d (want > %d)", attempts, n, before)
 		}
 		if n > before {
-			t.Logf("agent mirrored session after %d polls", attempts)
+			utils.Logf(t, "agent mirrored session after %d polls", attempts)
 			return
 		}
 		time.Sleep(100 * time.Millisecond)

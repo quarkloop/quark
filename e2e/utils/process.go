@@ -37,9 +37,33 @@ func (w *testLogWriter) Write(p []byte) (int, error) {
 			w.buf.Write(line)
 			break
 		}
-		w.t.Logf("[%s] %s", w.prefix, strings.TrimRight(string(line), "\r\n"))
+		w.t.Logf("%s", formatProcessLogLine(w.t.Name(), w.prefix, strings.TrimRight(string(line), "\r\n")))
 	}
 	return len(p), nil
+}
+
+// Logf writes an e2e harness log line with the standard prefix.
+func Logf(t testing.TB, format string, args ...any) {
+	t.Helper()
+	allArgs := append([]any{t.Name()}, args...)
+	t.Logf("[e2e][test=%s] "+format, allArgs...)
+}
+
+func formatProcessLogLine(testName, defaultProcess, line string) string {
+	process := processFromLogLine(defaultProcess, line)
+	if process != defaultProcess {
+		return fmt.Sprintf("[e2e][test=%s][process=%s][parent_process=%s] %s", testName, process, defaultProcess, line)
+	}
+	return fmt.Sprintf("[e2e][test=%s][process=%s] %s", testName, defaultProcess, line)
+}
+
+func processFromLogLine(defaultProcess, line string) string {
+	for _, process := range []string{"runtime", "supervisor"} {
+		if strings.Contains(line, "process="+process) || strings.Contains(line, `"process":"`+process+`"`) {
+			return process
+		}
+	}
+	return defaultProcess
 }
 
 // StartedProcess is a handle for a subprocess launched by StartProcess.
@@ -121,7 +145,7 @@ func StartProcess(t *testing.T, name, binary string, args, env []string) *Starte
 			<-proc.done
 		}
 		if t.Failed() {
-			t.Logf("%s logs:\n%s", proc.Name, proc.Logs())
+			Logf(t, "%s logs:\n%s", proc.Name, proc.Logs())
 		}
 	})
 	return proc

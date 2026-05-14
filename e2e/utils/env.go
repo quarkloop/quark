@@ -289,6 +289,6 @@ func StartE2E(t *testing.T, withProvider bool, opts ...StartOptions) *E2EEnv {
 	// otherwise the very first session event can be published before any
 	// subscriber is attached and silently dropped.
 	proc.WaitForLog(t, "supervisor event stream ready", 10*time.Second)
-	t.Logf("supervisor at %s, agent at %s (space=%s)", supURL, env.AgentURL, spaceName)
+	Logf(t, "supervisor at %s, agent at %s (space=%s)", supURL, env.AgentURL, spaceName)
 	return env
 }
