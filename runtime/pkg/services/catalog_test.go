@@ -1,34 +1,12 @@
 package services
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
 	servicev1 "github.com/quarkloop/pkg/serviceapi/gen/quark/service/v1"
 )
-
-func TestParseEndpoints(t *testing.T) {
-	t.Parallel()
-
-	got := ParseEndpoints("indexer=127.0.0.1:7301, 127.0.0.1:7302;space=127.0.0.1:7303")
-	if len(got) != 3 {
-		t.Fatalf("endpoints = %d, want 3", len(got))
-	}
-	if got[0].Name != "indexer" || got[0].Address != "127.0.0.1:7301" {
-		t.Fatalf("first endpoint = %+v", got[0])
-	}
-	if got[1].Name != "" || got[1].Address != "127.0.0.1:7302" {
-		t.Fatalf("second endpoint = %+v", got[1])
-	}
-}
-
-func TestEndpointsFromEnvCanBeDisabled(t *testing.T) {
-	t.Setenv(EnvDisableDiscovery, "true")
-	t.Setenv(EnvIndexerAddr, "127.0.0.1:7301")
-	if got := EndpointsFromEnv(); len(got) != 0 {
-		t.Fatalf("got %v, want no endpoints", got)
-	}
-}
 
 func TestPromptBlockIncludesServiceSkillsAndRPCs(t *testing.T) {
 	t.Parallel()
@@ -50,14 +28,14 @@ func TestPromptBlockIncludesServiceSkillsAndRPCs(t *testing.T) {
 		}},
 	}})
 
-	for _, want := range []string{"Available gRPC Services", "grpc-service", "indexer", "GetContext", "service-indexer", "Use query vectors."} {
+	for _, want := range []string{"Available Service Plugins", "indexer_GetContext", "indexer", "service-indexer", "Use query vectors."} {
 		if !strings.Contains(block, want) {
 			t.Fatalf("prompt block missing %q:\n%s", want, block)
 		}
 	}
 }
 
-func TestCatalogExposesGenericGRPCTool(t *testing.T) {
+func TestCatalogExposesServiceFunctions(t *testing.T) {
 	t.Parallel()
 
 	catalog := NewCatalog([]*servicev1.ServiceDescriptor{{
@@ -71,7 +49,7 @@ func TestCatalogExposesGenericGRPCTool(t *testing.T) {
 		}},
 	}})
 	tools := catalog.ToolSchemas()
-	if len(tools) != 1 || tools[0].Name != ToolName {
+	if len(tools) != 1 || tools[0].Name != "indexer_GetContext" {
 		t.Fatalf("tools = %+v", tools)
 	}
 	if catalog.Prompt() == "" {
@@ -80,7 +58,61 @@ func TestCatalogExposesGenericGRPCTool(t *testing.T) {
 	if len(catalog.Descriptors()) != 1 {
 		t.Fatalf("descriptors = %d, want 1", len(catalog.Descriptors()))
 	}
-	if _, handled, err := catalog.ExecuteTool(nil, "fs", "{}"); handled || err != nil {
-		t.Fatalf("non-service tool handled=%v err=%v", handled, err)
+	if _, err := catalog.Execute(nil, "fs", "{}"); err == nil {
+		t.Fatal("non-service function unexpectedly executed")
 	}
+}
+
+func TestServiceFunctionSchemaUsesRuntimeEmbeddingReferences(t *testing.T) {
+	t.Parallel()
+
+	params := requestParameters("quark.indexer.v1.IndexRequest")
+	properties, ok := params["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("properties missing: %+v", params)
+	}
+	if _, ok := properties["embeddingRef"]; !ok {
+		t.Fatalf("embeddingRef missing from schema: %+v", properties)
+	}
+	required, ok := params["required"].([]string)
+	if !ok {
+		t.Fatalf("required missing: %+v", params)
+	}
+	for _, want := range []string{"chunkId", "textContent", "embeddingRef"} {
+		if !containsString(required, want) {
+			t.Fatalf("required missing %q: %+v", want, required)
+		}
+	}
+}
+
+func TestExecutorExpandsEmbeddingReferences(t *testing.T) {
+	t.Parallel()
+
+	executor := NewExecutor(nil)
+	executor.embeddings["ref-1"] = []float32{0.25, -0.5}
+
+	expanded, err := executor.expandRuntimeReferences("quark.indexer.v1.IndexRequest", `{"chunkId":"chunk","textContent":"text","embeddingRef":"ref-1"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(expanded), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := payload["embeddingRef"]; ok {
+		t.Fatalf("embeddingRef was not removed: %s", expanded)
+	}
+	vector, ok := payload["embedding"].([]any)
+	if !ok || len(vector) != 2 {
+		t.Fatalf("embedding was not expanded: %s", expanded)
+	}
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }

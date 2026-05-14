@@ -19,15 +19,16 @@ const (
 	TypeProvider PluginType = "provider"
 	TypeAgent    PluginType = "agent"
 	TypeSkill    PluginType = "skill"
+	TypeService  PluginType = "service"
 )
 
 // PluginMode indicates how the plugin is loaded.
 type PluginMode string
 
 const (
-	ModeLib PluginMode = "lib"  // .so file loaded via plugin.Open()
-	ModeAPI PluginMode = "api"  // Separate HTTP server process
-	ModeCLI PluginMode = "cli"  // Invoked as CLI subprocess per call
+	ModeLib PluginMode = "lib" // .so file loaded via plugin.Open()
+	ModeAPI PluginMode = "api" // Separate HTTP server process
+	ModeCLI PluginMode = "cli" // Invoked as CLI subprocess per call
 )
 
 // Plugin is the base interface all plugins must implement.
@@ -39,7 +40,7 @@ type Plugin interface {
 	// Version returns the semantic version string.
 	Version() string
 
-	// Type returns the plugin type (tool, provider, agent, skill).
+	// Type returns the plugin type (tool, provider, agent, skill, service).
 	Type() PluginType
 
 	// Initialize is called after loading to set up the plugin.

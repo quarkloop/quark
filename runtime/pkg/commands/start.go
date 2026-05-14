@@ -2,16 +2,18 @@ package commands
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
-	"time"
+	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/quarkloop/runtime/pkg/agent"
 	"github.com/quarkloop/runtime/pkg/channel/telegram"
 	"github.com/quarkloop/runtime/pkg/channel/web"
+	"github.com/quarkloop/runtime/pkg/pluginmanager"
 	"github.com/quarkloop/runtime/pkg/runtime"
 	runtimeservices "github.com/quarkloop/runtime/pkg/services"
 )
@@ -97,11 +99,15 @@ func runStart(port int, channels []string) error {
 	}
 	slog.Info("using model", "provider", modelProvider, "model", modelName)
 
-	serviceCatalog := discoverServices()
-	var capabilities []agent.CapabilityProvider
-	if serviceCatalog != nil && !serviceCatalog.Empty() {
-		capabilities = append(capabilities, serviceCatalog)
+	serviceCatalog, err := loadServiceCatalog()
+	if err != nil {
+		return err
 	}
+	pluginCatalog, err := loadPluginCatalog()
+	if err != nil {
+		return err
+	}
+	promptAddenda := servicePromptAddenda(serviceCatalog)
 
 	// Create agent
 	a, err := agent.NewAgent(agent.Config{
@@ -111,13 +117,16 @@ func runStart(port int, channels []string) error {
 		Model:         modelName,
 		ModelListURL:  os.Getenv("MODEL_LIST_URL"),
 		PluginsDir:    os.Getenv("QUARK_PLUGINS_DIR"),
+		PluginCatalog: pluginCatalog,
 		SupervisorURL: os.Getenv("QUARK_SUPERVISOR_URL"),
 		SpaceID:       os.Getenv("QUARK_SPACE"),
-		Capabilities:  capabilities,
+		PromptAddenda: promptAddenda,
+		PendingRefs:   servicePendingRefs(serviceCatalog),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create agent: %w", err)
 	}
+	registerServiceTools(a, serviceCatalog)
 
 	// Create server with ChannelBus
 	srv := runtime.NewServer()
@@ -160,24 +169,66 @@ func runStart(port int, channels []string) error {
 	return srv.Run(ctx)
 }
 
-func discoverServices() *runtimeservices.Catalog {
-	endpoints := runtimeservices.EndpointsFromEnv()
-	if len(endpoints) == 0 {
-		slog.Info("service discovery disabled")
+func servicePromptAddenda(catalog *runtimeservices.Catalog) []string {
+	if catalog == nil || catalog.Empty() {
 		return nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	catalog, errs := runtimeservices.DiscoverCatalog(ctx, endpoints)
-	for _, err := range errs {
-		slog.Warn("service discovery failed", "error", err)
+	return []string{catalog.Prompt()}
+}
+
+func registerServiceTools(a *agent.Agent, catalog *runtimeservices.Catalog) {
+	if catalog == nil || catalog.Empty() {
+		return
+	}
+	for _, schema := range catalog.ToolSchemas() {
+		schema := schema
+		a.Plugins.RegisterRuntimeTool(pluginmanager.RuntimeTool{
+			Schema: schema,
+			Handler: func(ctx context.Context, arguments string) (string, error) {
+				return catalog.Execute(ctx, schema.Name, arguments)
+			},
+		})
+	}
+}
+
+func servicePendingRefs(catalog *runtimeservices.Catalog) func() []string {
+	if catalog == nil || catalog.Empty() {
+		return nil
+	}
+	return catalog.PendingEmbeddingRefs
+}
+
+func loadServiceCatalog() (*runtimeservices.Catalog, error) {
+	catalog, err := runtimeservices.CatalogFromEnv()
+	if err != nil {
+		return nil, err
 	}
 	if catalog == nil || catalog.Empty() {
-		slog.Warn("no service descriptors discovered", "endpoints", fmt.Sprintf("%v", endpoints))
-		return nil
+		slog.Info("no supervisor-resolved service catalog provided")
+		return nil, nil
 	}
 	for _, desc := range catalog.Descriptors() {
-		slog.Info("service discovered", "name", desc.GetName(), "type", desc.GetType(), "addr", desc.GetAddress())
+		slog.Info("service plugin loaded", "name", desc.GetName(), "type", desc.GetType(), "addr", desc.GetAddress())
 	}
-	return catalog
+	return catalog, nil
+}
+
+func loadPluginCatalog() (*pluginmanager.Catalog, error) {
+	raw := strings.TrimSpace(os.Getenv("QUARK_RUNTIME_PLUGIN_CATALOG"))
+	if raw == "" {
+		slog.Info("no supervisor-resolved plugin catalog provided")
+		return nil, nil
+	}
+	var catalog pluginmanager.Catalog
+	if err := json.Unmarshal([]byte(raw), &catalog); err != nil {
+		return nil, fmt.Errorf("parse runtime plugin catalog: %w", err)
+	}
+	if catalog.Empty() {
+		slog.Info("supervisor-resolved plugin catalog is empty")
+		return &catalog, nil
+	}
+	for _, item := range catalog.Plugins {
+		slog.Info("plugin catalog entry loaded", "name", item.Name, "type", item.Type, "path", item.Path)
+	}
+	return &catalog, nil
 }

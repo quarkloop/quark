@@ -41,76 +41,33 @@ func NewLoader(pluginsDir string) *Loader {
 }
 
 // Discover scans the plugins directory and returns all valid manifests.
-// Scans plugins/tools/ and plugins/providers/ subdirectories.
 func (l *Loader) Discover() ([]*Manifest, error) {
 	var manifests []*Manifest
-
-	// Scan tools/
-	toolsDir := filepath.Join(l.pluginsDir, "tools")
-	if entries, err := os.ReadDir(toolsDir); err == nil {
-		for _, e := range entries {
-			if !e.IsDir() {
-				continue
-			}
-			manifestPath := filepath.Join(toolsDir, e.Name(), "manifest.yaml")
-			m, err := ParseManifest(manifestPath)
-			if err != nil {
-				// Log but continue - don't fail on one bad plugin
-				continue
-			}
-			manifests = append(manifests, m)
-		}
-	}
-
-	// Scan providers/
-	providersDir := filepath.Join(l.pluginsDir, "providers")
-	if entries, err := os.ReadDir(providersDir); err == nil {
-		for _, e := range entries {
-			if !e.IsDir() {
-				continue
-			}
-			manifestPath := filepath.Join(providersDir, e.Name(), "manifest.yaml")
-			m, err := ParseManifest(manifestPath)
-			if err != nil {
-				continue
-			}
-			manifests = append(manifests, m)
-		}
-	}
-
-	// Scan agents/
-	agentsDir := filepath.Join(l.pluginsDir, "agents")
-	if entries, err := os.ReadDir(agentsDir); err == nil {
-		for _, e := range entries {
-			if !e.IsDir() {
-				continue
-			}
-			manifestPath := filepath.Join(agentsDir, e.Name(), "manifest.yaml")
-			m, err := ParseManifest(manifestPath)
-			if err != nil {
-				continue
-			}
-			manifests = append(manifests, m)
-		}
-	}
-
-	// Scan skills/
-	skillsDir := filepath.Join(l.pluginsDir, "skills")
-	if entries, err := os.ReadDir(skillsDir); err == nil {
-		for _, e := range entries {
-			if !e.IsDir() {
-				continue
-			}
-			manifestPath := filepath.Join(skillsDir, e.Name(), "manifest.yaml")
-			m, err := ParseManifest(manifestPath)
-			if err != nil {
-				continue
-			}
-			manifests = append(manifests, m)
-		}
+	for _, dir := range []string{"tools", "providers", "agents", "skills", "services"} {
+		manifests = append(manifests, l.discoverDir(filepath.Join(l.pluginsDir, dir))...)
 	}
 
 	return manifests, nil
+}
+
+func (l *Loader) discoverDir(root string) []*Manifest {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil
+	}
+	manifests := make([]*Manifest, 0, len(entries))
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		manifestPath := filepath.Join(root, e.Name(), "manifest.yaml")
+		m, err := ParseManifest(manifestPath)
+		if err != nil {
+			continue
+		}
+		manifests = append(manifests, m)
+	}
+	return manifests
 }
 
 // PluginDir returns the directory path for a plugin based on its type.
@@ -124,6 +81,8 @@ func (l *Loader) PluginDir(manifest *Manifest) string {
 		return filepath.Join(l.pluginsDir, "agents", manifest.Name)
 	case TypeSkill:
 		return filepath.Join(l.pluginsDir, "skills", manifest.Name)
+	case TypeService:
+		return filepath.Join(l.pluginsDir, "services", manifest.Name)
 	default:
 		return filepath.Join(l.pluginsDir, string(manifest.Type)+"s", manifest.Name)
 	}

@@ -32,6 +32,12 @@ func ValidateQuarkfile(qf *Quarkfile) error {
 			return fmt.Errorf("plugins[%d]: missing ref", i)
 		}
 	}
+	if err := validateServices(qf.Services); err != nil {
+		return err
+	}
+	if err := validateEmbedding(qf.Embedding); err != nil {
+		return err
+	}
 
 	if err := validateModel(qf.Model); err != nil {
 		return err
@@ -77,13 +83,59 @@ func validateModel(model Model) error {
 }
 
 func validateEnvVars(names []string) error {
-	envName := regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 	for _, name := range names {
-		if !envName.MatchString(name) {
-			return fmt.Errorf("env: invalid environment variable name %q", name)
+		if err := validateEnvVarName(name, false); err != nil {
+			return err
 		}
-		if strings.HasPrefix(name, "QUARK_") {
-			return fmt.Errorf("env: %s is reserved for quark runtime variables", name)
+	}
+	return nil
+}
+
+func validateEnvVarName(name string, allowQuarkReserved bool) error {
+	envName := regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	if !envName.MatchString(name) {
+		return fmt.Errorf("env: invalid environment variable name %q", name)
+	}
+	if !allowQuarkReserved && strings.HasPrefix(name, "QUARK_") {
+		return fmt.Errorf("env: %s is reserved for quark runtime variables", name)
+	}
+	return nil
+}
+
+func validateServices(services []ServiceRef) error {
+	seen := make(map[string]bool, len(services))
+	for i, service := range services {
+		if service.Name == "" {
+			return fmt.Errorf("services[%d]: missing name", i)
+		}
+		if seen[service.Name] {
+			return fmt.Errorf("services[%d]: duplicate service %q", i, service.Name)
+		}
+		seen[service.Name] = true
+		switch service.Mode {
+		case "", "local", "online":
+		default:
+			return fmt.Errorf("services[%d]: mode must be local or online", i)
+		}
+		if service.AddressEnv != "" {
+			if err := validateEnvVarName(service.AddressEnv, true); err != nil {
+				return fmt.Errorf("services[%d].address_env: %w", i, err)
+			}
+		}
+	}
+	return nil
+}
+
+func validateEmbedding(embedding EmbeddingRef) error {
+	if embedding.IsZero() {
+		return nil
+	}
+	if embedding.Dimensions < 0 {
+		return fmt.Errorf("embedding.dimensions must be >= 0, got %d", embedding.Dimensions)
+	}
+	if embedding.EndpointEnv != "" {
+		if err := validateEnvVarName(embedding.EndpointEnv, true); err != nil {
+			return fmt.Errorf("embedding.endpoint_env: %w", err)
 		}
 	}
 	return nil

@@ -1,9 +1,8 @@
 // Package pluginmanager loads and unloads plugins from paths on disk.
 //
 // The agent does not install or uninstall plugins itself — those operations
-// are the supervisor's responsibility since plugins live inside the space
-// directory. The agent simply loads plugins that are present in
-// .quark/plugins/, executes tools, and dispatches provider calls.
+// are the supervisor's responsibility. When the supervisor provides a resolved
+// catalog, the agent loads only those explicit plugin directories.
 package pluginmanager
 
 import (
@@ -33,6 +32,7 @@ type Manager struct {
 	pluginsDir string
 	binDir     string
 	loader     *plugin.Loader
+	catalog    *Catalog
 
 	// API-mode tool plugins
 	processes  map[string]*exec.Cmd
@@ -42,6 +42,11 @@ type Manager struct {
 
 	// Lib-mode tool plugins (.so)
 	libTools map[string]plugin.ToolPlugin
+
+	// Runtime-registered tools. These are still tools from the agent's point
+	// of view, but their implementation is supplied by runtime-owned wiring
+	// instead of a disk plugin process.
+	runtimeTools map[string]RuntimeToolHandler
 
 	// Tool schemas aggregated from all loaded tools
 	tools []plugin.ToolSchema
@@ -59,27 +64,30 @@ func NewManager(pluginsDir string) *Manager {
 	}
 
 	return &Manager{
-		pluginsDir: pluginsDir,
-		binDir:     binDir,
-		loader:     plugin.NewLoader(pluginsDir),
-		processes:  make(map[string]*exec.Cmd),
-		endpoints:  make(map[string]string),
-		httpClient: &http.Client{Timeout: 30 * time.Second},
-		nextPort:   8100,
-		libTools:   make(map[string]plugin.ToolPlugin),
-		providers:  make(map[string]plugin.Provider),
-		tools:      make([]plugin.ToolSchema, 0),
+		pluginsDir:   pluginsDir,
+		binDir:       binDir,
+		loader:       plugin.NewLoader(pluginsDir),
+		processes:    make(map[string]*exec.Cmd),
+		endpoints:    make(map[string]string),
+		httpClient:   &http.Client{Timeout: 30 * time.Second},
+		nextPort:     8100,
+		libTools:     make(map[string]plugin.ToolPlugin),
+		runtimeTools: make(map[string]RuntimeToolHandler),
+		providers:    make(map[string]plugin.Provider),
+		tools:        make([]plugin.ToolSchema, 0),
 	}
 }
 
-// Initialize discovers and loads every tool and provider plugin under
-// pluginsDir. Tool plugins in plugins/tools/ are loaded (lib first, binary
-// fallback); provider plugins in plugins/providers/ are loaded as .so files
-// and configured from their auth_env.
+// Initialize loads tool and provider plugins. When a supervisor-resolved catalog
+// is present, runtime loads exactly that catalog. Standalone runtimes can still
+// fall back to the local plugin directory.
 func (m *Manager) Initialize(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if m.catalog != nil {
+		return m.loadCatalogLocked(ctx, *m.catalog)
+	}
 	if err := m.loadToolsLocked(ctx); err != nil {
 		return fmt.Errorf("load tools: %w", err)
 	}
@@ -192,6 +200,9 @@ func (m *Manager) ListLoaded() []string {
 func (m *Manager) IsLoaded(name string) bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+	if _, ok := m.runtimeTools[name]; ok {
+		return true
+	}
 	if _, ok := m.libTools[name]; ok {
 		return true
 	}
@@ -203,10 +214,14 @@ func (m *Manager) IsLoaded(name string) bool {
 // api-mode tools are invoked over HTTP.
 func (m *Manager) ExecuteTool(ctx context.Context, name, arguments string) (string, error) {
 	m.mu.RLock()
+	runtimeTool, isRuntime := m.runtimeTools[name]
 	libTool, isLib := m.libTools[name]
 	endpoint, isBinary := m.endpoints[name]
 	m.mu.RUnlock()
 
+	if isRuntime {
+		return runtimeTool(ctx, arguments)
+	}
 	if isLib {
 		return m.executeLib(ctx, libTool, arguments)
 	}

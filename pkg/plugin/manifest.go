@@ -27,13 +27,14 @@ type Manifest struct {
 	Provider *ProviderManifestConfig `yaml:"provider,omitempty"`
 	Agent    *AgentConfig            `yaml:"agent,omitempty"`
 	Skill    *SkillConfig            `yaml:"skill,omitempty"`
+	Service  *ServiceConfig          `yaml:"service,omitempty"`
 }
 
 // BuildConfig holds build-related configuration.
 type BuildConfig struct {
-	LibTarget      string `yaml:"lib_target,omitempty"`       // Output .so file name
-	APITarget      string `yaml:"api_target,omitempty"`       // Output binary name (api mode)
-	APIEntryPoint  string `yaml:"api_entry_point,omitempty"`  // Main package for api mode
+	LibTarget     string `yaml:"lib_target,omitempty"`      // Output .so file name
+	APITarget     string `yaml:"api_target,omitempty"`      // Output binary name (api mode)
+	APIEntryPoint string `yaml:"api_entry_point,omitempty"` // Main package for api mode
 }
 
 // AgentConfig holds agent-specific configuration from the manifest.
@@ -46,6 +47,19 @@ type AgentConfig struct {
 // SkillConfig holds skill-specific configuration from the manifest.
 type SkillConfig struct {
 	// Future: skill-specific config
+}
+
+// ServiceConfig declares a gRPC service exposed through the plugin catalog.
+type ServiceConfig struct {
+	// AddressEnv names the environment variable that contains the service
+	// address. The supervisor resolves it before runtime startup.
+	AddressEnv string `yaml:"address_env,omitempty"`
+	// DefaultAddress is used when AddressEnv is empty or unset.
+	DefaultAddress string `yaml:"default_address,omitempty"`
+	// Skill names the service skill file relative to the plugin directory.
+	Skill string `yaml:"skill,omitempty"`
+	// ProtoServices lists protobuf service names exposed by this service.
+	ProtoServices []string `yaml:"proto_services,omitempty"`
 }
 
 // ParseManifest reads and parses a manifest.yaml file.
@@ -81,10 +95,10 @@ func (m *Manifest) Validate() error {
 
 	// Validate type
 	switch m.Type {
-	case TypeTool, TypeProvider, TypeAgent, TypeSkill:
+	case TypeTool, TypeProvider, TypeAgent, TypeSkill, TypeService:
 		// valid
 	default:
-		return fmt.Errorf("invalid type: %s (must be tool, provider, agent, or skill)", m.Type)
+		return fmt.Errorf("invalid type: %s (must be tool, provider, agent, skill, or service)", m.Type)
 	}
 
 	// Validate mode
@@ -123,6 +137,13 @@ func (m *Manifest) Validate() error {
 		}
 	case TypeSkill:
 		// Skill config is optional
+	case TypeService:
+		if m.Service == nil {
+			return fmt.Errorf("service config is required for service plugins")
+		}
+		if m.Service.Skill == "" {
+			m.Service.Skill = "SKILL.md"
+		}
 	}
 
 	return nil

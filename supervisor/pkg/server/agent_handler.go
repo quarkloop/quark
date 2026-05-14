@@ -67,6 +67,18 @@ func (s *Server) handleStartRuntime(c *fiber.Ctx) error {
 		s.registry.Remove(agent.ID())
 		return writeError(c, fiber.StatusBadRequest, err.Error())
 	}
+	pluginCatalogEnv, err := s.runtimePluginCatalogEnv(c.Context(), req.Space)
+	if err != nil {
+		s.registry.Remove(agent.ID())
+		return writeError(c, fiber.StatusBadRequest, err.Error())
+	}
+	env = append(env, pluginCatalogEnv...)
+	catalogEnv, err := s.runtimeServiceCatalogEnv(c.Context(), req.Space)
+	if err != nil {
+		s.registry.Remove(agent.ID())
+		return writeError(c, fiber.StatusBadRequest, err.Error())
+	}
+	env = append(env, catalogEnv...)
 
 	if err := s.launcher.Start(c.Context(), agent, env); err != nil {
 		s.registry.Remove(agent.ID())

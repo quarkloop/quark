@@ -1,0 +1,13 @@
+name: indexer
+version: "1.0.0"
+type: service
+mode: api
+description: "GraphRAG indexing and retrieval over gRPC"
+author: quarkloop
+license: Apache-2.0
+
+service:
+  address_env: QUARK_INDEXER_ADDR
+  skill: SKILL.md
+  proto_services:
+    - quark.indexer.v1.IndexerService

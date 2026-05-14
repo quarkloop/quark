@@ -102,7 +102,7 @@ func resolveSkillPath(skillDir string) (string, error) {
 		return path, nil
 	}
 
-	for _, path := range []string{"SKILL.md", filepath.Join("services", "indexer", "SKILL.md")} {
+	for _, path := range []string{"SKILL.md", filepath.Join("plugins", "services", "indexer", "SKILL.md"), filepath.Join("services", "indexer", "SKILL.md")} {
 		if _, err := os.Stat(path); err == nil {
 			return path, nil
 		}

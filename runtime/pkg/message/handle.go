@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/quarkloop/pkg/plugin"
 	"github.com/quarkloop/runtime/pkg/llm"
 	"github.com/quarkloop/runtime/pkg/llmcontext"
-	"github.com/quarkloop/pkg/plugin"
 )
 
 // Handle runs the full message handling flow:
@@ -15,7 +15,7 @@ import (
 //  3. Return full assistant response text
 //
 // Tokens are streamed to resp as they arrive.
-func Handle(ctx context.Context, history []Message, llmClient *llm.Client, systemPrompt string, workSummary string, tools []plugin.ToolSchema, onTool plugin.ToolHandler, resp chan<- StreamMessage) (string, error) {
+func Handle(ctx context.Context, history []Message, llmClient *llm.Client, systemPrompt string, workSummary string, tools []plugin.ToolSchema, onTool plugin.ToolHandler, resp chan<- StreamMessage, finalGuard llm.FinalGuard) (string, error) {
 	if llmClient == nil {
 		return "", fmt.Errorf("no LLM client configured")
 	}
@@ -49,5 +49,5 @@ func Handle(ctx context.Context, history []Message, llmClient *llm.Client, syste
 	// Infer (LLM call → tool loop → streaming)
 	return llmClient.Infer(ctx, msgs, tools, onTool, func(msgType string, data any) {
 		resp <- StreamMessage{Type: msgType, Data: data}
-	})
+	}, finalGuard)
 }

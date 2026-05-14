@@ -23,6 +23,8 @@ type Client struct {
 	ContextWindow int // token limit from the model entry (0 = unknown)
 }
 
+type FinalGuard func(content string) (instruction string, retry bool)
+
 // NewClient creates a new LLM client.
 func NewClient(p Provider, model string, contextWindow int) *Client {
 	return &Client{provider: p, model: model, ContextWindow: contextWindow}
@@ -34,7 +36,7 @@ func NewClient(p Provider, model string, contextWindow int) *Client {
 //
 // It fires onMessage for streamed text and tool execution data.
 // If onTool is nil, tool calls are ignored.
-func (c *Client) Infer(ctx context.Context, messages []plugin.Message, tools []plugin.ToolSchema, onTool plugin.ToolHandler, onMessage func(msgType string, data any)) (string, error) {
+func (c *Client) Infer(ctx context.Context, messages []plugin.Message, tools []plugin.ToolSchema, onTool plugin.ToolHandler, onMessage func(msgType string, data any), finalGuard FinalGuard) (string, error) {
 	for {
 		stream, err := c.provider.ChatCompletionStream(ctx, &plugin.ChatRequest{
 			Model:    c.model,
@@ -75,6 +77,17 @@ func (c *Client) Infer(ctx context.Context, messages []plugin.Message, tools []p
 
 		// No tool calls at all — we're done
 		if len(toolCalls) == 0 {
+			if finalGuard != nil {
+				instruction, retry := finalGuard(fullContent)
+				if retry {
+					messages = append(messages,
+						plugin.Message{Role: "assistant", Content: fullContent},
+						plugin.Message{Role: "system", Content: instruction},
+					)
+					fullContent = ""
+					continue
+				}
+			}
 			return fullContent, nil
 		}
 

@@ -19,6 +19,8 @@ type Quarkfile struct {
 	Model        Model          `yaml:"model,omitempty"`
 	Routing      RoutingSection `yaml:"routing,omitempty"`
 	Plugins      []PluginRef    `yaml:"plugins"`
+	Services     []ServiceRef   `yaml:"services,omitempty"`
+	Embedding    EmbeddingRef   `yaml:"embedding,omitempty"`
 	Permissions  Permissions    `yaml:"permissions,omitempty"`
 	Capabilities Capabilities   `yaml:"capabilities,omitempty"`
 	Gateway      Gateway        `yaml:"gateway,omitempty"`
@@ -63,6 +65,38 @@ type ModelRef struct {
 type PluginRef struct {
 	Ref    string         `yaml:"ref"`
 	Config map[string]any `yaml:"config,omitempty"`
+}
+
+// ServiceRef declares service intent. Supervisor resolves the concrete
+// endpoint and passes a normalized catalog to runtime.
+type ServiceRef struct {
+	Name       string         `yaml:"name"`
+	Ref        string         `yaml:"ref,omitempty"`
+	Mode       string         `yaml:"mode,omitempty"` // local | online
+	Address    string         `yaml:"address,omitempty"`
+	AddressEnv string         `yaml:"address_env,omitempty"`
+	Config     map[string]any `yaml:"config,omitempty"`
+}
+
+// EmbeddingRef selects the embedding service/profile for the space.
+type EmbeddingRef struct {
+	Service     string `yaml:"service,omitempty"`
+	Provider    string `yaml:"provider,omitempty"`
+	Model       string `yaml:"model,omitempty"`
+	Dimensions  int    `yaml:"dimensions,omitempty"`
+	Profile     string `yaml:"profile,omitempty"`
+	Endpoint    string `yaml:"endpoint,omitempty"`
+	EndpointEnv string `yaml:"endpoint_env,omitempty"`
+}
+
+func (e EmbeddingRef) IsZero() bool {
+	return e.Service == "" &&
+		e.Provider == "" &&
+		e.Model == "" &&
+		e.Dimensions == 0 &&
+		e.Profile == "" &&
+		e.Endpoint == "" &&
+		e.EndpointEnv == ""
 }
 
 // Permissions defines policy constraints enforced by the agent runtime.

@@ -34,7 +34,9 @@ type Config struct {
 	Model         string
 	ModelListURL  string
 	PluginsDir    string
-	Capabilities  []CapabilityProvider
+	PluginCatalog *pluginmanager.Catalog
+	PromptAddenda []string
+	PendingRefs   func() []string
 
 	// Execution mode configuration
 	ExecutionMode execution.Mode
@@ -121,6 +123,7 @@ func NewAgent(cfg Config) (*Agent, error) {
 		execution:   execRuntime,
 		permissions: permissions.NewChecker(cfg.PermissionPolicy),
 	}
+	a.Plugins.SetCatalog(cfg.PluginCatalog)
 
 	// Create supervisor client if URL is provided
 	if cfg.SupervisorURL != "" {
@@ -296,6 +299,7 @@ func (a *Agent) handleUserMessage(ctx context.Context, msg loop.Message) error {
 		a.defaultTools(),
 		a.executeTool,
 		userMsg.Response,
+		a.finalGuard(),
 	)
 	if err != nil {
 		userMsg.Response <- message.StreamMessage{
@@ -303,6 +307,16 @@ func (a *Agent) handleUserMessage(ctx context.Context, msg loop.Message) error {
 			Data: fmt.Sprintf("Agent Error: %v", err),
 		}
 		return err
+	}
+	if a.config.PendingRefs != nil {
+		if refs := a.config.PendingRefs(); len(refs) > 0 {
+			err := fmt.Errorf("runtime validation failed: pending embeddingRef values were not consumed: %s", strings.Join(refs, ", "))
+			userMsg.Response <- message.StreamMessage{
+				Type: "error",
+				Data: fmt.Sprintf("Agent Error: %v", err),
+			}
+			return err
+		}
 	}
 
 	s.AddMessage("assistant", fullResponse)
@@ -368,7 +382,10 @@ func (a *Agent) handleWorkStep(ctx context.Context, msg loop.Message) error {
 		return nil
 	}
 
-	if err := a.Plan.ExecuteStep(ctx, client.Infer, a.systemPrompt(), a.defaultTools(), a.executeTool); err != nil {
+	infer := func(ctx context.Context, messages []plugin.Message, tools []plugin.ToolSchema, onTool plugin.ToolHandler, onMessage func(string, any)) (string, error) {
+		return client.Infer(ctx, messages, tools, onTool, onMessage, a.finalGuard())
+	}
+	if err := a.Plan.ExecuteStep(ctx, infer, a.systemPrompt(), a.defaultTools(), a.executeTool); err != nil {
 		slog.Error("work step error", "error", err)
 		return err
 	}
@@ -403,29 +420,19 @@ func (a *Agent) processWork(ctx context.Context, agentID, task string) (string, 
 		{Role: "user", Content: task},
 	}
 
-	return client.Infer(ctx, msgs, a.defaultTools(), a.executeTool, nil)
+	return client.Infer(ctx, msgs, a.defaultTools(), a.executeTool, nil, nil)
 }
 
 // defaultTools returns the available tools.
 func (a *Agent) defaultTools() []plugin.ToolSchema {
-	tools := a.Plugins.GetTools()
-	for _, provider := range a.config.Capabilities {
-		if provider == nil {
-			continue
-		}
-		tools = append(tools, provider.ToolSchemas()...)
-	}
-	return tools
+	return a.Plugins.GetTools()
 }
 
 func (a *Agent) systemPrompt() string {
 	var b strings.Builder
 	b.WriteString(prompt.GetSystemPrompt())
-	for _, provider := range a.config.Capabilities {
-		if provider == nil {
-			continue
-		}
-		addendum := strings.TrimSpace(provider.Prompt())
+	for _, value := range a.config.PromptAddenda {
+		addendum := strings.TrimSpace(value)
 		if addendum == "" {
 			continue
 		}
@@ -435,20 +442,32 @@ func (a *Agent) systemPrompt() string {
 	return b.String()
 }
 
-// executeTool executes a requested tool via runtime capabilities or pluginmanager.
+func (a *Agent) finalGuard() llm.FinalGuard {
+	if a.config.PendingRefs == nil {
+		return nil
+	}
+	attempts := 0
+	return func(content string) (string, bool) {
+		refs := a.config.PendingRefs()
+		if len(refs) == 0 {
+			return "", false
+		}
+		attempts++
+		if attempts > 8 {
+			return "", false
+		}
+		return fmt.Sprintf(
+			"Runtime validation blocked finalization. The following embeddingRef values are pending and must be consumed before a final answer: %s. Continue using the existing tool context. If this is an indexing task, call indexer_IndexDocument for each pending document embedding. If this is a retrieval task, call indexer_GetContext with the pending query embedding. Do not produce a final answer until no pending embeddingRef remains.",
+			strings.Join(refs, ", "),
+		), true
+	}
+}
+
+// executeTool executes a requested tool through the runtime tool manager.
 func (a *Agent) executeTool(ctx context.Context, name, arguments string) (string, error) {
 	// Check permissions
 	if err := a.permissions.ValidateTool(name); err != nil {
 		return "", err
-	}
-	for _, provider := range a.config.Capabilities {
-		if provider == nil {
-			continue
-		}
-		result, handled, err := provider.ExecuteTool(ctx, name, arguments)
-		if handled {
-			return result, err
-		}
 	}
 	return a.Plugins.ExecuteTool(ctx, name, arguments)
 }
@@ -522,7 +541,10 @@ func (a *Agent) subscribeSupervisorEvents(ctx context.Context) {
 			return
 		}
 		err := a.supervisorClient.StreamEventsWithReady(ctx, a.Space,
-			func() { slog.Info("supervisor event stream ready", "space", a.Space) },
+			func() {
+				slog.Info("supervisor event stream ready", "space", a.Space)
+				a.syncSupervisorSessions(ctx)
+			},
 			func(ev event.Event) { a.applyEvent(ev) },
 		)
 		if ctx.Err() != nil {
@@ -540,6 +562,26 @@ func (a *Agent) subscribeSupervisorEvents(ctx context.Context) {
 			backoff *= 2
 		}
 	}
+}
+
+func (a *Agent) syncSupervisorSessions(ctx context.Context) {
+	if a.supervisorClient == nil || a.Space == "" {
+		return
+	}
+	callCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	sessions, err := a.supervisorClient.ListSessions(callCtx, a.Space)
+	if err != nil {
+		slog.Warn("sync supervisor sessions failed", "space", a.Space, "error", err)
+		return
+	}
+	for _, sess := range sessions {
+		if sess.ID == "" {
+			continue
+		}
+		a.Sessions.GetOrCreate(sess.ID, string(sess.Type), sess.Title)
+	}
+	slog.Info("synced supervisor sessions", "space", a.Space, "count", len(sessions))
 }
 
 // applyEvent updates agent runtime state in response to a supervisor event.

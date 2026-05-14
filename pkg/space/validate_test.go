@@ -134,6 +134,33 @@ func TestValidateQuarkfileEnvNames(t *testing.T) {
 	assertInvalid(t, qf, "reserved")
 }
 
+func TestValidateQuarkfileServicesAndEmbedding(t *testing.T) {
+	qf := base()
+	qf.Services = []space.ServiceRef{{
+		Name:       "indexer",
+		Ref:        "quark/service-indexer",
+		Mode:       "local",
+		AddressEnv: "QUARK_INDEXER_ADDR",
+	}}
+	qf.Embedding = space.EmbeddingRef{
+		Service:     "embedding",
+		Provider:    "local",
+		Model:       "local-hash-v1",
+		Dimensions:  32,
+		EndpointEnv: "QUARK_EMBEDDING_ADDR",
+	}
+	if err := space.ValidateQuarkfile(qf); err != nil {
+		t.Fatalf("expected valid services and embedding, got: %v", err)
+	}
+
+	qf.Services[0].Mode = "sideways"
+	assertInvalid(t, qf, "mode")
+
+	qf = base()
+	qf.Embedding.Dimensions = -1
+	assertInvalid(t, qf, "embedding.dimensions")
+}
+
 func TestValidateQuarkfileNegativeRetentionPolicy(t *testing.T) {
 	qf := base()
 	qf.Permissions.Audit.RetentionDays = -5

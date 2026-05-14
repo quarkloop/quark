@@ -19,6 +19,7 @@ MODULES := \
 		pkg/space \
 		pkg/toolkit \
 		services/build-release \
+		services/embedding \
 		services/indexer \
 		services/space \
 		plugins/tools/bash \
@@ -51,6 +52,8 @@ build-tools:
 build-services:
 		@echo "--- Building service: indexer ---"
 		go build -o $(BINARY_DIR)/indexer-service ./services/indexer/cmd/indexer
+		@echo "--- Building service: embedding ---"
+		go build -o $(BINARY_DIR)/embedding-service ./services/embedding/cmd/embedding
 		@echo "--- Building service: build-release ---"
 		go build -o $(BINARY_DIR)/build-release-service ./services/build-release/cmd/build-release
 		@echo "--- Building service: space ---"

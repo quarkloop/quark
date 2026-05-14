@@ -1,0 +1,13 @@
+name: space
+version: "1.0.0"
+type: service
+mode: api
+description: "Space metadata, Quarkfile, and launch environment over gRPC"
+author: quarkloop
+license: Apache-2.0
+
+service:
+  address_env: QUARK_SPACE_SERVICE_ADDR
+  skill: SKILL.md
+  proto_services:
+    - quark.space.v1.SpaceService

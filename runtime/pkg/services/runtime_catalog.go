@@ -3,15 +3,12 @@ package services
 import (
 	"context"
 	"fmt"
-	"strings"
 
-	"github.com/quarkloop/pkg/plugin"
 	servicev1 "github.com/quarkloop/pkg/serviceapi/gen/quark/service/v1"
 	"github.com/quarkloop/pkg/serviceapi/servicekit"
 )
 
-// Catalog is the runtime-owned view of discovered gRPC services. It is the
-// single service capability surface exposed to the agent loop.
+// Catalog is the runtime view of supervisor-resolved gRPC service plugins.
 type Catalog struct {
 	descriptors []*servicev1.ServiceDescriptor
 	executor    *Executor
@@ -31,11 +28,6 @@ func NewCatalog(descriptors []*servicev1.ServiceDescriptor) *Catalog {
 		executor:    NewExecutor(copied),
 		prompt:      PromptBlock(copied),
 	}
-}
-
-func DiscoverCatalog(ctx context.Context, endpoints []Endpoint) (*Catalog, []error) {
-	descriptors, errs := Discover(ctx, endpoints)
-	return NewCatalog(descriptors), errs
 }
 
 func (c *Catalog) Empty() bool {
@@ -60,20 +52,23 @@ func (c *Catalog) Prompt() string {
 	return c.prompt
 }
 
-func (c *Catalog) ToolSchemas() []plugin.ToolSchema {
+func (c *Catalog) ToolSchemas() []ServiceFunctionSchema {
 	if c == nil || c.executor == nil {
 		return nil
 	}
 	return c.executor.ToolSchemas()
 }
 
-func (c *Catalog) ExecuteTool(ctx context.Context, name, arguments string) (string, bool, error) {
-	if name != ToolName {
-		return "", false, nil
-	}
+func (c *Catalog) Execute(ctx context.Context, name, arguments string) (string, error) {
 	if c == nil || c.executor == nil || len(c.descriptors) == 0 {
-		return "", true, fmt.Errorf("no gRPC services are available")
+		return "", fmt.Errorf("no gRPC services are available")
 	}
-	out, err := c.executor.Execute(ctx, arguments)
-	return strings.TrimSpace(out), true, err
+	return c.executor.Execute(ctx, name, arguments)
+}
+
+func (c *Catalog) PendingEmbeddingRefs() []string {
+	if c == nil || c.executor == nil {
+		return nil
+	}
+	return c.executor.PendingEmbeddingRefs()
 }

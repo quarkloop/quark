@@ -38,8 +38,8 @@ func (m *Installer) PluginsDir() string {
 // InstalledPlugin represents an installed plugin with its path.
 type InstalledPlugin struct {
 	Manifest *plugin.Manifest `json:"manifest"`
-	Path    string            `json:"path"`  // Full path to plugin directory
-	Active  bool              `json:"active"`
+	Path     string           `json:"path"` // Full path to plugin directory
+	Active   bool             `json:"active"`
 }
 
 // List returns all installed plugins in the space.
@@ -48,86 +48,35 @@ func (m *Installer) List() ([]InstalledPlugin, error) {
 	defer m.mu.RUnlock()
 
 	var plugins []InstalledPlugin
-
 	pluginsDir := m.PluginsDir()
-
-	// Scan tools/
-	toolsDir := filepath.Join(pluginsDir, "tools")
-	if entries, err := os.ReadDir(toolsDir); err == nil {
-		for _, e := range entries {
-			if !e.IsDir() {
-				continue
-			}
-			pluginDir := filepath.Join(toolsDir, e.Name())
-			manifest, err := plugin.ParseManifest(filepath.Join(pluginDir, "manifest.yaml"))
-			if err != nil {
-				continue
-			}
-			plugins = append(plugins, InstalledPlugin{
-				Manifest: manifest,
-				Path:     pluginDir,
-			})
-		}
-	}
-
-	// Scan providers/
-	providersDir := filepath.Join(pluginsDir, "providers")
-	if entries, err := os.ReadDir(providersDir); err == nil {
-		for _, e := range entries {
-			if !e.IsDir() {
-				continue
-			}
-			pluginDir := filepath.Join(providersDir, e.Name())
-			manifest, err := plugin.ParseManifest(filepath.Join(pluginDir, "manifest.yaml"))
-			if err != nil {
-				continue
-			}
-			plugins = append(plugins, InstalledPlugin{
-				Manifest: manifest,
-				Path:     pluginDir,
-			})
-		}
-	}
-
-	// Scan agents/
-	agentsDir := filepath.Join(pluginsDir, "agents")
-	if entries, err := os.ReadDir(agentsDir); err == nil {
-		for _, e := range entries {
-			if !e.IsDir() {
-				continue
-			}
-			pluginDir := filepath.Join(agentsDir, e.Name())
-			manifest, err := plugin.ParseManifest(filepath.Join(pluginDir, "manifest.yaml"))
-			if err != nil {
-				continue
-			}
-			plugins = append(plugins, InstalledPlugin{
-				Manifest: manifest,
-				Path:     pluginDir,
-			})
-		}
-	}
-
-	// Scan skills/
-	skillsDir := filepath.Join(pluginsDir, "skills")
-	if entries, err := os.ReadDir(skillsDir); err == nil {
-		for _, e := range entries {
-			if !e.IsDir() {
-				continue
-			}
-			pluginDir := filepath.Join(skillsDir, e.Name())
-			manifest, err := plugin.ParseManifest(filepath.Join(pluginDir, "manifest.yaml"))
-			if err != nil {
-				continue
-			}
-			plugins = append(plugins, InstalledPlugin{
-				Manifest: manifest,
-				Path:     pluginDir,
-			})
-		}
+	for _, dir := range []string{"tools", "providers", "agents", "skills", "services"} {
+		plugins = append(plugins, installedInDir(filepath.Join(pluginsDir, dir))...)
 	}
 
 	return plugins, nil
+}
+
+func installedInDir(root string) []InstalledPlugin {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil
+	}
+	plugins := make([]InstalledPlugin, 0, len(entries))
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		pluginDir := filepath.Join(root, e.Name())
+		manifest, err := plugin.ParseManifest(filepath.Join(pluginDir, "manifest.yaml"))
+		if err != nil {
+			continue
+		}
+		plugins = append(plugins, InstalledPlugin{
+			Manifest: manifest,
+			Path:     pluginDir,
+		})
+	}
+	return plugins
 }
 
 // Install installs a plugin from a reference (local path, git URL, or hub name).
@@ -250,6 +199,8 @@ func (m *Installer) destDirForType(pluginType plugin.PluginType, name string) st
 		return filepath.Join(pluginsDir, "agents", name)
 	case plugin.TypeSkill:
 		return filepath.Join(pluginsDir, "skills", name)
+	case plugin.TypeService:
+		return filepath.Join(pluginsDir, "services", name)
 	default:
 		return filepath.Join(pluginsDir, string(pluginType)+"s", name)
 	}

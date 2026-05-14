@@ -24,8 +24,11 @@ type WebChannel struct {
 // New creates a new web channel with all API routes registered.
 func New(addr string, a *agent.Agent) *WebChannel {
 	app := fiber.New(fiber.Config{
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
+		ReadTimeout: 10 * time.Second,
+		// Message endpoints stream LLM/tool progress over SSE. A model may take
+		// longer than a short HTTP write timeout before its first token or tool
+		// call, so writes must not be bounded by the generic request timeout.
+		WriteTimeout: 0,
 		ErrorHandler: errorHandler,
 	})
 
