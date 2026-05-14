@@ -30,6 +30,17 @@ func TestSystemPromptIncludesRuntimeExtractionProfiles(t *testing.T) {
 	}
 }
 
+func TestSystemPromptIncludesWorkspaceSidecarPolicy(t *testing.T) {
+	a := newTestAgent(t)
+
+	got := a.systemPrompt()
+	for _, want := range []string{"Workspace Sidecars", "explicit approval", "must not depend"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("system prompt missing workspace policy %q:\n%s", want, got)
+		}
+	}
+}
+
 func TestDefaultToolsComesFromPluginManager(t *testing.T) {
 	a := newTestAgent(t)
 	a.Plugins.RegisterRuntimeTool(pluginmanager.RuntimeTool{

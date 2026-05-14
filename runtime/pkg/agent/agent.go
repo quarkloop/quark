@@ -23,6 +23,7 @@ import (
 	"github.com/quarkloop/runtime/pkg/pluginmanager"
 	"github.com/quarkloop/runtime/pkg/prompt"
 	"github.com/quarkloop/runtime/pkg/session"
+	"github.com/quarkloop/runtime/pkg/workspace"
 	supclient "github.com/quarkloop/supervisor/pkg/client"
 )
 
@@ -438,6 +439,10 @@ func (a *Agent) systemPrompt() string {
 	var b strings.Builder
 	b.WriteString(prompt.GetSystemPrompt())
 	if block := extraction.DefaultRegistry().PromptBlock(); block != "" {
+		b.WriteString("\n\n")
+		b.WriteString(block)
+	}
+	if block := workspace.PromptBlock(); block != "" {
 		b.WriteString("\n\n")
 		b.WriteString(block)
 	}
