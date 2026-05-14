@@ -71,8 +71,8 @@ func (s *Service) GetContext(ctx context.Context, query ContextQuery) (*ContextR
 	return &ContextResult{
 		ReasoningContext: ReasoningContext(chunks, graph),
 		Citations:        Citations(chunks),
-		Chunks:           chunks,
-		Graph:            graph,
+		Chunks:           cloneChunks(chunks),
+		Graph:            cloneGraphFragment(graph),
 	}, nil
 }
 
@@ -239,5 +239,32 @@ func cloneMetadata(in map[string]string) map[string]string {
 	for k, v := range in {
 		out[k] = v
 	}
+	return out
+}
+
+func cloneChunks(in []indexer.Chunk) []indexer.Chunk {
+	out := make([]indexer.Chunk, len(in))
+	for i, chunk := range in {
+		out[i] = indexer.Chunk{
+			ID:       chunk.ID,
+			Text:     chunk.Text,
+			Vector:   cloneVector(chunk.Vector),
+			Metadata: cloneMetadata(chunk.Metadata),
+			Score:    chunk.Score,
+		}
+	}
+	return out
+}
+
+func cloneGraphFragment(in *indexer.GraphFragment) *indexer.GraphFragment {
+	if in == nil {
+		return nil
+	}
+	out := &indexer.GraphFragment{
+		Nodes: make([]indexer.GraphNode, len(in.Nodes)),
+		Edges: make([]indexer.GraphEdge, len(in.Edges)),
+	}
+	copy(out.Nodes, in.Nodes)
+	copy(out.Edges, in.Edges)
 	return out
 }

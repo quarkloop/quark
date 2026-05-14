@@ -40,7 +40,7 @@ func (s *Server) handleCreateSpace(c *fiber.Ctx) error {
 		return writeError(c, fiber.StatusBadRequest, "working_dir is required")
 	}
 
-	sp, err := s.store.Create(req.Name, req.Quarkfile, req.WorkingDir)
+	sp, err := s.store.Create(req.Name, cloneBytes(req.Quarkfile), req.WorkingDir)
 	if err != nil {
 		switch {
 		case errors.Is(err, store.ErrAlreadyExists):
@@ -105,7 +105,7 @@ func (s *Server) handleUpdateQuarkfile(c *fiber.Ctx) error {
 	if len(req.Quarkfile) == 0 {
 		return writeError(c, fiber.StatusBadRequest, "quarkfile is required")
 	}
-	sp, err := s.store.UpdateQuarkfile(name, req.Quarkfile)
+	sp, err := s.store.UpdateQuarkfile(name, cloneBytes(req.Quarkfile))
 	if err != nil {
 		return s.writeSpaceError(c, name, err)
 	}

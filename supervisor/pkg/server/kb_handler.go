@@ -38,7 +38,7 @@ func (s *Server) handleKBSet(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return writeError(c, fiber.StatusBadRequest, "invalid JSON body")
 	}
-	if err := store.Set(c.Params("namespace"), c.Params("key"), req.Value); err != nil {
+	if err := store.Set(c.Params("namespace"), c.Params("key"), cloneBytes(req.Value)); err != nil {
 		return writeError(c, fiber.StatusInternalServerError, err.Error())
 	}
 	return c.SendStatus(fiber.StatusNoContent)
