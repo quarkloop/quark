@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -103,5 +104,57 @@ func TestInferPropagatesProviderError(t *testing.T) {
 	_, err := client.Infer(context.Background(), nil, nil, nil, nil, nil)
 	if !errors.Is(err, want) {
 		t.Fatalf("expected provider error %v, got %v", want, err)
+	}
+}
+
+func TestInferStreamsTraceableToolEvents(t *testing.T) {
+	provider := fakeProvider{
+		stream: func(context.Context, *plugin.ChatRequest) (<-chan plugin.StreamEvent, error) {
+			ch := make(chan plugin.StreamEvent, 2)
+			ch <- plugin.StreamEvent{
+				ToolCalls: []plugin.ToolCall{{
+					Index: 0,
+					ID:    "call-1",
+					Type:  "function",
+					Function: plugin.ToolCallFunction{
+						Name:      "indexer_IndexDocument",
+						Arguments: `{"chunkId":"chunk-1"}`,
+					},
+				}},
+			}
+			ch <- plugin.StreamEvent{Done: true}
+			close(ch)
+			return ch, nil
+		},
+	}
+	client := NewClientWithLimits(provider, "test-model", 0, InferenceLimits{MaxTurns: 1, MaxFinalGuardRetries: 1})
+
+	var events []map[string]any
+	_, err := client.Infer(
+		context.Background(),
+		[]plugin.Message{{Role: "user", Content: "index"}},
+		[]plugin.ToolSchema{{Name: "indexer_IndexDocument"}},
+		func(context.Context, string, string) (string, error) { return "", fmt.Errorf("write failed") },
+		func(kind string, data any) {
+			payload, ok := data.(map[string]any)
+			if !ok {
+				t.Fatalf("event %s payload type = %T", kind, data)
+			}
+			payload["kind"] = kind
+			events = append(events, payload)
+		},
+		nil,
+	)
+	if err == nil || !strings.Contains(err.Error(), "exceeded 1 model turns") {
+		t.Fatalf("expected bounded loop error after tool result, got %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("events = %+v, want start and result", events)
+	}
+	if events[0]["kind"] != "tool_start" || events[0]["id"] != "call-1" || events[0]["name"] != "indexer_IndexDocument" {
+		t.Fatalf("tool start event not traceable: %+v", events[0])
+	}
+	if events[1]["kind"] != "tool_result" || events[1]["id"] != "call-1" || events[1]["error"] != true {
+		t.Fatalf("tool result event not traceable: %+v", events[1])
 	}
 }

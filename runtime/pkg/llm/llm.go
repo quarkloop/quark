@@ -154,22 +154,30 @@ func (c *Client) Infer(ctx context.Context, messages []plugin.Message, tools []p
 		})
 
 		// Execute each tool and append results
-		for _, tc := range toolCalls {
+		for i, tc := range toolCalls {
+			callID := strings.TrimSpace(tc.ID)
+			if callID == "" {
+				callID = fmt.Sprintf("%s-%d", tc.Function.Name, i+1)
+			}
 			if onMessage != nil {
-				onMessage("tool_start", map[string]string{
+				onMessage("tool_start", map[string]any{
+					"id":        callID,
 					"name":      tc.Function.Name,
 					"arguments": tc.Function.Arguments,
 				})
 			}
 
 			result, err := onTool(ctx, tc.Function.Name, tc.Function.Arguments)
+			toolErr := err != nil
 			if err != nil {
 				result = fmt.Sprintf("error: %v", err)
 			}
 			if onMessage != nil {
-				onMessage("tool_result", map[string]string{
+				onMessage("tool_result", map[string]any{
+					"id":     callID,
 					"name":   tc.Function.Name,
 					"result": preview(result, 2000),
+					"error":  toolErr,
 				})
 			}
 			messages = append(messages, plugin.Message{

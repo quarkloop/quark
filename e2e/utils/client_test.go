@@ -16,10 +16,10 @@ func TestReadMessageTraceParsesTokensAndTools(t *testing.T) {
 		`data: "hello"`,
 		"",
 		"event: tool_start",
-		`data: {"name":"embedding_Embed","arguments":"{}"}`,
+		`data: {"id":"call-1","name":"embedding_Embed","arguments":"{}"}`,
 		"",
 		"event: tool_result",
-		`data: {"name":"embedding_Embed","result":"{\"embeddingRef\":\"ref\"}"}`,
+		`data: {"id":"call-1","name":"embedding_Embed","result":"{\"embeddingRef\":\"ref\"}","error":false}`,
 		"",
 	}, "\n"))
 
@@ -39,8 +39,14 @@ func TestReadMessageTraceParsesTokensAndTools(t *testing.T) {
 	if len(trace.ToolStarts) != 1 || trace.ToolStarts[0] != "embedding_Embed" {
 		t.Fatalf("tool starts = %v", trace.ToolStarts)
 	}
+	if trace.ToolStartEvents[0].CallID != "call-1" {
+		t.Fatalf("tool start call id = %q", trace.ToolStartEvents[0].CallID)
+	}
 	if len(trace.ToolResults) != 1 || trace.ToolResults[0] != "embedding_Embed" {
 		t.Fatalf("tool results = %v", trace.ToolResults)
+	}
+	if trace.ToolResultEvents[0].CallID != "call-1" || trace.ToolResultEvents[0].Error {
+		t.Fatalf("tool result event = %+v", trace.ToolResultEvents[0])
 	}
 }
 

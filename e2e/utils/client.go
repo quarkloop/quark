@@ -35,9 +35,11 @@ type MessageTrace struct {
 }
 
 type ToolEvent struct {
-	Name      string
-	Arguments string
-	Result    string
+	CallID    string `json:"id,omitempty"`
+	Name      string `json:"name"`
+	Arguments string `json:"arguments,omitempty"`
+	Result    string `json:"result,omitempty"`
+	Error     bool   `json:"error,omitempty"`
 }
 
 // MessageTraceOptions bounds one streamed agent response and controls failure
