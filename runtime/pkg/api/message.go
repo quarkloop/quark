@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 
@@ -16,6 +17,8 @@ type MessageHandler struct {
 	poster   message.Poster
 	sessions message.SessionAccess
 }
+
+const messageStreamHeartbeatInterval = 15 * time.Second
 
 // NewMessageHandler creates a new MessageHandler.
 func NewMessageHandler(p message.Poster, sa message.SessionAccess) *MessageHandler {
@@ -66,6 +69,8 @@ func (h *MessageHandler) Send(c *fiber.Ctx) error {
 	ctx.SetBodyStreamWriter(func(w *bufio.Writer) {
 		defer cancelPost()
 		enc := json.NewEncoder(w)
+		heartbeat := time.NewTicker(messageStreamHeartbeatInterval)
+		defer heartbeat.Stop()
 		for {
 			select {
 			case msgData, ok := <-resp:
@@ -81,6 +86,9 @@ func (h *MessageHandler) Send(c *fiber.Ctx) error {
 					return
 				}
 				fmt.Fprint(w, "\n")
+				w.Flush()
+			case <-heartbeat.C:
+				fmt.Fprint(w, ": heartbeat\n\n")
 				w.Flush()
 			case <-ctx.Done():
 				cancelPost()
@@ -110,6 +118,8 @@ func (h *MessageHandler) Stream(c *fiber.Ctx) error {
 	ctx := c.Context()
 	ctx.SetBodyStreamWriter(func(w *bufio.Writer) {
 		enc := json.NewEncoder(w)
+		heartbeat := time.NewTicker(messageStreamHeartbeatInterval)
+		defer heartbeat.Stop()
 		for {
 			select {
 			case msg, ok := <-ch:
@@ -121,6 +131,9 @@ func (h *MessageHandler) Stream(c *fiber.Ctx) error {
 					return
 				}
 				fmt.Fprint(w, "\n")
+				w.Flush()
+			case <-heartbeat.C:
+				fmt.Fprint(w, ": heartbeat\n\n")
 				w.Flush()
 			case <-ctx.Done():
 				return
