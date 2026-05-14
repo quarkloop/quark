@@ -11,6 +11,7 @@ import (
 
 	event "github.com/quarkloop/pkg/event"
 	"github.com/quarkloop/pkg/plugin"
+	"github.com/quarkloop/runtime/pkg/activity"
 	"github.com/quarkloop/runtime/pkg/channel"
 	"github.com/quarkloop/runtime/pkg/execution"
 	"github.com/quarkloop/runtime/pkg/extraction"
@@ -61,6 +62,7 @@ type Agent struct {
 	Models   *llm.Registry
 	Plugins  *pluginmanager.Manager
 	Bus      *channel.ChannelBus
+	Activity *activity.Store
 	config   Config
 
 	// Hierarchy management
@@ -119,6 +121,7 @@ func NewAgent(cfg Config) (*Agent, error) {
 		Plan:        plan.New(),
 		Models:      llm.NewRegistry(),
 		Plugins:     pluginmanager.NewManager(pluginsDir),
+		Activity:    activity.NewStore(1000),
 		config:      cfg,
 		agents:      agentRegistry,
 		delegator:   hierarchy.NewDelegator(agentRegistry),
@@ -283,6 +286,15 @@ func (a *Agent) handleUserMessage(ctx context.Context, msg loop.Message) error {
 	defer cancel()
 	stopRequestCancel := context.AfterFunc(userMsg.Context, cancel)
 	defer stopRequestCancel()
+	response := userMsg.Response
+	if a.Activity != nil {
+		a.Activity.Add(userMsg.SessionID, "message.user", map[string]any{
+			"content_length": len(userMsg.Content),
+		})
+		instrumented, stopForwarding := a.instrumentResponse(requestCtx, userMsg.SessionID, userMsg.Response)
+		response = instrumented
+		defer stopForwarding()
+	}
 
 	s := a.Sessions.Get(userMsg.SessionID)
 	if s == nil {
@@ -305,11 +317,16 @@ func (a *Agent) handleUserMessage(ctx context.Context, msg loop.Message) error {
 		a.Plan.GetSummary(),
 		a.defaultTools(),
 		a.executeTool,
-		userMsg.Response,
+		response,
 		a.finalGuard(),
 	)
 	if err != nil {
-		message.Emit(requestCtx, userMsg.Response, message.StreamMessage{
+		if a.Activity != nil {
+			a.Activity.Add(userMsg.SessionID, "message.error", map[string]any{
+				"error": err.Error(),
+			})
+		}
+		message.Emit(requestCtx, response, message.StreamMessage{
 			Type: "error",
 			Data: fmt.Sprintf("Agent Error: %v", err),
 		})
@@ -318,7 +335,12 @@ func (a *Agent) handleUserMessage(ctx context.Context, msg loop.Message) error {
 	if a.config.PendingRefs != nil {
 		if refs := a.config.PendingRefs(); len(refs) > 0 {
 			err := fmt.Errorf("runtime validation failed: pending embeddingRef values were not consumed: %s", strings.Join(refs, ", "))
-			message.Emit(requestCtx, userMsg.Response, message.StreamMessage{
+			if a.Activity != nil {
+				a.Activity.Add(userMsg.SessionID, "message.error", map[string]any{
+					"error": err.Error(),
+				})
+			}
+			message.Emit(requestCtx, response, message.StreamMessage{
 				Type: "error",
 				Data: fmt.Sprintf("Agent Error: %v", err),
 			})
@@ -327,7 +349,42 @@ func (a *Agent) handleUserMessage(ctx context.Context, msg loop.Message) error {
 	}
 
 	s.AddMessage("assistant", fullResponse)
+	if a.Activity != nil {
+		a.Activity.Add(userMsg.SessionID, "message.assistant", map[string]any{
+			"content_length": len(fullResponse),
+		})
+	}
 	return nil
+}
+
+func (a *Agent) instrumentResponse(ctx context.Context, sessionID string, downstream chan message.StreamMessage) (chan message.StreamMessage, func()) {
+	upstream := make(chan message.StreamMessage, 64)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for msg := range upstream {
+			a.recordStreamActivity(sessionID, msg)
+			if !message.Emit(ctx, downstream, msg) {
+				return
+			}
+		}
+	}()
+	return upstream, func() {
+		close(upstream)
+		<-done
+	}
+}
+
+func (a *Agent) recordStreamActivity(sessionID string, msg message.StreamMessage) {
+	if a.Activity == nil {
+		return
+	}
+	switch msg.Type {
+	case "tool_start", "tool_result":
+		a.Activity.Add(sessionID, msg.Type, msg.Data)
+	case "error":
+		a.Activity.Add(sessionID, "message.error", map[string]any{"error": fmt.Sprint(msg.Data)})
+	}
 }
 
 // handleInitLLM initializes or reinitializes LLM models.

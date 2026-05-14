@@ -1,6 +1,12 @@
 package api
 
-import "github.com/quarkloop/runtime/pkg/message"
+import (
+	"encoding/json"
+	"time"
+
+	"github.com/quarkloop/runtime/pkg/activity"
+	"github.com/quarkloop/runtime/pkg/message"
+)
 
 type errorResponse struct {
 	Error string `json:"error"`
@@ -46,4 +52,22 @@ type agentInfoResponse struct {
 type channelsResponse struct {
 	Active    any `json:"active"`
 	Available any `json:"available"`
+}
+
+type activityResponse struct {
+	ID        string          `json:"id"`
+	SessionID string          `json:"session_id,omitempty"`
+	Type      string          `json:"type"`
+	Timestamp time.Time       `json:"timestamp"`
+	Data      json.RawMessage `json:"data,omitempty"`
+}
+
+func mapActivityResponse(record activity.Record) activityResponse {
+	return activityResponse{
+		ID:        record.ID,
+		SessionID: record.SessionID,
+		Type:      record.Type,
+		Timestamp: record.Timestamp,
+		Data:      append(json.RawMessage(nil), record.Data...),
+	}
 }

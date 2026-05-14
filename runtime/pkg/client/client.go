@@ -108,7 +108,7 @@ func (c *Client) Plan(ctx context.Context) (*api.PlanResponse, error) {
 }
 
 func (c *Client) Activity(ctx context.Context, limit int) ([]api.ActivityRecord, error) {
-	path := c.path(api.PathActivity)
+	path := "/v1/activity"
 	if limit > 0 {
 		path = fmt.Sprintf("%s?limit=%d", path, limit)
 	}
@@ -132,16 +132,17 @@ func (c *Client) RejectPlan(ctx context.Context, planID string) error {
 }
 
 func (c *Client) StreamActivity(ctx context.Context, fn func(api.ActivityRecord)) error {
-	return c.transport.StreamSSE(ctx, c.path(api.PathActivityStream), func(chunk string) {
+	return c.transport.StreamSSEEvents(ctx, "/v1/activity/stream", func(event SSEEvent) error {
 		var record api.ActivityRecord
-		if err := json.Unmarshal([]byte(chunk), &record); err != nil {
+		if err := json.Unmarshal(event.Data, &record); err != nil {
 			fn(api.ActivityRecord{
 				Type: "stream.decode_error",
-				Data: mustRawJSON(map[string]string{"error": err.Error(), "chunk": chunk}),
+				Data: mustRawJSON(map[string]string{"error": err.Error(), "chunk": string(event.Data)}),
 			})
-			return
+			return nil
 		}
 		fn(record)
+		return nil
 	})
 }
 
