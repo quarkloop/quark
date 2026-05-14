@@ -216,8 +216,8 @@ func loadServiceCatalog() (*runtimeservices.Catalog, error) {
 func loadPluginCatalog() (*pluginmanager.Catalog, error) {
 	raw := strings.TrimSpace(os.Getenv("QUARK_RUNTIME_PLUGIN_CATALOG"))
 	if raw == "" {
-		slog.Info("no supervisor-resolved plugin catalog provided")
-		return nil, nil
+		slog.Info("no supervisor-resolved plugin catalog provided; using empty catalog")
+		return &pluginmanager.Catalog{}, nil
 	}
 	var catalog pluginmanager.Catalog
 	if err := json.Unmarshal([]byte(raw), &catalog); err != nil {

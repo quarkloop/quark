@@ -80,7 +80,7 @@ func NewManager(pluginsDir string) *Manager {
 
 // Initialize loads tool and provider plugins. When a supervisor-resolved catalog
 // is present, runtime loads exactly that catalog. Standalone runtimes can still
-// fall back to the local plugin directory.
+// register tools explicitly through a provided catalog or RegisterRuntimeTool.
 func (m *Manager) Initialize(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -88,12 +88,7 @@ func (m *Manager) Initialize(ctx context.Context) error {
 	if m.catalog != nil {
 		return m.loadCatalogLocked(ctx, *m.catalog)
 	}
-	if err := m.loadToolsLocked(ctx); err != nil {
-		return fmt.Errorf("load tools: %w", err)
-	}
-	if err := m.loadProvidersLocked(ctx); err != nil {
-		return fmt.Errorf("load providers: %w", err)
-	}
+	slog.Info("plugin manager initialized without catalog; local filesystem discovery disabled")
 	return nil
 }
 

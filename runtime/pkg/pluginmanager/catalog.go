@@ -16,9 +16,11 @@ type Catalog struct {
 }
 
 type CatalogPlugin struct {
-	Name string            `json:"name"`
-	Type plugin.PluginType `json:"type"`
-	Path string            `json:"path"`
+	Name   string             `json:"name"`
+	Type   plugin.PluginType  `json:"type"`
+	Path   string             `json:"path"`
+	Schema *plugin.ToolSchema `json:"schema,omitempty"`
+	Skill  string             `json:"skill,omitempty"`
 }
 
 func (c Catalog) Empty() bool {

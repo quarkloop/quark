@@ -26,9 +26,11 @@ type runtimePluginCatalog struct {
 }
 
 type runtimePluginCatalogEntry struct {
-	Name string `json:"name"`
-	Type string `json:"type"`
-	Path string `json:"path"`
+	Name   string             `json:"name"`
+	Type   string             `json:"type"`
+	Path   string             `json:"path"`
+	Schema *plugin.ToolSchema `json:"schema,omitempty"`
+	Skill  string             `json:"skill,omitempty"`
 }
 
 func (s *Server) runtimePluginCatalogEnv(ctx context.Context, space string) ([]string, error) {
@@ -45,11 +47,7 @@ func (s *Server) runtimePluginCatalogEnv(ctx context.Context, space string) ([]s
 	for _, item := range installed {
 		switch item.Manifest.Type {
 		case plugin.TypeTool, plugin.TypeProvider:
-			catalog.Plugins = append(catalog.Plugins, runtimePluginCatalogEntry{
-				Name: item.Manifest.Name,
-				Type: string(item.Manifest.Type),
-				Path: item.Path,
-			})
+			catalog.Plugins = append(catalog.Plugins, runtimePluginCatalogEntryFromInstalled(item))
 		}
 	}
 	payload, err := json.Marshal(catalog)
@@ -57,6 +55,28 @@ func (s *Server) runtimePluginCatalogEnv(ctx context.Context, space string) ([]s
 		return nil, fmt.Errorf("marshal runtime plugin catalog: %w", err)
 	}
 	return []string{runtimePluginCatalogEnv + "=" + string(payload)}, nil
+}
+
+func runtimePluginCatalogEntryFromInstalled(item pluginmanager.InstalledPlugin) runtimePluginCatalogEntry {
+	entry := runtimePluginCatalogEntry{
+		Name:  item.Manifest.Name,
+		Type:  string(item.Manifest.Type),
+		Path:  item.Path,
+		Skill: readPluginSkill(item.Path),
+	}
+	if item.Manifest.Tool != nil {
+		schema := item.Manifest.Tool.Schema
+		entry.Schema = &schema
+	}
+	return entry
+}
+
+func readPluginSkill(pluginDir string) string {
+	data, err := os.ReadFile(filepath.Join(pluginDir, "SKILL.md"))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
 }
 
 func (s *Server) runtimeServiceCatalogEnv(ctx context.Context, space string) ([]string, error) {
