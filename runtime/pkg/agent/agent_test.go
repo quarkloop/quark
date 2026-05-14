@@ -19,6 +19,17 @@ func TestSystemPromptIncludesConfiguredAddenda(t *testing.T) {
 	}
 }
 
+func TestSystemPromptIncludesRuntimeExtractionProfiles(t *testing.T) {
+	a := newTestAgent(t)
+
+	got := a.systemPrompt()
+	for _, want := range []string{"Runtime Extraction Profiles", "`generic-open`", "IndexRequest.facts"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("system prompt missing extraction profile content %q:\n%s", want, got)
+		}
+	}
+}
+
 func TestDefaultToolsComesFromPluginManager(t *testing.T) {
 	a := newTestAgent(t)
 	a.Plugins.RegisterRuntimeTool(pluginmanager.RuntimeTool{

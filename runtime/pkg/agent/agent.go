@@ -13,6 +13,7 @@ import (
 	"github.com/quarkloop/pkg/plugin"
 	"github.com/quarkloop/runtime/pkg/channel"
 	"github.com/quarkloop/runtime/pkg/execution"
+	"github.com/quarkloop/runtime/pkg/extraction"
 	"github.com/quarkloop/runtime/pkg/hierarchy"
 	"github.com/quarkloop/runtime/pkg/llm"
 	"github.com/quarkloop/runtime/pkg/loop"
@@ -436,6 +437,10 @@ func (a *Agent) defaultTools() []plugin.ToolSchema {
 func (a *Agent) systemPrompt() string {
 	var b strings.Builder
 	b.WriteString(prompt.GetSystemPrompt())
+	if block := extraction.DefaultRegistry().PromptBlock(); block != "" {
+		b.WriteString("\n\n")
+		b.WriteString(block)
+	}
 	for _, value := range a.config.PromptAddenda {
 		addendum := strings.TrimSpace(value)
 		if addendum == "" {
