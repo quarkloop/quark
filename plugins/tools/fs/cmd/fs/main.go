@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/quarkloop/plugins/tools/fs/pkg/fs"
 	"github.com/quarkloop/pkg/toolkit"
+	"github.com/quarkloop/plugins/tools/fs/pkg/fs"
 )
 
 func main() {

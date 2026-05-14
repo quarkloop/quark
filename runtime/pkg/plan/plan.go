@@ -62,7 +62,7 @@ func (wc *WorkContext) GetHistory() []plugin.Message {
 type Plan struct {
 	mu       sync.RWMutex
 	steps    []Step
-	status   string   // idle, active, paused, completed
+	status   string // idle, active, paused, completed
 	workCtx  WorkContext
 	nextStep chan struct{}
 }

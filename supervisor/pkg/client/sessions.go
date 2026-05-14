@@ -9,8 +9,8 @@ import (
 	"io"
 	"net/http"
 
-	api "github.com/quarkloop/supervisor/pkg/api"
 	event "github.com/quarkloop/pkg/event"
+	api "github.com/quarkloop/supervisor/pkg/api"
 )
 
 // SessionType is the type of a session.

@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	agentclient "github.com/quarkloop/runtime/pkg/client"
 	spacemodel "github.com/quarkloop/pkg/space"
+	agentclient "github.com/quarkloop/runtime/pkg/client"
 	supclient "github.com/quarkloop/supervisor/pkg/client"
 )
 

@@ -38,23 +38,23 @@ func NewRuntime(id, space, workingDir, pluginsDir string) *Runtime {
 
 // Getter methods
 
-func (r *Runtime) ID() string          { return r.id }
-func (r *Runtime) Space() string       { return r.space }
-func (r *Runtime) WorkingDir() string  { return r.workingDir }
-func (r *Runtime) PluginsDir() string { return r.pluginsDir }
+func (r *Runtime) ID() string                { return r.id }
+func (r *Runtime) Space() string             { return r.space }
+func (r *Runtime) WorkingDir() string        { return r.workingDir }
+func (r *Runtime) PluginsDir() string        { return r.pluginsDir }
 func (r *Runtime) Status() api.RuntimeStatus { return r.status }
-func (r *Runtime) PID() int           { return r.pid }
-func (r *Runtime) Port() int           { return r.port }
-func (r *Runtime) StartedAt() time.Time { return r.startedAt }
-func (r *Runtime) Cmd() *exec.Cmd      { return r.cmd }
+func (r *Runtime) PID() int                  { return r.pid }
+func (r *Runtime) Port() int                 { return r.port }
+func (r *Runtime) StartedAt() time.Time      { return r.startedAt }
+func (r *Runtime) Cmd() *exec.Cmd            { return r.cmd }
 
 // Mutator methods
 
-func (r *Runtime) SetCmd(cmd *exec.Cmd)      { r.cmd = cmd }
-func (r *Runtime) SetPID(pid int)               { r.pid = pid }
+func (r *Runtime) SetCmd(cmd *exec.Cmd)               { r.cmd = cmd }
+func (r *Runtime) SetPID(pid int)                     { r.pid = pid }
 func (r *Runtime) SetStatus(status api.RuntimeStatus) { r.status = status }
-func (r *Runtime) SetPort(port int)             { r.port = port }
-func (r *Runtime) SetStartedAt(t time.Time)     { r.startedAt = t }
+func (r *Runtime) SetPort(port int)                   { r.port = port }
+func (r *Runtime) SetStartedAt(t time.Time)           { r.startedAt = t }
 
 // RuntimeInfo returns an api.RuntimeInfo for API responses.
 func (r *Runtime) RuntimeInfo() api.RuntimeInfo {

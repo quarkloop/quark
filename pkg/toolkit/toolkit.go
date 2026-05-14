@@ -112,8 +112,8 @@ func LoadManifest() (*plugin.Manifest, error) {
 		callerDir := filepath.Dir(file)
 		candidates := []string{
 			filepath.Join(callerDir, "..", "..", "..", "manifest.yaml"), // from pkg/<tool>/tool.go
-			filepath.Join(callerDir, "..", "..", "manifest.yaml"),     // from pkg/<tool>/<file>.go
-			filepath.Join(callerDir, "..", "manifest.yaml"),           // from cmd/<tool>/main.go
+			filepath.Join(callerDir, "..", "..", "manifest.yaml"),       // from pkg/<tool>/<file>.go
+			filepath.Join(callerDir, "..", "manifest.yaml"),             // from cmd/<tool>/main.go
 		}
 		for _, p := range candidates {
 			if abs, err := filepath.Abs(p); err == nil {

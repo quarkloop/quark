@@ -253,7 +253,7 @@ func CompactIndex(contents []int, contextWindow int) int {
 		return 0
 	}
 
-		slog.Info("compaction triggered",
+	slog.Info("compaction triggered",
 		"messages", n, "chars", total, "budget", charBudget)
 
 	startIdx := n - 1
