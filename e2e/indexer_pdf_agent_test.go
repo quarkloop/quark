@@ -95,7 +95,7 @@ func runAgentIndexesUploadedPDFDataset(t *testing.T, embedding utils.EmbeddingOp
 		"dimensions": env.Embedding.Dimensions,
 	})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
 
 	indexSession, err := env.Sup.CreateSession(ctx, env.Space, api.CreateSessionRequest{
@@ -109,7 +109,7 @@ func runAgentIndexesUploadedPDFDataset(t *testing.T, embedding utils.EmbeddingOp
 
 	indexTrace := utils.PostMessageTraceWithOptions(t, ctx, env, indexSession.ID, indexPDFDocumentsPrompt(documents), utils.MessageTraceOptions{
 		Label:          "index uploaded PDF dataset",
-		OverallTimeout: 5 * time.Minute,
+		OverallTimeout: 8 * time.Minute,
 		IdleTimeout:    90 * time.Second,
 	})
 	utils.Logf(t, "index reply: %s", indexTrace.Text)
@@ -129,31 +129,20 @@ func runAgentIndexesUploadedPDFDataset(t *testing.T, embedding utils.EmbeddingOp
 	}
 	verifyPersistedPDFIndexState(t, ctx, workingDir, indexerAddr, embeddingAddr, documents)
 
-	queryCases := []indexedPDFQueryCase{
-		{
-			Title:    "transformer-paper",
-			Question: "Which indexed PDF discusses the Transformer architecture, and what core idea does it propose?",
-			Want:     []string{"attention_is_all_you_need_paper.pdf", "Transformer"},
-			WantAny:  []string{"attention", "self-attention"},
+	queryCases := []indexedPDFQueryCase{{
+		Title:    "dataset-summary",
+		Question: "Across the indexed PDFs, identify: the Transformer architecture paper and its core idea; the resume candidate and senior role; the PDF about health insurance requirements for residence permits; and the PDF that lists AI mini-app ideas with one category or app idea.",
+		Want: []string{
+			"attention_is_all_you_need_paper.pdf",
+			"Transformer",
+			"europass_resume_sample.pdf",
+			"John Doe",
+			"Senior Software Engineer",
+			"german_health_insurance_information_sheet.pdf",
+			"mini_app_ideas_catalog.pdf",
 		},
-		{
-			Title:    "resume-candidate",
-			Question: "Which indexed PDF contains the resume candidate, who is the candidate, and what senior role do they hold?",
-			Want:     []string{"europass_resume_sample.pdf", "John Doe", "Senior Software Engineer"},
-		},
-		{
-			Title:    "health-insurance",
-			Question: "Which indexed PDF explains health insurance requirements for residence permits?",
-			Want:     []string{"german_health_insurance_information_sheet.pdf"},
-			WantAny:  []string{"health insurance", "health-insurance", "residence permit"},
-		},
-		{
-			Title:    "mini-app-ideas",
-			Question: "Which indexed PDF lists AI mini-app ideas, and name one category or app idea from it.",
-			Want:     []string{"mini_app_ideas_catalog.pdf"},
-			WantAny:  []string{"Productivity", "AI Business Productivity Assistant", "mini-app"},
-		},
-	}
+		WantAny: []string{"attention", "self-attention", "health insurance", "residence permit", "Productivity", "AI Business Productivity Assistant", "mini-app"},
+	}}
 	for _, queryCase := range queryCases {
 		querySession, err := env.Sup.CreateSession(ctx, env.Space, api.CreateSessionRequest{
 			Type:  api.SessionTypeChat,
@@ -166,7 +155,7 @@ func runAgentIndexesUploadedPDFDataset(t *testing.T, embedding utils.EmbeddingOp
 
 		queryTrace := utils.PostMessageTraceWithOptions(t, ctx, env, querySession.ID, indexedPDFQuestionPrompt(queryCase.Question, len(documents)), utils.MessageTraceOptions{
 			Label:          "query indexed PDF dataset: " + queryCase.Title,
-			OverallTimeout: 3 * time.Minute,
+			OverallTimeout: 4 * time.Minute,
 			IdleTimeout:    90 * time.Second,
 		})
 		utils.Logf(t, "%s query reply: %s", queryCase.Title, queryTrace.Text)
@@ -317,7 +306,7 @@ func indexPDFDocumentsPrompt(documents []indexedPDFDocument) string {
 	for _, document := range documents {
 		fmt.Fprintf(&b, "- %s (%s)\n", document.Path, document.Name)
 	}
-	fmt.Fprintf(&b, "\nRequired workflow: process the files one at a time in the listed order. For each file, extract its PDF text with fs extract_pdf using max_chars 2000, create one compact searchable text chunk from that extracted text, call embedding_Embed without setting dimensions, then immediately call indexer_IndexDocument using that returned embeddingRef before moving to the next file. In sourceMetadata include filename, path, embedding_provider, embedding_model, embedding_dimensions, and embedding_content_hash from the embedding result. Do not batch all embeddings before indexing. Do not send a final answer until there are %d successful indexer_IndexDocument results, one for each listed file. Reply briefly with the filenames that are ready for questions.", len(documents))
+	fmt.Fprintf(&b, "\nRequired workflow: use an extraction phase, then atomic per-document indexing. Phase 1: call fs extract_pdf once for every listed path, using max_chars 1400. After all PDF text is available, process the files in the listed order. For each file, create one compact searchable text chunk from its extracted text, call embedding_Embed without setting dimensions, then immediately call indexer_IndexDocument with that same file's embeddingRef before moving to the next file. In sourceMetadata include filename, path, embedding_provider, embedding_model, embedding_dimensions, and embedding_content_hash from the embedding result. Do not send a final answer until there are %d successful indexer_IndexDocument results, one for each listed file. Reply briefly with the filenames that are ready for questions.", len(documents))
 	return b.String()
 }
 

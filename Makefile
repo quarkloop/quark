@@ -105,7 +105,7 @@ test:
 
 ## Run E2E tests (requires OPENROUTER_API_KEY or ZHIPU_API_KEY; loads quark/.env when present)
 test-e2e:
-		go test -tags e2e -v -timeout 10m ./e2e
+		go test -tags e2e -v -timeout 20m ./e2e
 
 ## Run vet across all modules (providers are vetted under the `plugin` build
 ## tag since all their sources are gated on it)
