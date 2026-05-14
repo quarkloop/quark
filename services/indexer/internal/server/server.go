@@ -41,6 +41,7 @@ func (s *Server) GetContext(ctx context.Context, req *indexerv1.QueryRequest) (*
 		Citations:        result.Citations,
 		Chunks:           toProtoChunks(result.Chunks),
 		Graph:            toProtoGraph(result.Graph),
+		ContextPackage:   toProtoContextPackage(result.Package),
 	}, nil
 }
 
@@ -131,6 +132,30 @@ func toProtoProvenance(provenance indexer.Provenance) *indexerv1.Provenance {
 		ProducedBy: provenance.ProducedBy,
 		TraceId:    provenance.TraceID,
 		Metadata:   cloneMap(provenance.Metadata),
+	}
+}
+
+func toProtoProvenanceList(provenance []indexer.Provenance) []*indexerv1.Provenance {
+	out := make([]*indexerv1.Provenance, 0, len(provenance))
+	for _, item := range provenance {
+		if proto := toProtoProvenance(item); proto != nil {
+			out = append(out, proto)
+		}
+	}
+	return out
+}
+
+func toProtoContextPackage(pkg indexer.ContextPackage) *indexerv1.ContextPackage {
+	if len(pkg.Chunks) == 0 && len(pkg.Facts) == 0 && len(pkg.Citations) == 0 && len(pkg.Provenance) == 0 && pkg.Graph == nil && pkg.Confidence == 0 {
+		return nil
+	}
+	return &indexerv1.ContextPackage{
+		Chunks:     toProtoChunks(pkg.Chunks),
+		Facts:      toProtoFacts(pkg.Facts),
+		Citations:  toProtoCitations(pkg.Citations),
+		Provenance: toProtoProvenanceList(pkg.Provenance),
+		Graph:      toProtoGraph(pkg.Graph),
+		Confidence: pkg.Confidence,
 	}
 }
 

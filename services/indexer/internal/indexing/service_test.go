@@ -15,8 +15,10 @@ func TestGetContextReturnsOwnedCopies(t *testing.T) {
 			Vector:            []float32{0.1, 0.2},
 			Metadata:          map[string]string{"source": "fixture.pdf"},
 			EmbeddingMetadata: indexer.EmbeddingMetadata{Provider: "local", Model: "local-hash-v1", Dimensions: 2},
+			Facts:             []indexer.Fact{{ID: "fact-1", Subject: "Quark", Predicate: "stores", Object: "context", Confidence: 0.8}},
 			Citations:         []indexer.Citation{{SourceURI: "fixture.pdf", ChunkID: "chunk-1"}},
 			Provenance:        indexer.Provenance{SourceURI: "fixture.pdf", Metadata: map[string]string{"trace": "t1"}},
+			Score:             1.2,
 		}},
 		graph: &indexer.GraphFragment{
 			Nodes: []indexer.GraphNode{{ID: "n1", Label: "Node", Type: "THING"}},
@@ -37,6 +39,9 @@ func TestGetContextReturnsOwnedCopies(t *testing.T) {
 	result.Chunks[0].Metadata["source"] = "mutated"
 	result.Chunks[0].Citations[0].SourceURI = "mutated"
 	result.Chunks[0].Provenance.Metadata["trace"] = "mutated"
+	result.Package.Chunks[0].Text = "mutated"
+	result.Package.Facts[0].Object = "mutated"
+	result.Package.Provenance[0].Metadata["trace"] = "mutated"
 	result.Graph.Nodes[0].Label = "mutated"
 	result.Graph.Edges[0].Relation = "mutated"
 
@@ -52,11 +57,20 @@ func TestGetContextReturnsOwnedCopies(t *testing.T) {
 	if store.chunks[0].Provenance.Metadata["trace"] != "t1" {
 		t.Fatalf("chunk provenance was mutated through result: %+v", store.chunks[0].Provenance)
 	}
+	if store.chunks[0].Facts[0].Object != "context" {
+		t.Fatalf("chunk facts were mutated through package: %+v", store.chunks[0].Facts)
+	}
 	if store.graph.Nodes[0].Label != "Node" {
 		t.Fatalf("graph node was mutated through result: %+v", store.graph.Nodes[0])
 	}
 	if store.graph.Edges[0].Relation != "related" {
 		t.Fatalf("graph edge was mutated through result: %+v", store.graph.Edges[0])
+	}
+	if result.Chunks[0].Score != 1 {
+		t.Fatalf("score was not normalized to [0,1]: %f", result.Chunks[0].Score)
+	}
+	if result.Package.Confidence != 1 {
+		t.Fatalf("context package confidence = %f, want 1", result.Package.Confidence)
 	}
 }
 
@@ -124,6 +138,45 @@ func TestIndexDocumentRejectsEmbeddingDimensionMismatch(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected validation error")
+	}
+}
+
+func TestBuildContextPackageDeduplicatesEvidence(t *testing.T) {
+	chunks := []indexer.Chunk{
+		{
+			ID:    "chunk-1",
+			Text:  "alpha",
+			Score: 0.2,
+			Facts: []indexer.Fact{{
+				ID:         "fact-1",
+				Subject:    "A",
+				Predicate:  "mentions",
+				Object:     "B",
+				Confidence: 0.7,
+			}},
+			Citations:  []indexer.Citation{{ID: "cite-1", SourceURI: "source.pdf", ChunkID: "chunk-1"}},
+			Provenance: indexer.Provenance{SourceURI: "source.pdf", TraceID: "trace-1", Metadata: map[string]string{"source": "source.pdf"}},
+		},
+		{
+			ID:         "chunk-2",
+			Text:       "beta",
+			Score:      0.8,
+			Facts:      []indexer.Fact{{ID: "fact-1", Subject: "A", Predicate: "mentions", Object: "B"}},
+			Citations:  []indexer.Citation{{ID: "cite-1", SourceURI: "source.pdf", ChunkID: "chunk-1"}},
+			Provenance: indexer.Provenance{SourceURI: "source.pdf", TraceID: "trace-1"},
+		},
+	}
+
+	pkg := BuildContextPackage(chunks, &indexer.GraphFragment{Nodes: []indexer.GraphNode{{ID: "A"}}})
+	if len(pkg.Chunks) != 2 || len(pkg.Facts) != 1 || len(pkg.Citations) != 1 || len(pkg.Provenance) != 1 {
+		t.Fatalf("unexpected context package: %+v", pkg)
+	}
+	if pkg.Confidence != 0.5 {
+		t.Fatalf("confidence = %f, want 0.5", pkg.Confidence)
+	}
+	pkg.Provenance[0].Metadata["source"] = "mutated"
+	if chunks[0].Provenance.Metadata["source"] != "source.pdf" {
+		t.Fatalf("context package leaked provenance metadata backing map")
 	}
 }
 

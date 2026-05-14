@@ -64,6 +64,7 @@ func (s *Service) GetContext(ctx context.Context, query ContextQuery) (*ContextR
 	if len(chunks) == 0 {
 		return &ContextResult{}, nil
 	}
+	chunks = normalizeScores(chunks)
 
 	graph, err := s.store.GetNeighborhood(ctx, chunks[0].ID, query.Depth)
 	if err != nil {
@@ -74,6 +75,7 @@ func (s *Service) GetContext(ctx context.Context, query ContextQuery) (*ContextR
 		Citations:        Citations(chunks),
 		Chunks:           cloneChunks(chunks),
 		Graph:            cloneGraphFragment(graph),
+		Package:          BuildContextPackage(chunks, graph),
 	}, nil
 }
 
@@ -489,5 +491,24 @@ func cloneGraphFragment(in *indexer.GraphFragment) *indexer.GraphFragment {
 	}
 	copy(out.Nodes, in.Nodes)
 	copy(out.Edges, in.Edges)
+	return out
+}
+
+func cloneContextPackage(in indexer.ContextPackage) indexer.ContextPackage {
+	return indexer.ContextPackage{
+		Chunks:     cloneChunks(in.Chunks),
+		Facts:      cloneFacts(in.Facts),
+		Citations:  cloneCitations(in.Citations),
+		Provenance: cloneProvenanceList(in.Provenance),
+		Graph:      cloneGraphFragment(in.Graph),
+		Confidence: in.Confidence,
+	}
+}
+
+func cloneProvenanceList(in []indexer.Provenance) []indexer.Provenance {
+	out := make([]indexer.Provenance, len(in))
+	for i, provenance := range in {
+		out[i] = cloneProvenance(provenance)
+	}
 	return out
 }

@@ -101,6 +101,7 @@ message ContextResponse {
   repeated string citations = 2;
   repeated Chunk chunks = 3;
   GraphFragment graph = 4;
+  ContextPackage context_package = 5;
 }
 
 message Chunk {
@@ -130,4 +131,13 @@ message GraphEdge {
 message GraphFragment {
   repeated GraphNode nodes = 1;
   repeated GraphEdge edges = 2;
+}
+
+message ContextPackage {
+  repeated Chunk chunks = 1;
+  repeated Fact facts = 2;
+  repeated Citation citations = 3;
+  repeated Provenance provenance = 4;
+  GraphFragment graph = 5;
+  float confidence = 6;
 }

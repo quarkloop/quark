@@ -811,6 +811,7 @@ type ContextResponse struct {
 	Citations        []string               `protobuf:"bytes,2,rep,name=citations,proto3" json:"citations,omitempty"`
 	Chunks           []*Chunk               `protobuf:"bytes,3,rep,name=chunks,proto3" json:"chunks,omitempty"`
 	Graph            *GraphFragment         `protobuf:"bytes,4,opt,name=graph,proto3" json:"graph,omitempty"`
+	ContextPackage   *ContextPackage        `protobuf:"bytes,5,opt,name=context_package,json=contextPackage,proto3" json:"context_package,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -869,6 +870,13 @@ func (x *ContextResponse) GetChunks() []*Chunk {
 func (x *ContextResponse) GetGraph() *GraphFragment {
 	if x != nil {
 		return x.Graph
+	}
+	return nil
+}
+
+func (x *ContextResponse) GetContextPackage() *ContextPackage {
+	if x != nil {
+		return x.ContextPackage
 	}
 	return nil
 }
@@ -1153,6 +1161,90 @@ func (x *GraphFragment) GetEdges() []*GraphEdge {
 	return nil
 }
 
+type ContextPackage struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Chunks        []*Chunk               `protobuf:"bytes,1,rep,name=chunks,proto3" json:"chunks,omitempty"`
+	Facts         []*Fact                `protobuf:"bytes,2,rep,name=facts,proto3" json:"facts,omitempty"`
+	Citations     []*Citation            `protobuf:"bytes,3,rep,name=citations,proto3" json:"citations,omitempty"`
+	Provenance    []*Provenance          `protobuf:"bytes,4,rep,name=provenance,proto3" json:"provenance,omitempty"`
+	Graph         *GraphFragment         `protobuf:"bytes,5,opt,name=graph,proto3" json:"graph,omitempty"`
+	Confidence    float32                `protobuf:"fixed32,6,opt,name=confidence,proto3" json:"confidence,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ContextPackage) Reset() {
+	*x = ContextPackage{}
+	mi := &file_quark_indexer_v1_indexer_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ContextPackage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ContextPackage) ProtoMessage() {}
+
+func (x *ContextPackage) ProtoReflect() protoreflect.Message {
+	mi := &file_quark_indexer_v1_indexer_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ContextPackage.ProtoReflect.Descriptor instead.
+func (*ContextPackage) Descriptor() ([]byte, []int) {
+	return file_quark_indexer_v1_indexer_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *ContextPackage) GetChunks() []*Chunk {
+	if x != nil {
+		return x.Chunks
+	}
+	return nil
+}
+
+func (x *ContextPackage) GetFacts() []*Fact {
+	if x != nil {
+		return x.Facts
+	}
+	return nil
+}
+
+func (x *ContextPackage) GetCitations() []*Citation {
+	if x != nil {
+		return x.Citations
+	}
+	return nil
+}
+
+func (x *ContextPackage) GetProvenance() []*Provenance {
+	if x != nil {
+		return x.Provenance
+	}
+	return nil
+}
+
+func (x *ContextPackage) GetGraph() *GraphFragment {
+	if x != nil {
+		return x.Graph
+	}
+	return nil
+}
+
+func (x *ContextPackage) GetConfidence() float32 {
+	if x != nil {
+		return x.Confidence
+	}
+	return 0
+}
+
 var File_quark_indexer_v1_indexer_proto protoreflect.FileDescriptor
 
 const file_quark_indexer_v1_indexer_proto_rawDesc = "" +
@@ -1252,12 +1344,13 @@ const file_quark_indexer_v1_indexer_proto_rawDesc = "" +
 	"\afilters\x18\x04 \x03(\v2+.quark.indexer.v1.QueryRequest.FiltersEntryR\afilters\x1a:\n" +
 	"\fFiltersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xc4\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x8f\x02\n" +
 	"\x0fContextResponse\x12+\n" +
 	"\x11reasoning_context\x18\x01 \x01(\tR\x10reasoningContext\x12\x1c\n" +
 	"\tcitations\x18\x02 \x03(\tR\tcitations\x12/\n" +
 	"\x06chunks\x18\x03 \x03(\v2\x17.quark.indexer.v1.ChunkR\x06chunks\x125\n" +
-	"\x05graph\x18\x04 \x01(\v2\x1f.quark.indexer.v1.GraphFragmentR\x05graph\"\xf3\x03\n" +
+	"\x05graph\x18\x04 \x01(\v2\x1f.quark.indexer.v1.GraphFragmentR\x05graph\x12I\n" +
+	"\x0fcontext_package\x18\x05 \x01(\v2 .quark.indexer.v1.ContextPackageR\x0econtextPackage\"\xf3\x03\n" +
 	"\x05Chunk\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04text\x18\x02 \x01(\tR\x04text\x12\x14\n" +
@@ -1283,7 +1376,18 @@ const file_quark_indexer_v1_indexer_proto_rawDesc = "" +
 	"\brelation\x18\x03 \x01(\tR\brelation\"u\n" +
 	"\rGraphFragment\x121\n" +
 	"\x05nodes\x18\x01 \x03(\v2\x1b.quark.indexer.v1.GraphNodeR\x05nodes\x121\n" +
-	"\x05edges\x18\x02 \x03(\v2\x1b.quark.indexer.v1.GraphEdgeR\x05edges2\xb1\x01\n" +
+	"\x05edges\x18\x02 \x03(\v2\x1b.quark.indexer.v1.GraphEdgeR\x05edges\"\xbe\x02\n" +
+	"\x0eContextPackage\x12/\n" +
+	"\x06chunks\x18\x01 \x03(\v2\x17.quark.indexer.v1.ChunkR\x06chunks\x12,\n" +
+	"\x05facts\x18\x02 \x03(\v2\x16.quark.indexer.v1.FactR\x05facts\x128\n" +
+	"\tcitations\x18\x03 \x03(\v2\x1a.quark.indexer.v1.CitationR\tcitations\x12<\n" +
+	"\n" +
+	"provenance\x18\x04 \x03(\v2\x1c.quark.indexer.v1.ProvenanceR\n" +
+	"provenance\x125\n" +
+	"\x05graph\x18\x05 \x01(\v2\x1f.quark.indexer.v1.GraphFragmentR\x05graph\x12\x1e\n" +
+	"\n" +
+	"confidence\x18\x06 \x01(\x02R\n" +
+	"confidence2\xb1\x01\n" +
 	"\x0eIndexerService\x12N\n" +
 	"\rIndexDocument\x12\x1e.quark.indexer.v1.IndexRequest\x1a\x1d.quark.indexer.v1.IndexStatus\x12O\n" +
 	"\n" +
@@ -1301,7 +1405,7 @@ func file_quark_indexer_v1_indexer_proto_rawDescGZIP() []byte {
 	return file_quark_indexer_v1_indexer_proto_rawDescData
 }
 
-var file_quark_indexer_v1_indexer_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
+var file_quark_indexer_v1_indexer_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
 var file_quark_indexer_v1_indexer_proto_goTypes = []any{
 	(*IndexRequest)(nil),      // 0: quark.indexer.v1.IndexRequest
 	(*Document)(nil),          // 1: quark.indexer.v1.Document
@@ -1318,46 +1422,53 @@ var file_quark_indexer_v1_indexer_proto_goTypes = []any{
 	(*GraphNode)(nil),         // 12: quark.indexer.v1.GraphNode
 	(*GraphEdge)(nil),         // 13: quark.indexer.v1.GraphEdge
 	(*GraphFragment)(nil),     // 14: quark.indexer.v1.GraphFragment
-	nil,                       // 15: quark.indexer.v1.IndexRequest.SourceMetadataEntry
-	nil,                       // 16: quark.indexer.v1.Document.MetadataEntry
-	nil,                       // 17: quark.indexer.v1.Fact.MetadataEntry
-	nil,                       // 18: quark.indexer.v1.Provenance.MetadataEntry
-	nil,                       // 19: quark.indexer.v1.QueryRequest.FiltersEntry
-	nil,                       // 20: quark.indexer.v1.Chunk.MetadataEntry
+	(*ContextPackage)(nil),    // 15: quark.indexer.v1.ContextPackage
+	nil,                       // 16: quark.indexer.v1.IndexRequest.SourceMetadataEntry
+	nil,                       // 17: quark.indexer.v1.Document.MetadataEntry
+	nil,                       // 18: quark.indexer.v1.Fact.MetadataEntry
+	nil,                       // 19: quark.indexer.v1.Provenance.MetadataEntry
+	nil,                       // 20: quark.indexer.v1.QueryRequest.FiltersEntry
+	nil,                       // 21: quark.indexer.v1.Chunk.MetadataEntry
 }
 var file_quark_indexer_v1_indexer_proto_depIdxs = []int32{
 	3,  // 0: quark.indexer.v1.IndexRequest.entities:type_name -> quark.indexer.v1.Entity
 	4,  // 1: quark.indexer.v1.IndexRequest.relations:type_name -> quark.indexer.v1.Relation
-	15, // 2: quark.indexer.v1.IndexRequest.source_metadata:type_name -> quark.indexer.v1.IndexRequest.SourceMetadataEntry
+	16, // 2: quark.indexer.v1.IndexRequest.source_metadata:type_name -> quark.indexer.v1.IndexRequest.SourceMetadataEntry
 	1,  // 3: quark.indexer.v1.IndexRequest.document:type_name -> quark.indexer.v1.Document
 	2,  // 4: quark.indexer.v1.IndexRequest.embedding_metadata:type_name -> quark.indexer.v1.EmbeddingMetadata
 	5,  // 5: quark.indexer.v1.IndexRequest.facts:type_name -> quark.indexer.v1.Fact
 	6,  // 6: quark.indexer.v1.IndexRequest.citations:type_name -> quark.indexer.v1.Citation
 	7,  // 7: quark.indexer.v1.IndexRequest.provenance:type_name -> quark.indexer.v1.Provenance
-	16, // 8: quark.indexer.v1.Document.metadata:type_name -> quark.indexer.v1.Document.MetadataEntry
+	17, // 8: quark.indexer.v1.Document.metadata:type_name -> quark.indexer.v1.Document.MetadataEntry
 	6,  // 9: quark.indexer.v1.Fact.citations:type_name -> quark.indexer.v1.Citation
-	17, // 10: quark.indexer.v1.Fact.metadata:type_name -> quark.indexer.v1.Fact.MetadataEntry
-	18, // 11: quark.indexer.v1.Provenance.metadata:type_name -> quark.indexer.v1.Provenance.MetadataEntry
-	19, // 12: quark.indexer.v1.QueryRequest.filters:type_name -> quark.indexer.v1.QueryRequest.FiltersEntry
+	18, // 10: quark.indexer.v1.Fact.metadata:type_name -> quark.indexer.v1.Fact.MetadataEntry
+	19, // 11: quark.indexer.v1.Provenance.metadata:type_name -> quark.indexer.v1.Provenance.MetadataEntry
+	20, // 12: quark.indexer.v1.QueryRequest.filters:type_name -> quark.indexer.v1.QueryRequest.FiltersEntry
 	11, // 13: quark.indexer.v1.ContextResponse.chunks:type_name -> quark.indexer.v1.Chunk
 	14, // 14: quark.indexer.v1.ContextResponse.graph:type_name -> quark.indexer.v1.GraphFragment
-	20, // 15: quark.indexer.v1.Chunk.metadata:type_name -> quark.indexer.v1.Chunk.MetadataEntry
-	1,  // 16: quark.indexer.v1.Chunk.document:type_name -> quark.indexer.v1.Document
-	2,  // 17: quark.indexer.v1.Chunk.embedding_metadata:type_name -> quark.indexer.v1.EmbeddingMetadata
-	5,  // 18: quark.indexer.v1.Chunk.facts:type_name -> quark.indexer.v1.Fact
-	6,  // 19: quark.indexer.v1.Chunk.citations:type_name -> quark.indexer.v1.Citation
-	7,  // 20: quark.indexer.v1.Chunk.provenance:type_name -> quark.indexer.v1.Provenance
-	12, // 21: quark.indexer.v1.GraphFragment.nodes:type_name -> quark.indexer.v1.GraphNode
-	13, // 22: quark.indexer.v1.GraphFragment.edges:type_name -> quark.indexer.v1.GraphEdge
-	0,  // 23: quark.indexer.v1.IndexerService.IndexDocument:input_type -> quark.indexer.v1.IndexRequest
-	9,  // 24: quark.indexer.v1.IndexerService.GetContext:input_type -> quark.indexer.v1.QueryRequest
-	8,  // 25: quark.indexer.v1.IndexerService.IndexDocument:output_type -> quark.indexer.v1.IndexStatus
-	10, // 26: quark.indexer.v1.IndexerService.GetContext:output_type -> quark.indexer.v1.ContextResponse
-	25, // [25:27] is the sub-list for method output_type
-	23, // [23:25] is the sub-list for method input_type
-	23, // [23:23] is the sub-list for extension type_name
-	23, // [23:23] is the sub-list for extension extendee
-	0,  // [0:23] is the sub-list for field type_name
+	15, // 15: quark.indexer.v1.ContextResponse.context_package:type_name -> quark.indexer.v1.ContextPackage
+	21, // 16: quark.indexer.v1.Chunk.metadata:type_name -> quark.indexer.v1.Chunk.MetadataEntry
+	1,  // 17: quark.indexer.v1.Chunk.document:type_name -> quark.indexer.v1.Document
+	2,  // 18: quark.indexer.v1.Chunk.embedding_metadata:type_name -> quark.indexer.v1.EmbeddingMetadata
+	5,  // 19: quark.indexer.v1.Chunk.facts:type_name -> quark.indexer.v1.Fact
+	6,  // 20: quark.indexer.v1.Chunk.citations:type_name -> quark.indexer.v1.Citation
+	7,  // 21: quark.indexer.v1.Chunk.provenance:type_name -> quark.indexer.v1.Provenance
+	12, // 22: quark.indexer.v1.GraphFragment.nodes:type_name -> quark.indexer.v1.GraphNode
+	13, // 23: quark.indexer.v1.GraphFragment.edges:type_name -> quark.indexer.v1.GraphEdge
+	11, // 24: quark.indexer.v1.ContextPackage.chunks:type_name -> quark.indexer.v1.Chunk
+	5,  // 25: quark.indexer.v1.ContextPackage.facts:type_name -> quark.indexer.v1.Fact
+	6,  // 26: quark.indexer.v1.ContextPackage.citations:type_name -> quark.indexer.v1.Citation
+	7,  // 27: quark.indexer.v1.ContextPackage.provenance:type_name -> quark.indexer.v1.Provenance
+	14, // 28: quark.indexer.v1.ContextPackage.graph:type_name -> quark.indexer.v1.GraphFragment
+	0,  // 29: quark.indexer.v1.IndexerService.IndexDocument:input_type -> quark.indexer.v1.IndexRequest
+	9,  // 30: quark.indexer.v1.IndexerService.GetContext:input_type -> quark.indexer.v1.QueryRequest
+	8,  // 31: quark.indexer.v1.IndexerService.IndexDocument:output_type -> quark.indexer.v1.IndexStatus
+	10, // 32: quark.indexer.v1.IndexerService.GetContext:output_type -> quark.indexer.v1.ContextResponse
+	31, // [31:33] is the sub-list for method output_type
+	29, // [29:31] is the sub-list for method input_type
+	29, // [29:29] is the sub-list for extension type_name
+	29, // [29:29] is the sub-list for extension extendee
+	0,  // [0:29] is the sub-list for field type_name
 }
 
 func init() { file_quark_indexer_v1_indexer_proto_init() }
@@ -1371,7 +1482,7 @@ func file_quark_indexer_v1_indexer_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_quark_indexer_v1_indexer_proto_rawDesc), len(file_quark_indexer_v1_indexer_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   21,
+			NumMessages:   22,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

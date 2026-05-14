@@ -60,8 +60,9 @@ when the indexer service is available.
   - Generated service function: `indexer_GetContext`
   - Required JSON fields: `queryVectorRef`
   - Optional JSON fields: `queryVector`, `limit`, `depth`, `filters`
-  - Returns ranked chunks, a graph fragment, citations, and a flattened
-    `reasoningContext` string suitable for an LLM context window.
+  - Returns ranked chunks, a graph fragment, citations, a structured
+    `contextPackage`, and a flattened `reasoningContext` string suitable for an
+    LLM context window.
 
 ## Contract Notes
 
@@ -74,6 +75,8 @@ when the indexer service is available.
 - Use the same embedding dimensions for document chunks and query text.
 - `embeddingMetadata.dimensions` must match the vector length.
 - Metadata filters are exact key/value matches.
+- Returned chunk scores are normalized into the `[0,1]` range. Use
+  `contextPackage.confidence` as the aggregate retrieval confidence signal.
 - Entity IDs are stable identifiers; when omitted, the service derives one from
   the entity name.
 - Facts should include citations whenever source evidence exists.

@@ -28,4 +28,5 @@ type ContextResult struct {
 	Citations        []string
 	Chunks           []indexer.Chunk
 	Graph            *indexer.GraphFragment
+	Package          indexer.ContextPackage
 }

@@ -89,6 +89,15 @@ type GraphFragment struct {
 	Edges []GraphEdge `json:"edges,omitempty"`
 }
 
+type ContextPackage struct {
+	Chunks     []Chunk        `json:"chunks,omitempty"`
+	Facts      []Fact         `json:"facts,omitempty"`
+	Citations  []Citation     `json:"citations,omitempty"`
+	Provenance []Provenance   `json:"provenance,omitempty"`
+	Graph      *GraphFragment `json:"graph,omitempty"`
+	Confidence float32        `json:"confidence,omitempty"`
+}
+
 // GraphVectorDriver is the storage seam for the indexer service. Implementors
 // own persistence, vector search, graph writes, lifecycle, and concurrency.
 type GraphVectorDriver interface {
