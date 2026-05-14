@@ -78,7 +78,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 	util.Successf("Runtime started (space=%s, pid=%d, port=%d)", rt.Space, rt.PID, rt.Port)
 	fmt.Printf("  Runtime ID: %s\n", rt.ID)
 	fmt.Printf("  URL:        %s\n", rt.URL())
-	fmt.Println("\nUse 'quark activity --follow' to stream activity.")
+	fmt.Println("\nUse 'quark activity query --follow' to stream activity.")
 	fmt.Println("Use 'quark stop' to stop.")
 	return nil
 }

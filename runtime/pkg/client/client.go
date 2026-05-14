@@ -101,7 +101,7 @@ func (c *Client) Stop(ctx context.Context) error {
 
 func (c *Client) Plan(ctx context.Context) (*api.PlanResponse, error) {
 	var resp api.PlanResponse
-	if err := c.transport.Get(ctx, c.path(api.PathPlan), &resp); err != nil {
+	if err := c.transport.Get(ctx, "/v1/plan", &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -121,14 +121,14 @@ func (c *Client) Activity(ctx context.Context, limit int) ([]api.ActivityRecord,
 
 func (c *Client) ApprovePlan(ctx context.Context, planID string) (*api.PlanResponse, error) {
 	var resp api.PlanResponse
-	if err := c.transport.Post(ctx, c.path(api.PathPlanApprove), api.PlanActionRequest{PlanID: planID}, &resp); err != nil {
+	if err := c.transport.Post(ctx, "/v1/plan/approve", api.PlanActionRequest{PlanID: planID}, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
 }
 
 func (c *Client) RejectPlan(ctx context.Context, planID string) error {
-	return c.transport.Post(ctx, c.path(api.PathPlanReject), api.PlanActionRequest{PlanID: planID}, nil)
+	return c.transport.Post(ctx, "/v1/plan/reject", api.PlanActionRequest{PlanID: planID}, nil)
 }
 
 func (c *Client) StreamActivity(ctx context.Context, fn func(api.ActivityRecord)) error {

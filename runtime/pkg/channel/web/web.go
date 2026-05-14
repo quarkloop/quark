@@ -38,6 +38,7 @@ func New(addr string, a *agent.Agent) *WebChannel {
 	api.NewSystemHandler().RegisterRoutes(v1)
 	api.NewAgentHandler(a).RegisterRoutes(v1)
 	api.NewActivityHandler(a.Activity).RegisterRoutes(v1.Group("/activity"))
+	api.NewPlanHandler(a.Plan).RegisterRoutes(v1.Group("/plan"))
 
 	// Sessions are owned by the supervisor; the agent only exposes the
 	// operational message API for sessions created upstream.

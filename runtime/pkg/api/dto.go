@@ -71,3 +71,23 @@ func mapActivityResponse(record activity.Record) activityResponse {
 		Data:      append(json.RawMessage(nil), record.Data...),
 	}
 }
+
+type planStepResponse struct {
+	ID          string   `json:"id"`
+	Agent       string   `json:"agent"`
+	Description string   `json:"description"`
+	DependsOn   []string `json:"depends_on"`
+	Status      string   `json:"status"`
+	Result      string   `json:"result,omitempty"`
+	Error       string   `json:"error,omitempty"`
+}
+
+type planResponse struct {
+	Goal      string             `json:"goal"`
+	Status    string             `json:"status"`
+	Steps     []planStepResponse `json:"steps"`
+	Complete  bool               `json:"complete"`
+	Summary   string             `json:"summary,omitempty"`
+	CreatedAt time.Time          `json:"created_at"`
+	UpdatedAt time.Time          `json:"updated_at"`
+}
