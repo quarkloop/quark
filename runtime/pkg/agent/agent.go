@@ -309,6 +309,7 @@ func (a *Agent) handleUserMessage(ctx context.Context, msg loop.Message) error {
 	}
 
 	history := s.GetMessages()
+	toolRequirements := newToolRequirementTracker(userMsg.Content)
 	fullResponse, err := message.Handle(
 		requestCtx,
 		history,
@@ -316,9 +317,9 @@ func (a *Agent) handleUserMessage(ctx context.Context, msg loop.Message) error {
 		a.systemPrompt(),
 		a.Plan.GetSummary(),
 		a.defaultTools(),
-		a.executeTool,
+		toolRequirements.wrapToolHandler(a.executeTool),
 		response,
-		a.finalGuard(),
+		combineFinalGuards(a.finalGuard(), toolRequirements.finalGuard),
 	)
 	if err != nil {
 		if a.Activity != nil {
