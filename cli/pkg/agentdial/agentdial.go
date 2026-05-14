@@ -18,6 +18,12 @@ import (
 // The supervisor is the source of truth; if no agent is running for the
 // current space, an error is returned.
 func Current(ctx context.Context) (*agentclient.Client, supclient.RuntimeInfo, error) {
+	return CurrentWithTransportOptions(ctx)
+}
+
+// CurrentWithTransportOptions resolves the running agent and constructs a
+// runtime client with explicit HTTP transport options.
+func CurrentWithTransportOptions(ctx context.Context, opts ...agentclient.TransportOption) (*agentclient.Client, supclient.RuntimeInfo, error) {
 	name, err := spacemodel.CurrentName()
 	if err != nil {
 		return nil, supclient.RuntimeInfo{}, err
@@ -33,5 +39,6 @@ func Current(ctx context.Context) (*agentclient.Client, supclient.RuntimeInfo, e
 	if rt.Status != supclient.RuntimeRunning {
 		return nil, supclient.RuntimeInfo{}, fmt.Errorf("runtime for space %q is %s, not running", name, rt.Status)
 	}
-	return agentclient.New(rt.URL()), rt, nil
+	transport := agentclient.NewTransport(rt.URL(), opts...)
+	return agentclient.New(rt.URL(), agentclient.WithTransport(transport)), rt, nil
 }

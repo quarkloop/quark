@@ -4,6 +4,7 @@ import (
 	"github.com/spf13/cobra"
 
 	activitycmd "github.com/quarkloop/cli/pkg/commands/activity"
+	chatcmd "github.com/quarkloop/cli/pkg/commands/chat"
 	configcmd "github.com/quarkloop/cli/pkg/commands/config"
 	doctorcmd "github.com/quarkloop/cli/pkg/commands/doctor"
 	initcmd "github.com/quarkloop/cli/pkg/commands/init"
@@ -28,6 +29,7 @@ func RegisterCommands(root *cobra.Command) {
 
 	// Data Commands — session, config, kb, plan, activity management.
 	addGroup(root, "data",
+		chatcmd.NewChatCommand(),
 		sessioncmd.NewSessionCommand(),
 		configcmd.NewConfigCommand(),
 		kbcmd.NewKBCommand(),

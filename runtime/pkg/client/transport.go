@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -116,5 +117,21 @@ func checkStatus(resp *http.Response) error {
 		return nil
 	}
 	body, _ := io.ReadAll(resp.Body)
-	return fmt.Errorf("api error %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	return &HTTPError{StatusCode: resp.StatusCode, Body: strings.TrimSpace(string(body))}
+}
+
+// HTTPError describes a non-2xx runtime API response.
+type HTTPError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *HTTPError) Error() string {
+	return fmt.Sprintf("api error %d: %s", e.StatusCode, e.Body)
+}
+
+// IsNotFound reports whether err is a runtime API 404.
+func IsNotFound(err error) bool {
+	var httpErr *HTTPError
+	return errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusNotFound
 }
