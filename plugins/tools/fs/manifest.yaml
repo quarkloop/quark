@@ -38,6 +38,12 @@ tool:
         max_chars:
           type: integer
           description: "Maximum characters to return for PDF extraction; 0 means no limit"
+        recursive:
+          type: boolean
+          description: "For list, walk the directory recursively"
+        include_hash:
+          type: boolean
+          description: "For list/stat, include sha256 for regular files"
       required: [command, path]
   permissions:
     filesystem: ["*"]

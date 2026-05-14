@@ -2,9 +2,13 @@ package fs
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -85,6 +89,14 @@ func (t *Tool) Schema() plugin.ToolSchema {
 				"max_chars": map[string]any{
 					"type":        "integer",
 					"description": "Maximum characters to return for PDF extraction; 0 means no limit",
+				},
+				"recursive": map[string]any{
+					"type":        "boolean",
+					"description": "For list, walk the directory recursively",
+				},
+				"include_hash": map[string]any{
+					"type":        "boolean",
+					"description": "For list/stat, include sha256 for regular files",
 				},
 			},
 			"required": []string{"command", "path"},
@@ -184,20 +196,12 @@ func (t *Tool) Commands() []toolkit.Command {
 			Args: []toolkit.Arg{
 				{Name: "path", Description: "Directory path", Required: false, Default: "."},
 			},
+			Flags: []toolkit.Flag{
+				{Name: "recursive", Type: "bool", Description: "Walk directory recursively", Default: false},
+				{Name: "include-hash", Type: "bool", Description: "Include sha256 for regular files", Default: false},
+			},
 			Handler: func(ctx context.Context, input toolkit.Input) (toolkit.Output, error) {
-				path := input.Args["path"]
-				if path == "" {
-					path = "."
-				}
-				entries, err := os.ReadDir(path)
-				if err != nil {
-					return toolkit.Output{Error: err.Error()}, nil
-				}
-				var names []string
-				for _, e := range entries {
-					names = append(names, e.Name())
-				}
-				return toolkit.Output{Data: map[string]any{"entries": names}}, nil
+				return handleList(input)
 			},
 		},
 		{
@@ -206,17 +210,11 @@ func (t *Tool) Commands() []toolkit.Command {
 			Args: []toolkit.Arg{
 				{Name: "path", Description: "File path", Required: true},
 			},
+			Flags: []toolkit.Flag{
+				{Name: "include-hash", Type: "bool", Description: "Include sha256 for regular files", Default: true},
+			},
 			Handler: func(ctx context.Context, input toolkit.Input) (toolkit.Output, error) {
-				info, err := os.Stat(input.Args["path"])
-				if err != nil {
-					return toolkit.Output{Error: err.Error()}, nil
-				}
-				return toolkit.Output{Data: map[string]any{
-					"size":     info.Size(),
-					"mode":     info.Mode().String(),
-					"modified": info.ModTime(),
-					"is_dir":   info.IsDir(),
-				}}, nil
+				return handleStat(input)
 			},
 		},
 		{
@@ -234,6 +232,158 @@ func (t *Tool) Commands() []toolkit.Command {
 			},
 		},
 	}
+}
+
+type fileEntry struct {
+	Name         string `json:"name"`
+	Path         string `json:"path"`
+	RelativePath string `json:"relative_path"`
+	Size         int64  `json:"size"`
+	Mode         string `json:"mode"`
+	Modified     string `json:"modified"`
+	IsDir        bool   `json:"is_dir"`
+	SHA256       string `json:"sha256,omitempty"`
+}
+
+func handleList(input toolkit.Input) (toolkit.Output, error) {
+	root := input.Args["path"]
+	if strings.TrimSpace(root) == "" {
+		root = "."
+	}
+	recursive, err := boolFlag(input.Flags, "recursive", false)
+	if err != nil {
+		return toolkit.Output{Error: err.Error()}, nil
+	}
+	includeHash, err := boolFlag(input.Flags, "include-hash", false)
+	if err != nil {
+		return toolkit.Output{Error: err.Error()}, nil
+	}
+	entries, err := listEntries(root, recursive, includeHash)
+	if err != nil {
+		return toolkit.Output{Error: err.Error()}, nil
+	}
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		names = append(names, entry.Name)
+	}
+	return toolkit.Output{Data: map[string]any{
+		"entries": names,
+		"files":   entries,
+	}}, nil
+}
+
+func handleStat(input toolkit.Input) (toolkit.Output, error) {
+	path := input.Args["path"]
+	includeHash, err := boolFlag(input.Flags, "include-hash", true)
+	if err != nil {
+		return toolkit.Output{Error: err.Error()}, nil
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return toolkit.Output{Error: err.Error()}, nil
+	}
+	entry, err := fileInfoEntry(filepath.Dir(path), path, info, includeHash)
+	if err != nil {
+		return toolkit.Output{Error: err.Error()}, nil
+	}
+	return toolkit.Output{Data: map[string]any{
+		"name":          entry.Name,
+		"path":          entry.Path,
+		"relative_path": entry.RelativePath,
+		"size":          entry.Size,
+		"mode":          entry.Mode,
+		"modified":      entry.Modified,
+		"is_dir":        entry.IsDir,
+		"sha256":        entry.SHA256,
+	}}, nil
+}
+
+func listEntries(root string, recursive, includeHash bool) ([]fileEntry, error) {
+	if !recursive {
+		dirEntries, err := os.ReadDir(root)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]fileEntry, 0, len(dirEntries))
+		for _, dirEntry := range dirEntries {
+			path := filepath.Join(root, dirEntry.Name())
+			info, err := dirEntry.Info()
+			if err != nil {
+				return nil, err
+			}
+			entry, err := fileInfoEntry(root, path, info, includeHash)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, entry)
+		}
+		return out, nil
+	}
+
+	out := make([]fileEntry, 0)
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if path == root {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		entry, err := fileInfoEntry(root, path, info, includeHash)
+		if err != nil {
+			return err
+		}
+		out = append(out, entry)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func fileInfoEntry(root, path string, info os.FileInfo, includeHash bool) (fileEntry, error) {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return fileEntry{}, err
+	}
+	relative, err := filepath.Rel(root, path)
+	if err != nil || strings.HasPrefix(relative, "..") {
+		relative = info.Name()
+	}
+	entry := fileEntry{
+		Name:         info.Name(),
+		Path:         absPath,
+		RelativePath: filepath.ToSlash(relative),
+		Size:         info.Size(),
+		Mode:         info.Mode().String(),
+		Modified:     info.ModTime().UTC().Format("2006-01-02T15:04:05Z"),
+		IsDir:        info.IsDir(),
+	}
+	if includeHash && info.Mode().IsRegular() {
+		hash, err := fileSHA256(path)
+		if err != nil {
+			return fileEntry{}, err
+		}
+		entry.SHA256 = hash
+	}
+	return entry, nil
+}
+
+func fileSHA256(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	hash := sha256.New()
+	if _, err := io.Copy(hash, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
 func handleExtractPDF(ctx context.Context, input toolkit.Input) (toolkit.Output, error) {
@@ -341,6 +491,28 @@ func intFlag(flags map[string]any, name string, fallback int) (int, error) {
 		return n, nil
 	default:
 		return 0, fmt.Errorf("flag %s must be an int", name)
+	}
+}
+
+func boolFlag(flags map[string]any, name string, fallback bool) (bool, error) {
+	value, ok := flagValue(flags, name)
+	if !ok || value == nil {
+		return fallback, nil
+	}
+	switch v := value.(type) {
+	case bool:
+		return v, nil
+	case string:
+		if strings.TrimSpace(v) == "" {
+			return fallback, nil
+		}
+		parsed, err := strconv.ParseBool(v)
+		if err != nil {
+			return false, fmt.Errorf("flag %s must be a bool", name)
+		}
+		return parsed, nil
+	default:
+		return false, fmt.Errorf("flag %s must be a bool", name)
 	}
 }
 
