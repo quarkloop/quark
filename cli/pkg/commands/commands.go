@@ -22,6 +22,7 @@ func RegisterCommands(root *cobra.Command) {
 		runtimecmd.RunCLI(),
 		runtimecmd.StopCLI(),
 		runtimecmd.InspectCLI(),
+		runtimecmd.SyncCLI(),
 		initcmd.InitCLI(),
 		doctorcmd.DoctorCLI(),
 		versioncmd.VersionCLI(),
