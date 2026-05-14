@@ -62,11 +62,11 @@ func (c *TelegramChannel) Stop(ctx context.Context) error {
 }
 
 func (c *TelegramChannel) poll(ctx context.Context) {
-	slog.Info("telegram channel polling started")
+	slog.Info("telegram channel polling started", "channel", "telegram")
 	for {
 		select {
 		case <-ctx.Done():
-			slog.Info("telegram channel polling stopped")
+			slog.Info("telegram channel polling stopped", "channel", "telegram")
 			return
 		default:
 		}
@@ -76,12 +76,16 @@ func (c *TelegramChannel) poll(ctx context.Context) {
 			if ctx.Err() != nil {
 				return
 			}
-			slog.Error("getUpdates error", "error", err)
+			slog.Error("telegram getUpdates error", "channel", "telegram", "error", err)
 			time.Sleep(3 * time.Second)
 			continue
 		}
 
 		for _, u := range updates {
+			if u.UpdateID < c.offset {
+				slog.Warn("telegram duplicate update skipped", "channel", "telegram", "update_id", u.UpdateID, "offset", c.offset)
+				continue
+			}
 			c.handleUpdate(ctx, u)
 			c.offset = u.UpdateID + 1
 		}
@@ -89,40 +93,44 @@ func (c *TelegramChannel) poll(ctx context.Context) {
 }
 
 func (c *TelegramChannel) handleUpdate(ctx context.Context, u update) {
-	if u.Message == nil || u.Message.Text == "" {
+	incoming, ok := mapUpdate(u)
+	if !ok {
 		return
 	}
 
-	chatID := fmt.Sprintf("telegram-%d", u.Message.Chat.ID)
-	title := u.Message.Chat.Title
-	if title == "" {
-		title = fmt.Sprintf("%s chat", u.Message.Chat.Type)
-	}
-
-	c.ensureSn(chatID, "telegram", title)
+	slog.Info("telegram message received", "channel", "telegram", "update_id", incoming.UpdateID, "chat_id", incoming.ChatID, "session_id", incoming.SessionID)
+	c.ensureSn(incoming.SessionID, "telegram", incoming.Title)
 
 	resp := make(chan message.StreamMessage, 64)
-	c.poster.Post(ctx, chatID, u.Message.Text, resp)
+	c.poster.Post(ctx, incoming.SessionID, incoming.Text, resp)
 
 	// Collect full response
 	var sb strings.Builder
-	for msg := range resp {
-		if msg.Type == "token" {
-			if s, ok := msg.Data.(string); ok {
-				sb.WriteString(s)
+	for {
+		select {
+		case <-ctx.Done():
+			slog.Info("telegram response collection cancelled", "channel", "telegram", "update_id", incoming.UpdateID, "chat_id", incoming.ChatID)
+			return
+		case msg, ok := <-resp:
+			if !ok {
+				if sb.Len() > 0 {
+					if err := c.sendMessage(ctx, incoming.ChatID, sb.String()); err != nil {
+						slog.Error("telegram sendMessage error", "channel", "telegram", "update_id", incoming.UpdateID, "chat_id", incoming.ChatID, "error", err)
+					}
+				}
+				return
 			}
-		} else if msg.Type == "error" {
-			if s, ok := msg.Data.(string); ok {
-				sb.WriteString("\n[Agent Error: " + s + "]\n")
+			if msg.Type == "token" {
+				if s, ok := msg.Data.(string); ok {
+					sb.WriteString(s)
+				}
+			} else if msg.Type == "error" {
+				if s, ok := msg.Data.(string); ok {
+					sb.WriteString("\n[Agent Error: " + s + "]\n")
+				}
+			} else if msg.Type == "tool_start" {
+				sb.WriteString("\n*(executing tool)*\n")
 			}
-		} else if msg.Type == "tool_start" {
-			sb.WriteString("\n*(executing tool)*\n")
-		}
-	}
-
-	if sb.Len() > 0 {
-		if err := c.sendMessage(ctx, u.Message.Chat.ID, sb.String()); err != nil {
-			slog.Error("sendMessage error", "error", err)
 		}
 	}
 }
@@ -167,6 +175,9 @@ func (c *TelegramChannel) sendMessage(ctx context.Context, chatID int64, text st
 	}
 	defer resp.Body.Close()
 	io.Copy(io.Discard, resp.Body)
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("telegram sendMessage returned HTTP %d", resp.StatusCode)
+	}
 	return nil
 }
 
@@ -198,4 +209,29 @@ type tgChat struct {
 	ID    int64  `json:"id"`
 	Title string `json:"title"`
 	Type  string `json:"type"`
+}
+
+type incomingMessage struct {
+	UpdateID  int
+	ChatID    int64
+	SessionID string
+	Title     string
+	Text      string
+}
+
+func mapUpdate(u update) (incomingMessage, bool) {
+	if u.Message == nil || strings.TrimSpace(u.Message.Text) == "" {
+		return incomingMessage{}, false
+	}
+	title := u.Message.Chat.Title
+	if strings.TrimSpace(title) == "" {
+		title = fmt.Sprintf("%s chat", u.Message.Chat.Type)
+	}
+	return incomingMessage{
+		UpdateID:  u.UpdateID,
+		ChatID:    u.Message.Chat.ID,
+		SessionID: fmt.Sprintf("telegram-%d", u.Message.Chat.ID),
+		Title:     title,
+		Text:      u.Message.Text,
+	}, true
 }
