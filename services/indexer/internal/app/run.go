@@ -64,7 +64,7 @@ func Run(ctx context.Context, cfg Config) error {
 		Version: "1.0.0",
 		Address: cfg.Address,
 		Rpcs: []*servicev1.RpcDescriptor{
-			{Service: indexerv1.IndexerService_ServiceDesc.ServiceName, Method: "IndexDocument", Request: "quark.indexer.v1.IndexRequest", Response: "quark.indexer.v1.IndexStatus", Description: "Persist one structured document chunk and its graph data."},
+			{Service: indexerv1.IndexerService_ServiceDesc.ServiceName, Method: "IndexDocument", Request: "quark.indexer.v1.IndexRequest", Response: "quark.indexer.v1.IndexStatus", Description: "Persist one canonical index record: document, chunk, embedding metadata, graph data, facts, citations, and provenance."},
 			{Service: indexerv1.IndexerService_ServiceDesc.ServiceName, Method: "GetContext", Request: "quark.indexer.v1.QueryRequest", Response: "quark.indexer.v1.ContextResponse", Description: "Retrieve vector and graph context for an agent-provided query embedding."},
 		},
 		Skills: []*servicev1.SkillDescriptor{skill},

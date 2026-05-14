@@ -14,6 +14,7 @@ quark.chunk_id: string @index(exact) @upsert .
 quark.text_content: string .
 quark.embedding: float32vector @index(hnsw(metric:"cosine")) .
 quark.metadata_json: string .
+quark.canonical_json: string .
 quark.entity_id: string @index(exact) @upsert .
 quark.entity_name: string @index(term, exact) .
 quark.entity_type: string @index(exact) .
@@ -28,6 +29,7 @@ type QuarkChunk {
 	quark.text_content
 	quark.embedding
 	quark.metadata_json
+	quark.canonical_json
 	quark.chunk_entity
 }
 

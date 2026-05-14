@@ -16,13 +16,16 @@ When the user asks to index PDFs or other documents:
    `command=extract_pdf`.
 2. Extract a useful, compact chunk for each document or section. Preserve the
    important facts needed for later Q&A.
-3. Extract stable entities and relationships from the content. Entity IDs
-   should be normalized from entity names and relation endpoints must reuse the
-   same IDs as the entity list.
+3. Extract stable entities, relationships, facts, citations, and source
+   provenance from the content. Entity IDs should be normalized from entity
+   names and relation endpoints must reuse the same IDs as the entity list.
 4. Use the configured embedding service plugin on each chunk and pass the
    returned `embeddingRef` as `embeddingRef`.
 5. Call `indexer_IndexDocument`. Include source metadata such as source path
-   and filename when available.
+   and filename when available. Prefer first-class `document`,
+   `embeddingMetadata`, `facts`, `citations`, and `provenance` fields when you
+   have them; otherwise the service will derive the canonical fields it can
+   from `sourceMetadata`.
 
 Indexing is not complete after extraction or embedding. Only tell the user a
 document is indexed after `IndexDocument` returns a successful response from the
@@ -46,8 +49,12 @@ when the indexer service is available.
 - `IndexDocument(IndexRequest) -> IndexStatus`
   - Generated service function: `indexer_IndexDocument`
   - Required JSON fields: `chunkId`, `textContent`, `embeddingRef`
-  - Optional JSON fields: `embedding`, `entities`, `relations`, `sourceMetadata`
-  - Persists one text chunk, its embedding, entities, and graph edges.
+  - Optional JSON fields: `embedding`, `document`, `embeddingMetadata`,
+    `entities`, `relations`, `facts`, `citations`, `provenance`,
+    `sourceMetadata`
+  - Persists one canonical index record: source document, text chunk,
+    embedding vector/metadata, extracted entities, graph relations, facts,
+    citations, metadata, and provenance.
 
 - `GetContext(QueryRequest) -> ContextResponse`
   - Generated service function: `indexer_GetContext`
@@ -58,11 +65,18 @@ when the indexer service is available.
 
 ## Contract Notes
 
+- The indexer owns the canonical storage/query schema. It does not parse files,
+  call LLMs, generate embeddings, select extraction profiles, or call other
+  services.
 - Query text must be embedded by the agent before `GetContext`.
 - Use `embeddingRef` and `queryVectorRef` from `embedding_Embed` instead of
   manually copying vectors through the LLM.
 - Use the same embedding dimensions for document chunks and query text.
+- `embeddingMetadata.dimensions` must match the vector length.
 - Metadata filters are exact key/value matches.
 - Entity IDs are stable identifiers; when omitted, the service derives one from
   the entity name.
+- Facts should include citations whenever source evidence exists.
+- Provenance should identify the original source URI/path, source hash when
+  known, producing agent/tool trace, and any RBAC or tenant tags in metadata.
 - The service is safe for concurrent calls and honors request cancellation.

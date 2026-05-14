@@ -38,6 +38,7 @@ type Executor struct {
 	mu            sync.RWMutex
 	nextEmbedding int
 	embeddings    map[string][]float32
+	embeddingInfo map[string]map[string]any
 	pending       map[string]struct{}
 }
 
@@ -52,9 +53,10 @@ func NewExecutor(descriptors []*servicev1.ServiceDescriptor) *Executor {
 		out = append(out, servicekit.CloneDescriptor(desc))
 	}
 	return &Executor{
-		descriptors: out,
-		embeddings:  make(map[string][]float32),
-		pending:     make(map[string]struct{}),
+		descriptors:   out,
+		embeddings:    make(map[string][]float32),
+		embeddingInfo: make(map[string]map[string]any),
+		pending:       make(map[string]struct{}),
 	}
 }
 
@@ -305,17 +307,25 @@ func (e *Executor) embeddingToolResult(msg protoreflect.ProtoMessage) (string, e
 	e.mu.Lock()
 	e.nextEmbedding++
 	ref := fmt.Sprintf("emb_%d", e.nextEmbedding)
+	metadata := map[string]any{
+		"contentHash": contentHash,
+		"dimensions":  int(reflected.Get(dimensionsField).Int()),
+		"model":       reflected.Get(modelField).String(),
+		"provider":    reflected.Get(providerField).String(),
+	}
 	e.embeddings[ref] = cloneVector(vector)
 	e.embeddings[contentHash] = cloneVector(vector)
+	e.embeddingInfo[ref] = cloneMetadata(metadata)
+	e.embeddingInfo[contentHash] = cloneMetadata(metadata)
 	e.pending[ref] = struct{}{}
 	e.mu.Unlock()
 
 	payload := map[string]any{
 		"embeddingRef": ref,
-		"contentHash":  contentHash,
-		"dimensions":   int(reflected.Get(dimensionsField).Int()),
-		"model":        reflected.Get(modelField).String(),
-		"provider":     reflected.Get(providerField).String(),
+		"contentHash":  metadata["contentHash"],
+		"dimensions":   metadata["dimensions"],
+		"model":        metadata["model"],
+		"provider":     metadata["provider"],
 	}
 	data, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
@@ -360,6 +370,17 @@ func (e *Executor) expandVectorReference(arguments, refField, vectorField string
 		return "", fmt.Errorf("encode %s: %w", vectorField, err)
 	}
 	payload[vectorField] = rawVector
+	if vectorField == "embedding" {
+		if _, ok := payload["embeddingMetadata"]; !ok {
+			if metadata, ok := e.embeddingMetadataByRef(ref); ok {
+				rawMetadata, err := json.Marshal(metadata)
+				if err != nil {
+					return "", fmt.Errorf("encode embedding metadata: %w", err)
+				}
+				payload["embeddingMetadata"] = rawMetadata
+			}
+		}
+	}
 	delete(payload, refField)
 	e.markEmbeddingConsumed(ref)
 	data, err := json.Marshal(payload)
@@ -367,6 +388,13 @@ func (e *Executor) expandVectorReference(arguments, refField, vectorField string
 		return "", fmt.Errorf("encode service arguments: %w", err)
 	}
 	return string(data), nil
+}
+
+func (e *Executor) embeddingMetadataByRef(ref string) (map[string]any, bool) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	metadata, ok := e.embeddingInfo[ref]
+	return cloneMetadata(metadata), ok
 }
 
 func (e *Executor) markEmbeddingConsumed(ref string) {
@@ -406,5 +434,13 @@ func cloneVector(in []float32) []float32 {
 	}
 	out := make([]float32, len(in))
 	copy(out, in)
+	return out
+}
+
+func cloneMetadata(in map[string]any) map[string]any {
+	out := make(map[string]any, len(in))
+	for key, value := range in {
+		out[key] = value
+	}
 	return out
 }

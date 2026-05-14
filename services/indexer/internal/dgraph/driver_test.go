@@ -21,6 +21,46 @@ func TestDgraphHelpersBuildVectorAndFilters(t *testing.T) {
 	if !strings.Contains(filter, "@filter(eq(quark.meta_tenant_") || !strings.Contains(filter, `"acme"`) {
 		t.Fatalf("unexpected filter: %q", filter)
 	}
+	query := vectorSearchQuery(3, nil)
+	if !strings.Contains(query, "quark.canonical_json") {
+		t.Fatalf("vector search query does not request canonical records: %q", query)
+	}
+}
+
+func TestVectorSearchPayloadRestoresCanonicalRecord(t *testing.T) {
+	t.Parallel()
+
+	payload := vectorSearchPayload{Chunks: []struct {
+		ID            string  `json:"quark.chunk_id"`
+		Text          string  `json:"quark.text_content"`
+		MetadataJSON  string  `json:"quark.metadata_json"`
+		CanonicalJSON string  `json:"quark.canonical_json"`
+		Score         float32 `json:"score"`
+	}{{
+		ID:           "chunk-1",
+		Text:         "hello",
+		MetadataJSON: `{"path":"fixture.pdf"}`,
+		CanonicalJSON: `{
+			"document":{"id":"doc-1","source_uri":"fixture.pdf"},
+			"embedding_metadata":{"provider":"local","model":"local-hash-v1","dimensions":2},
+			"citations":[{"source_uri":"fixture.pdf","chunk_id":"chunk-1"}],
+			"provenance":{"source_uri":"fixture.pdf","trace_id":"trace-1"}
+		}`,
+		Score: 0.9,
+	}},
+	}
+
+	chunks := payload.chunks()
+	if len(chunks) != 1 {
+		t.Fatalf("chunks = %d, want 1", len(chunks))
+	}
+	chunk := chunks[0]
+	if chunk.Document.ID != "doc-1" || chunk.EmbeddingMetadata.Provider != "local" {
+		t.Fatalf("canonical record was not restored: %+v", chunk)
+	}
+	if len(chunk.Citations) != 1 || chunk.Provenance.TraceID != "trace-1" {
+		t.Fatalf("citation/provenance not restored: %+v", chunk)
+	}
 }
 
 func TestDgraphEntityListAcceptsScalarAndList(t *testing.T) {

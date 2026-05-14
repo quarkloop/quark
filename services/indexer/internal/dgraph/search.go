@@ -30,10 +30,11 @@ func (d *Driver) VectorSearch(ctx context.Context, queryVector []float32, limit 
 
 type vectorSearchPayload struct {
 	Chunks []struct {
-		ID           string  `json:"quark.chunk_id"`
-		Text         string  `json:"quark.text_content"`
-		MetadataJSON string  `json:"quark.metadata_json"`
-		Score        float32 `json:"score"`
+		ID            string  `json:"quark.chunk_id"`
+		Text          string  `json:"quark.text_content"`
+		MetadataJSON  string  `json:"quark.metadata_json"`
+		CanonicalJSON string  `json:"quark.canonical_json"`
+		Score         float32 `json:"score"`
 	} `json:"chunks"`
 }
 
@@ -44,11 +45,20 @@ func (p vectorSearchPayload) chunks() []indexer.Chunk {
 		if row.MetadataJSON != "" {
 			_ = json.Unmarshal([]byte(row.MetadataJSON), &meta)
 		}
+		var canonical canonicalChunk
+		if row.CanonicalJSON != "" {
+			_ = json.Unmarshal([]byte(row.CanonicalJSON), &canonical)
+		}
 		out = append(out, indexer.Chunk{
-			ID:       row.ID,
-			Text:     row.Text,
-			Metadata: meta,
-			Score:    row.Score,
+			ID:                row.ID,
+			Text:              row.Text,
+			Metadata:          meta,
+			Document:          canonical.Document,
+			EmbeddingMetadata: canonical.EmbeddingMetadata,
+			Facts:             canonical.Facts,
+			Citations:         canonical.Citations,
+			Provenance:        canonical.Provenance,
+			Score:             row.Score,
 		})
 	}
 	return out

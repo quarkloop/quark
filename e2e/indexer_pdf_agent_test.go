@@ -121,7 +121,6 @@ func runAgentIndexesUploadedPDFDataset(t *testing.T, embedding utils.EmbeddingOp
 	assertToolStarted(t, indexTrace, "indexer_IndexDocument")
 	assertNoToolErrors(t, indexTrace, "embedding_Embed", "indexer_IndexDocument")
 	assertToolSuccessCount(t, indexTrace, "indexer_IndexDocument", len(documents))
-	assertIndexDocumentArgumentsContainEmbeddingProfile(t, indexTrace, env.Embedding, len(documents))
 	for _, document := range documents {
 		if !containsText(indexTrace.Text, document.Filename) {
 			t.Fatalf("index confirmation missing filename %q:\n%s", document.Filename, indexTrace.Text)
@@ -181,6 +180,7 @@ func runAgentIndexesUploadedPDFDataset(t *testing.T, embedding utils.EmbeddingOp
 			t.Fatalf("%s query re-read source files instead of using the index; starts=%v", queryCase.Title, queryTrace.ToolStarts)
 		}
 		assertToolResultContains(t, queryTrace, "indexer_GetContext", "reasoningContext")
+		assertToolResultContains(t, queryTrace, "indexer_GetContext", "embeddingMetadata", env.Embedding.Provider, env.Embedding.Model, fmt.Sprint(env.Embedding.Dimensions))
 		assertAnswerContains(t, queryTrace.Text, queryCase.Want...)
 		if len(queryCase.WantAny) > 0 {
 			assertAnswerContainsAny(t, queryTrace.Text, queryCase.WantAny...)
@@ -414,33 +414,6 @@ func assertToolSuccessCount(t *testing.T, trace utils.MessageTrace, tool string,
 	}
 	if count < want {
 		t.Fatalf("%s successful results = %d, want at least %d: %+v", tool, count, want, trace.ToolResultEvents)
-	}
-}
-
-func assertIndexDocumentArgumentsContainEmbeddingProfile(t *testing.T, trace utils.MessageTrace, embedding utils.EmbeddingOptions, want int) {
-	t.Helper()
-	embedding = embedding.WithDefaults()
-	checked := 0
-	for _, event := range trace.ToolStartEvents {
-		if event.Name != "indexer_IndexDocument" {
-			continue
-		}
-		checked++
-		for _, wantText := range []string{
-			"embedding_provider",
-			embedding.Provider,
-			"embedding_model",
-			embedding.Model,
-			"embedding_dimensions",
-			fmt.Sprint(embedding.Dimensions),
-		} {
-			if !strings.Contains(event.Arguments, wantText) {
-				t.Fatalf("indexer_IndexDocument arguments missing embedding metadata %q for %s profile:\n%s", wantText, embedding.Provider, event.Arguments)
-			}
-		}
-	}
-	if checked < want {
-		t.Fatalf("indexer_IndexDocument argument events = %d, want at least %d", checked, want)
 	}
 }
 

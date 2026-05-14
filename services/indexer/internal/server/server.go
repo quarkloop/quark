@@ -48,13 +48,90 @@ func toProtoChunks(chunks []indexer.Chunk) []*indexerv1.Chunk {
 	out := make([]*indexerv1.Chunk, 0, len(chunks))
 	for _, chunk := range chunks {
 		out = append(out, &indexerv1.Chunk{
-			Id:       chunk.ID,
-			Text:     chunk.Text,
-			Score:    chunk.Score,
-			Metadata: cloneMap(chunk.Metadata),
+			Id:                chunk.ID,
+			Text:              chunk.Text,
+			Score:             chunk.Score,
+			Metadata:          cloneMap(chunk.Metadata),
+			Document:          toProtoDocument(chunk.Document),
+			EmbeddingMetadata: toProtoEmbeddingMetadata(chunk.EmbeddingMetadata),
+			Facts:             toProtoFacts(chunk.Facts),
+			Citations:         toProtoCitations(chunk.Citations),
+			Provenance:        toProtoProvenance(chunk.Provenance),
 		})
 	}
 	return out
+}
+
+func toProtoDocument(document indexer.Document) *indexerv1.Document {
+	if document.ID == "" && document.Name == "" && document.Type == "" && document.SourceURI == "" && len(document.Metadata) == 0 {
+		return nil
+	}
+	return &indexerv1.Document{
+		Id:        document.ID,
+		Name:      document.Name,
+		Type:      document.Type,
+		SourceUri: document.SourceURI,
+		Metadata:  cloneMap(document.Metadata),
+	}
+}
+
+func toProtoEmbeddingMetadata(embedding indexer.EmbeddingMetadata) *indexerv1.EmbeddingMetadata {
+	if embedding.Provider == "" && embedding.Model == "" && embedding.Dimensions == 0 && embedding.ContentHash == "" && embedding.Version == "" {
+		return nil
+	}
+	return &indexerv1.EmbeddingMetadata{
+		Provider:    embedding.Provider,
+		Model:       embedding.Model,
+		Dimensions:  int32(embedding.Dimensions),
+		ContentHash: embedding.ContentHash,
+		Version:     embedding.Version,
+	}
+}
+
+func toProtoFacts(facts []indexer.Fact) []*indexerv1.Fact {
+	out := make([]*indexerv1.Fact, 0, len(facts))
+	for _, fact := range facts {
+		out = append(out, &indexerv1.Fact{
+			Id:         fact.ID,
+			Subject:    fact.Subject,
+			Predicate:  fact.Predicate,
+			Object:     fact.Object,
+			Confidence: fact.Confidence,
+			Citations:  toProtoCitations(fact.Citations),
+			Metadata:   cloneMap(fact.Metadata),
+		})
+	}
+	return out
+}
+
+func toProtoCitations(citations []indexer.Citation) []*indexerv1.Citation {
+	out := make([]*indexerv1.Citation, 0, len(citations))
+	for _, citation := range citations {
+		out = append(out, &indexerv1.Citation{
+			Id:          citation.ID,
+			SourceUri:   citation.SourceURI,
+			ChunkId:     citation.ChunkID,
+			TextSpan:    citation.TextSpan,
+			StartOffset: int32(citation.StartOffset),
+			EndOffset:   int32(citation.EndOffset),
+			Confidence:  citation.Confidence,
+		})
+	}
+	return out
+}
+
+func toProtoProvenance(provenance indexer.Provenance) *indexerv1.Provenance {
+	if provenance.SourceURI == "" && provenance.SourceHash == "" && provenance.IngestedAt == "" && provenance.ProducedBy == "" && provenance.TraceID == "" && len(provenance.Metadata) == 0 {
+		return nil
+	}
+	return &indexerv1.Provenance{
+		SourceUri:  provenance.SourceURI,
+		SourceHash: provenance.SourceHash,
+		IngestedAt: provenance.IngestedAt,
+		ProducedBy: provenance.ProducedBy,
+		TraceId:    provenance.TraceID,
+		Metadata:   cloneMap(provenance.Metadata),
+	}
 }
 
 func toProtoGraph(graph *indexer.GraphFragment) *indexerv1.GraphFragment {

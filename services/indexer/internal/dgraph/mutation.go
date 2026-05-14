@@ -18,8 +18,18 @@ func (d *Driver) InsertChunk(ctx context.Context, chunk indexer.Chunk) error {
 	if err != nil {
 		return fmt.Errorf("marshal metadata: %w", err)
 	}
+	canonicalJSON, err := json.Marshal(canonicalChunk{
+		Document:          chunk.Document,
+		EmbeddingMetadata: chunk.EmbeddingMetadata,
+		Facts:             chunk.Facts,
+		Citations:         chunk.Citations,
+		Provenance:        chunk.Provenance,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal canonical chunk: %w", err)
+	}
 
-	nquads := []byte(chunkMutationNQuads(chunk, string(metaJSON)))
+	nquads := []byte(chunkMutationNQuads(chunk, string(metaJSON), string(canonicalJSON)))
 	return d.doMutation(ctx, fmt.Sprintf("insert chunk %s", chunk.ID), func() *api.Request {
 		return &api.Request{
 			Query: `query chunk($id: string) { c as var(func: eq(quark.chunk_id, $id)) }`,
@@ -101,13 +111,22 @@ func normalizeEntity(entity indexer.Entity) indexer.Entity {
 	return entity
 }
 
-func chunkMutationNQuads(chunk indexer.Chunk, metaJSON string) string {
+type canonicalChunk struct {
+	Document          indexer.Document          `json:"document,omitempty"`
+	EmbeddingMetadata indexer.EmbeddingMetadata `json:"embedding_metadata,omitempty"`
+	Facts             []indexer.Fact            `json:"facts,omitempty"`
+	Citations         []indexer.Citation        `json:"citations,omitempty"`
+	Provenance        indexer.Provenance        `json:"provenance,omitempty"`
+}
+
+func chunkMutationNQuads(chunk indexer.Chunk, metaJSON, canonicalJSON string) string {
 	var nquads strings.Builder
 	fmt.Fprintf(&nquads, `uid(c) <dgraph.type> "QuarkChunk" .`+"\n")
 	fmt.Fprintf(&nquads, "uid(c) <quark.chunk_id> %s .\n", quote(chunk.ID))
 	fmt.Fprintf(&nquads, "uid(c) <quark.text_content> %s .\n", quote(chunk.Text))
 	fmt.Fprintf(&nquads, "uid(c) <quark.embedding> %s .\n", quote(vectorLiteral(chunk.Vector)))
 	fmt.Fprintf(&nquads, "uid(c) <quark.metadata_json> %s .\n", quote(metaJSON))
+	fmt.Fprintf(&nquads, "uid(c) <quark.canonical_json> %s .\n", quote(canonicalJSON))
 	for key, value := range chunk.Metadata {
 		fmt.Fprintf(&nquads, "uid(c) <%s> %s .\n", metadataPredicate(key), quote(value))
 	}

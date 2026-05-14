@@ -90,6 +90,12 @@ func TestExecutorExpandsEmbeddingReferences(t *testing.T) {
 
 	executor := NewExecutor(nil)
 	executor.embeddings["ref-1"] = []float32{0.25, -0.5}
+	executor.embeddingInfo["ref-1"] = map[string]any{
+		"provider":    "local",
+		"model":       "local-hash-v1",
+		"dimensions":  2,
+		"contentHash": "abc123",
+	}
 
 	expanded, err := executor.expandRuntimeReferences("quark.indexer.v1.IndexRequest", `{"chunkId":"chunk","textContent":"text","embeddingRef":"ref-1"}`)
 	if err != nil {
@@ -105,6 +111,10 @@ func TestExecutorExpandsEmbeddingReferences(t *testing.T) {
 	vector, ok := payload["embedding"].([]any)
 	if !ok || len(vector) != 2 {
 		t.Fatalf("embedding was not expanded: %s", expanded)
+	}
+	metadata, ok := payload["embeddingMetadata"].(map[string]any)
+	if !ok || metadata["provider"] != "local" || metadata["model"] != "local-hash-v1" {
+		t.Fatalf("embedding metadata was not expanded: %s", expanded)
 	}
 }
 

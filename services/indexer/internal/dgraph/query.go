@@ -51,6 +51,7 @@ func vectorSearchQuery(limit int, filters map[string]string) string {
     quark.chunk_id
     quark.text_content
     quark.metadata_json
+    quark.canonical_json
     score: val(score)
   }
 }`, limit, dgraphFilter(filters))

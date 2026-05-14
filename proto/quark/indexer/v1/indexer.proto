@@ -20,6 +20,27 @@ message IndexRequest {
   repeated Entity entities = 4;
   repeated Relation relations = 5;
   map<string, string> source_metadata = 6;
+  Document document = 7;
+  EmbeddingMetadata embedding_metadata = 8;
+  repeated Fact facts = 9;
+  repeated Citation citations = 10;
+  Provenance provenance = 11;
+}
+
+message Document {
+  string id = 1;
+  string name = 2;
+  string type = 3;
+  string source_uri = 4;
+  map<string, string> metadata = 5;
+}
+
+message EmbeddingMetadata {
+  string provider = 1;
+  string model = 2;
+  int32 dimensions = 3;
+  string content_hash = 4;
+  string version = 5;
 }
 
 message Entity {
@@ -32,6 +53,35 @@ message Relation {
   string from_id = 1;
   string to_id = 2;
   string relation = 3;
+}
+
+message Fact {
+  string id = 1;
+  string subject = 2;
+  string predicate = 3;
+  string object = 4;
+  float confidence = 5;
+  repeated Citation citations = 6;
+  map<string, string> metadata = 7;
+}
+
+message Citation {
+  string id = 1;
+  string source_uri = 2;
+  string chunk_id = 3;
+  string text_span = 4;
+  int32 start_offset = 5;
+  int32 end_offset = 6;
+  float confidence = 7;
+}
+
+message Provenance {
+  string source_uri = 1;
+  string source_hash = 2;
+  string ingested_at = 3;
+  string produced_by = 4;
+  string trace_id = 5;
+  map<string, string> metadata = 6;
 }
 
 message IndexStatus {
@@ -58,6 +108,11 @@ message Chunk {
   string text = 2;
   float score = 3;
   map<string, string> metadata = 4;
+  Document document = 5;
+  EmbeddingMetadata embedding_metadata = 6;
+  repeated Fact facts = 7;
+  repeated Citation citations = 8;
+  Provenance provenance = 9;
 }
 
 message GraphNode {

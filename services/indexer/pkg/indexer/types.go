@@ -3,40 +3,90 @@ package indexer
 import "context"
 
 type Chunk struct {
-	ID       string
-	Text     string
-	Vector   []float32
-	Metadata map[string]string
-	Score    float32
+	ID                string            `json:"id,omitempty"`
+	Text              string            `json:"text,omitempty"`
+	Vector            []float32         `json:"vector,omitempty"`
+	Metadata          map[string]string `json:"metadata,omitempty"`
+	Document          Document          `json:"document,omitempty"`
+	EmbeddingMetadata EmbeddingMetadata `json:"embedding_metadata,omitempty"`
+	Facts             []Fact            `json:"facts,omitempty"`
+	Citations         []Citation        `json:"citations,omitempty"`
+	Provenance        Provenance        `json:"provenance,omitempty"`
+	Score             float32           `json:"score,omitempty"`
+}
+
+type Document struct {
+	ID        string            `json:"id,omitempty"`
+	Name      string            `json:"name,omitempty"`
+	Type      string            `json:"type,omitempty"`
+	SourceURI string            `json:"source_uri,omitempty"`
+	Metadata  map[string]string `json:"metadata,omitempty"`
+}
+
+type EmbeddingMetadata struct {
+	Provider    string `json:"provider,omitempty"`
+	Model       string `json:"model,omitempty"`
+	Dimensions  int    `json:"dimensions,omitempty"`
+	ContentHash string `json:"content_hash,omitempty"`
+	Version     string `json:"version,omitempty"`
 }
 
 type Entity struct {
-	ID   string
-	Name string
-	Type string
+	ID   string `json:"id,omitempty"`
+	Name string `json:"name,omitempty"`
+	Type string `json:"type,omitempty"`
 }
 
 type Relation struct {
-	FromID   string
-	ToID     string
-	Relation string
+	FromID   string `json:"from_id,omitempty"`
+	ToID     string `json:"to_id,omitempty"`
+	Relation string `json:"relation,omitempty"`
+}
+
+type Fact struct {
+	ID         string            `json:"id,omitempty"`
+	Subject    string            `json:"subject,omitempty"`
+	Predicate  string            `json:"predicate,omitempty"`
+	Object     string            `json:"object,omitempty"`
+	Confidence float32           `json:"confidence,omitempty"`
+	Citations  []Citation        `json:"citations,omitempty"`
+	Metadata   map[string]string `json:"metadata,omitempty"`
+}
+
+type Citation struct {
+	ID          string  `json:"id,omitempty"`
+	SourceURI   string  `json:"source_uri,omitempty"`
+	ChunkID     string  `json:"chunk_id,omitempty"`
+	TextSpan    string  `json:"text_span,omitempty"`
+	StartOffset int     `json:"start_offset,omitempty"`
+	EndOffset   int     `json:"end_offset,omitempty"`
+	Confidence  float32 `json:"confidence,omitempty"`
+}
+
+type Provenance struct {
+	SourceURI  string            `json:"source_uri,omitempty"`
+	SourceHash string            `json:"source_hash,omitempty"`
+	IngestedAt string            `json:"ingested_at,omitempty"`
+	ProducedBy string            `json:"produced_by,omitempty"`
+	TraceID    string            `json:"trace_id,omitempty"`
+	Metadata   map[string]string `json:"metadata,omitempty"`
 }
 
 type GraphNode struct {
-	ID    string
-	Label string
-	Type  string
+	ID    string `json:"id,omitempty"`
+	Label string `json:"label,omitempty"`
+	Type  string `json:"type,omitempty"`
 }
 
 type GraphEdge struct {
-	FromID   string
-	ToID     string
-	Relation string
+	FromID   string `json:"from_id,omitempty"`
+	ToID     string `json:"to_id,omitempty"`
+	Relation string `json:"relation,omitempty"`
 }
 
 type GraphFragment struct {
-	Nodes []GraphNode
-	Edges []GraphEdge
+	Nodes []GraphNode `json:"nodes,omitempty"`
+	Edges []GraphEdge `json:"edges,omitempty"`
 }
 
 // GraphVectorDriver is the storage seam for the indexer service. Implementors
