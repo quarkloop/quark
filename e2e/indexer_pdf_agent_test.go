@@ -1,0 +1,379 @@
+//go:build e2e
+
+package e2e
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/quarkloop/e2e/utils"
+	embeddingv1 "github.com/quarkloop/pkg/serviceapi/gen/quark/embedding/v1"
+	"github.com/quarkloop/pkg/serviceapi/servicekit"
+	"github.com/quarkloop/supervisor/pkg/api"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+)
+
+func TestAgentIndexesUploadedPDFDataset(t *testing.T) {
+	if _, err := exec.LookPath("pdftotext"); err != nil {
+		t.Skip("pdftotext is required by the fs extract_pdf tool")
+	}
+
+	indexerAddr := fmt.Sprintf("127.0.0.1:%d", utils.ReservePort(t))
+	embeddingAddr := fmt.Sprintf("127.0.0.1:%d", utils.ReservePort(t))
+	workingDir := t.TempDir()
+	documents := copyPDFDocuments(t, workingDir, []pdfDocumentFixture{
+		{
+			Name:   "AI mini-app idea catalog",
+			Source: filepath.Join(utils.QuarkRoot(t), "e2e", "testdata", "documents", "mini_app_ideas_catalog.pdf"),
+		},
+		{
+			Name:   "Transformer research paper",
+			Source: filepath.Join(utils.QuarkRoot(t), "e2e", "testdata", "documents", "attention_is_all_you_need_paper.pdf"),
+		},
+		{
+			Name:   "Europass resume sample",
+			Source: filepath.Join(utils.QuarkRoot(t), "e2e", "testdata", "documents", "europass_resume_sample.pdf"),
+		},
+		{
+			Name:   "German health insurance information sheet",
+			Source: filepath.Join(utils.QuarkRoot(t), "e2e", "testdata", "documents", "german_health_insurance_information_sheet.pdf"),
+		},
+	})
+
+	env := utils.StartE2E(t, true, utils.StartOptions{
+		WorkingDir: workingDir,
+		SupervisorEnv: map[string]string{
+			"QUARK_INDEXER_ADDR":   indexerAddr,
+			"QUARK_EMBEDDING_ADDR": embeddingAddr,
+		},
+		BeforeRuntime: func(t *testing.T, setup utils.RuntimeSetup, bins utils.BuiltBinaries) {
+			t.Helper()
+			dgraphAddr := utils.StartDgraph(t)
+			startIndexerServiceAt(t, bins.Indexer, dgraphAddr, indexerAddr)
+			startEmbeddingServiceAt(t, bins.Embedding, embeddingAddr)
+		},
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	indexSession, err := env.Sup.CreateSession(ctx, env.Space, api.CreateSessionRequest{
+		Type:  api.SessionTypeChat,
+		Title: "pdf-indexer-agent-test",
+	})
+	if err != nil {
+		t.Fatalf("create index session: %v", err)
+	}
+	utils.WaitForAgentSession(t, env, indexSession.ID, 10*time.Second)
+
+	indexTrace := utils.PostMessageTrace(t, ctx, env, indexSession.ID, indexPDFDocumentsPrompt(documents))
+	t.Logf("index reply: %s", indexTrace.Text)
+	writeArtifact(t, workingDir, "agent-index-reply.txt", indexTrace.Text)
+	writeArtifact(t, workingDir, "agent-index-tools.txt", strings.Join(indexTrace.ToolStarts, "\n"))
+	writeTraceArtifact(t, workingDir, "agent-index-tool-events.json", indexTrace)
+
+	assertToolStarted(t, indexTrace, "fs")
+	assertToolStarted(t, indexTrace, "embedding_Embed")
+	assertToolStarted(t, indexTrace, "indexer_IndexDocument")
+	assertNoToolErrors(t, indexTrace, "embedding_Embed", "indexer_IndexDocument")
+	assertToolSuccessCount(t, indexTrace, "indexer_IndexDocument", len(documents))
+	for _, document := range documents {
+		if !containsText(indexTrace.Text, document.Filename) {
+			t.Fatalf("index confirmation missing filename %q:\n%s", document.Filename, indexTrace.Text)
+		}
+	}
+
+	queryCases := []indexedPDFQueryCase{
+		{
+			Title:    "transformer-paper",
+			Question: "Which indexed PDF discusses the Transformer architecture, and what core idea does it propose?",
+			Want:     []string{"attention_is_all_you_need_paper.pdf", "Transformer"},
+			WantAny:  []string{"attention", "self-attention"},
+		},
+		{
+			Title:    "resume-candidate",
+			Question: "Which indexed PDF contains the resume candidate, who is the candidate, and what senior role do they hold?",
+			Want:     []string{"europass_resume_sample.pdf", "John Doe", "Senior Software Engineer"},
+		},
+		{
+			Title:    "health-insurance",
+			Question: "Which indexed PDF explains health insurance requirements for residence permits?",
+			Want:     []string{"german_health_insurance_information_sheet.pdf"},
+			WantAny:  []string{"health insurance", "health-insurance", "residence permit"},
+		},
+		{
+			Title:    "mini-app-ideas",
+			Question: "Which indexed PDF lists AI mini-app ideas, and name one category or app idea from it.",
+			Want:     []string{"mini_app_ideas_catalog.pdf"},
+			WantAny:  []string{"Productivity", "AI Business Productivity Assistant", "mini-app"},
+		},
+	}
+	for _, queryCase := range queryCases {
+		querySession, err := env.Sup.CreateSession(ctx, env.Space, api.CreateSessionRequest{
+			Type:  api.SessionTypeChat,
+			Title: "pdf-indexer-query-" + queryCase.Title,
+		})
+		if err != nil {
+			t.Fatalf("create query session %s: %v", queryCase.Title, err)
+		}
+		utils.WaitForAgentSession(t, env, querySession.ID, 10*time.Second)
+
+		queryTrace := utils.PostMessageTrace(t, ctx, env, querySession.ID, indexedPDFQuestionPrompt(queryCase.Question, len(documents)))
+		t.Logf("%s query reply: %s", queryCase.Title, queryTrace.Text)
+		artifactPrefix := "agent-query-" + queryCase.Title
+		writeArtifact(t, workingDir, artifactPrefix+"-reply.txt", queryTrace.Text)
+		writeArtifact(t, workingDir, artifactPrefix+"-tools.txt", strings.Join(queryTrace.ToolStarts, "\n"))
+		writeTraceArtifact(t, workingDir, artifactPrefix+"-tool-events.json", queryTrace)
+
+		assertToolStarted(t, queryTrace, "embedding_Embed")
+		assertToolStarted(t, queryTrace, "indexer_GetContext")
+		assertNoToolErrors(t, queryTrace, "embedding_Embed", "indexer_GetContext")
+		if contains(queryTrace.ToolStarts, "fs") {
+			t.Fatalf("%s query re-read source files instead of using the index; starts=%v", queryCase.Title, queryTrace.ToolStarts)
+		}
+		assertToolResultContains(t, queryTrace, "indexer_GetContext", "reasoningContext")
+		assertAnswerContains(t, queryTrace.Text, queryCase.Want...)
+		if len(queryCase.WantAny) > 0 {
+			assertAnswerContainsAny(t, queryTrace.Text, queryCase.WantAny...)
+		}
+	}
+}
+
+func startEmbeddingServiceAt(t *testing.T, binary, addr string) {
+	t.Helper()
+	utils.StartProcess(t, "embedding", binary, []string{
+		"--addr", addr,
+		"--skill-dir", filepath.Join(utils.QuarkRoot(t), "plugins", "services", "embedding"),
+	}, utils.ProcessEnv(nil))
+
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		conn, err := servicekit.Dial(ctx, addr)
+		if err == nil {
+			_, err = healthpb.NewHealthClient(conn).Check(ctx, &healthpb.HealthCheckRequest{
+				Service: embeddingv1.EmbeddingService_ServiceDesc.ServiceName,
+			})
+			conn.Close()
+		}
+		cancel()
+		if err == nil {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("embedding service did not become healthy at %s", addr)
+}
+
+type pdfDocumentFixture struct {
+	Name   string
+	Source string
+}
+
+type indexedPDFDocument struct {
+	Name     string
+	Path     string
+	Filename string
+}
+
+type indexedPDFQueryCase struct {
+	Title    string
+	Question string
+	Want     []string
+	WantAny  []string
+}
+
+func copyPDFDocuments(t *testing.T, dir string, fixtures []pdfDocumentFixture) []indexedPDFDocument {
+	t.Helper()
+	out := make([]indexedPDFDocument, 0, len(fixtures))
+	for _, fixture := range fixtures {
+		filename := filepath.Base(fixture.Source)
+		dst := filepath.Join(dir, filename)
+		copyTestFile(t, fixture.Source, dst)
+		out = append(out, indexedPDFDocument{
+			Name:     fixture.Name,
+			Path:     dst,
+			Filename: filename,
+		})
+	}
+	return out
+}
+
+func indexPDFDocumentsPrompt(documents []indexedPDFDocument) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Please index this uploaded PDF dataset for later search and Q&A. Treat these %d files as one user upload batch.\n\n", len(documents))
+	b.WriteString("Documents:\n")
+	for _, document := range documents {
+		fmt.Fprintf(&b, "- %s (%s)\n", document.Path, document.Name)
+	}
+	fmt.Fprintf(&b, "\nRequired workflow: process the files one at a time in the listed order. For each file, extract its PDF text with fs extract_pdf using max_chars 2000, create one compact searchable text chunk from that extracted text, call embedding_Embed without setting dimensions, then immediately call indexer_IndexDocument using that returned embeddingRef and sourceMetadata that includes filename and path before moving to the next file. Do not batch all embeddings before indexing. Do not send a final answer until there are %d successful indexer_IndexDocument results, one for each listed file. Reply briefly with the filenames that are ready for questions.", len(documents))
+	return b.String()
+}
+
+func indexedPDFQuestionPrompt(question string, documentCount int) string {
+	limit := documentCount * 2
+	if limit < 8 {
+		limit = 8
+	}
+	return fmt.Sprintf(`Search the indexed PDFs and answer this question from the indexed context:
+
+%s
+
+Do not re-read the source PDFs. First embed this question with embedding_Embed. Then call indexer_GetContext with queryVectorRef, limit %d, and depth 1. Use the returned reasoningContext only, and include the source filename when available.`, question, limit)
+}
+
+func copyTestFile(t *testing.T, src, dst string) {
+	t.Helper()
+	data, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatalf("read %s: %v", src, err)
+	}
+	if err := os.WriteFile(dst, data, 0o644); err != nil {
+		t.Fatalf("write %s: %v", dst, err)
+	}
+}
+
+func writeArtifact(t *testing.T, dir, name, content string) {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write artifact %s: %v", path, err)
+	}
+	t.Logf("manual verification artifact: %s", path)
+}
+
+func writeTraceArtifact(t *testing.T, dir, name string, trace utils.MessageTrace) {
+	t.Helper()
+	payload := map[string]any{
+		"text":    trace.Text,
+		"starts":  trace.ToolStartEvents,
+		"results": trace.ToolResultEvents,
+	}
+	data, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal trace artifact: %v", err)
+	}
+	writeArtifact(t, dir, name, string(data))
+}
+
+func contains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
+func containsText(value, want string) bool {
+	return strings.Contains(strings.ToLower(canonicalText(value)), strings.ToLower(canonicalText(want)))
+}
+
+func containsAnyText(value string, wants ...string) bool {
+	for _, want := range wants {
+		if containsText(value, want) {
+			return true
+		}
+	}
+	return false
+}
+
+func canonicalText(value string) string {
+	replacer := strings.NewReplacer(
+		"\u00ad", "",
+		"\u2010", "-",
+		"\u2011", "-",
+		"\u2012", "-",
+		"\u2013", "-",
+		"\u2014", "-",
+		"\u2212", "-",
+		"\u00a0", " ",
+		"\u2007", " ",
+		"\u2009", " ",
+		"\u202f", " ",
+	)
+	return replacer.Replace(value)
+}
+
+func assertToolStarted(t *testing.T, trace utils.MessageTrace, name string) {
+	t.Helper()
+	if !contains(trace.ToolStarts, name) {
+		t.Fatalf("agent did not start %s tool; starts=%v", name, trace.ToolStarts)
+	}
+}
+
+func assertToolResultContains(t *testing.T, trace utils.MessageTrace, tool string, wants ...string) {
+	t.Helper()
+	for _, event := range trace.ToolResultEvents {
+		if event.Name != tool {
+			continue
+		}
+		missing := false
+		for _, want := range wants {
+			if !containsText(event.Result, want) {
+				missing = true
+				break
+			}
+		}
+		if !missing {
+			return
+		}
+	}
+	t.Fatalf("%s tool results missing %v: %+v", tool, wants, trace.ToolResultEvents)
+}
+
+func assertNoToolErrors(t *testing.T, trace utils.MessageTrace, tools ...string) {
+	t.Helper()
+	wanted := make(map[string]bool, len(tools))
+	for _, tool := range tools {
+		wanted[tool] = true
+	}
+	for _, event := range trace.ToolResultEvents {
+		if !wanted[event.Name] {
+			continue
+		}
+		if strings.HasPrefix(strings.TrimSpace(event.Result), "error:") {
+			t.Fatalf("%s returned an error: %s", event.Name, event.Result)
+		}
+	}
+}
+
+func assertToolSuccessCount(t *testing.T, trace utils.MessageTrace, tool string, want int) {
+	t.Helper()
+	count := 0
+	for _, event := range trace.ToolResultEvents {
+		if event.Name != tool {
+			continue
+		}
+		compact := strings.ReplaceAll(event.Result, " ", "")
+		if strings.Contains(compact, `"success":true`) {
+			count++
+		}
+	}
+	if count < want {
+		t.Fatalf("%s successful results = %d, want at least %d: %+v", tool, count, want, trace.ToolResultEvents)
+	}
+}
+
+func assertAnswerContains(t *testing.T, answer string, wants ...string) {
+	t.Helper()
+	for _, want := range wants {
+		if !containsText(answer, want) {
+			t.Fatalf("answer missing %q:\n%s", want, answer)
+		}
+	}
+}
+
+func assertAnswerContainsAny(t *testing.T, answer string, wants ...string) {
+	t.Helper()
+	if !containsAnyText(answer, wants...) {
+		t.Fatalf("answer missing one of %v:\n%s", wants, answer)
+	}
+}

@@ -68,6 +68,18 @@ func installSpacePlugins(t *testing.T, env *E2EEnv, bins BuiltBinaries) {
 	installTool("bash", bins.Bash, bins.BashLib)
 	installTool("fs", bins.FS, bins.FSLib)
 
+	installService := func(name string) {
+		src := filepath.Join(srcRoot, "services", name)
+		dst := filepath.Join(pluginsDir, "services", name)
+		if err := os.MkdirAll(dst, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", dst, err)
+		}
+		copyFile(t, filepath.Join(src, "manifest.yaml"), filepath.Join(dst, "manifest.yaml"), 0o644)
+		copyFile(t, filepath.Join(src, "SKILL.md"), filepath.Join(dst, "SKILL.md"), 0o644)
+	}
+	installService("indexer")
+	installService("embedding")
+
 	providerSrc := filepath.Join(srcRoot, "providers", "openrouter")
 	providerLib := bins.OpenRouterLib
 	if providerLib == "" {
@@ -113,6 +125,22 @@ model:
 plugins:
   - ref: quark/tool-bash
   - ref: quark/tool-fs
+  - ref: quark/service-indexer
+  - ref: quark/service-embedding
+services:
+  - name: indexer
+    ref: quark/service-indexer
+    mode: local
+    address_env: QUARK_INDEXER_ADDR
+  - name: embedding
+    ref: quark/service-embedding
+    mode: local
+    address_env: QUARK_EMBEDDING_ADDR
+embedding:
+  service: embedding
+  provider: local
+  model: local-hash-v1
+  dimensions: 32
 `, name, provider, model, env)
 	return []byte(qf)
 }

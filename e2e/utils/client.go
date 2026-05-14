@@ -24,9 +24,17 @@ func PostMessage(t *testing.T, ctx context.Context, env *E2EEnv, sessionID, cont
 
 // MessageTrace is the observable response stream produced by PostMessageTrace.
 type MessageTrace struct {
-	Text        string
-	ToolStarts  []string
-	ToolResults []string
+	Text             string
+	ToolStarts       []string
+	ToolResults      []string
+	ToolStartEvents  []ToolEvent
+	ToolResultEvents []ToolEvent
+}
+
+type ToolEvent struct {
+	Name      string
+	Arguments string
+	Result    string
 }
 
 // PostMessageTrace POSTs a user message and returns streamed text plus tool
@@ -81,12 +89,14 @@ func PostMessageTrace(t *testing.T, ctx context.Context, env *E2EEnv, sessionID,
 						full.WriteString(payload)
 					}
 				} else if currentEvent == "tool_start" {
-					if name := toolEventName(dataBuf.Bytes()); name != "" {
-						trace.ToolStarts = append(trace.ToolStarts, name)
+					if event := toolEvent(dataBuf.Bytes()); event.Name != "" {
+						trace.ToolStarts = append(trace.ToolStarts, event.Name)
+						trace.ToolStartEvents = append(trace.ToolStartEvents, event)
 					}
 				} else if currentEvent == "tool_result" {
-					if name := toolEventName(dataBuf.Bytes()); name != "" {
-						trace.ToolResults = append(trace.ToolResults, name)
+					if event := toolEvent(dataBuf.Bytes()); event.Name != "" {
+						trace.ToolResults = append(trace.ToolResults, event.Name)
+						trace.ToolResultEvents = append(trace.ToolResultEvents, event)
 					}
 				} else if currentEvent == "error" {
 					if IsRateLimitText(dataBuf.String()) {
@@ -117,12 +127,12 @@ func PostMessageTrace(t *testing.T, ctx context.Context, env *E2EEnv, sessionID,
 	return trace
 }
 
-func toolEventName(data []byte) string {
-	var payload map[string]string
+func toolEvent(data []byte) ToolEvent {
+	var payload ToolEvent
 	if err := json.Unmarshal(data, &payload); err != nil {
-		return ""
+		return ToolEvent{}
 	}
-	return payload["name"]
+	return payload
 }
 
 // AgentSessionsCount reads GET /v1/info on the agent and returns the session
@@ -152,9 +162,14 @@ func AgentSessionsCount(t *testing.T, env *E2EEnv) int {
 func WaitForAgentSession(t *testing.T, env *E2EEnv, id string, timeout time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
+	url := fmt.Sprintf("%s/v1/sessions/%s/messages", env.AgentURL, id)
 	for time.Now().Before(deadline) {
-		if AgentSessionsCount(t, env) > 0 {
-			return
+		resp, err := env.HTTPC.Get(url)
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				return
+			}
 		}
 		time.Sleep(100 * time.Millisecond)
 	}

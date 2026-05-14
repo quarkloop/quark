@@ -78,7 +78,7 @@ func startIndexerServiceAt(t *testing.T, binary, dgraphAddr, addr string) {
 	utils.StartProcess(t, "indexer", binary, []string{
 		"--addr", addr,
 		"--dgraph", dgraphAddr,
-		"--skill-dir", filepath.Join(utils.QuarkRoot(t), "services", "indexer"),
+		"--skill-dir", filepath.Join(utils.QuarkRoot(t), "plugins", "services", "indexer"),
 	}, utils.ProcessEnv(nil))
 
 	deadline := time.Now().Add(60 * time.Second)

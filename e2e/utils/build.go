@@ -20,6 +20,7 @@ type BuiltBinaries struct {
 	Bash       string
 	FS         string
 	Indexer    string
+	Embedding  string
 
 	// Lib-mode tool .so paths. Empty if the build failed (e.g. no CGO);
 	// callers should fall back to api-mode installation.
@@ -95,6 +96,7 @@ func BuildAllOnce(t *testing.T) BuiltBinaries {
 		buildRes.Bash = build("./plugins/tools/bash/cmd/bash", "bash")
 		buildRes.FS = build("./plugins/tools/fs/cmd/fs", "fs")
 		buildRes.Indexer = build("./services/indexer/cmd/indexer", "indexer")
+		buildRes.Embedding = build("./services/embedding/cmd/embedding", "embedding")
 
 		buildRes.BashLib = buildLib("./plugins/tools/bash", "bash")
 		buildRes.FSLib = buildLib("./plugins/tools/fs", "fs")
