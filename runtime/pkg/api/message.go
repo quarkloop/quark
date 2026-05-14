@@ -2,6 +2,7 @@ package api
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -34,28 +35,27 @@ func (h *MessageHandler) RegisterRoutes(g fiber.Router) {
 func (h *MessageHandler) List(c *fiber.Ctx) error {
 	sessionID := c.Params("session_id")
 	if !h.sessions.Has(sessionID) {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "session not found"})
+		return c.Status(fiber.StatusNotFound).JSON(errorResponse{Error: "session not found"})
 	}
-	return c.JSON(h.sessions.GetMessages(sessionID))
+	return c.JSON(mapMessageResponses(h.sessions.GetMessages(sessionID)))
 }
 
 // Send handles POST /v1/sessions/:session_id/messages (SSE streaming response).
 func (h *MessageHandler) Send(c *fiber.Ctx) error {
 	sessionID := c.Params("session_id")
 
-	var req struct {
-		Content string `json:"content"`
-	}
+	var req sendMessageRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+		return c.Status(fiber.StatusBadRequest).JSON(errorResponse{Error: err.Error()})
 	}
 
 	if !h.sessions.Has(sessionID) {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "session not found"})
+		return c.Status(fiber.StatusNotFound).JSON(errorResponse{Error: "session not found"})
 	}
 
 	resp := make(chan message.StreamMessage, 64)
-	h.poster.Post(sessionID, req.Content, resp)
+	postCtx, cancelPost := context.WithCancel(context.Background())
+	h.poster.Post(postCtx, sessionID, req.Content, resp)
 
 	c.Set("Content-Type", "text/event-stream")
 	c.Set("Cache-Control", "no-cache")
@@ -64,6 +64,7 @@ func (h *MessageHandler) Send(c *fiber.Ctx) error {
 
 	ctx := c.Context()
 	ctx.SetBodyStreamWriter(func(w *bufio.Writer) {
+		defer cancelPost()
 		enc := json.NewEncoder(w)
 		for {
 			select {
@@ -82,6 +83,7 @@ func (h *MessageHandler) Send(c *fiber.Ctx) error {
 				fmt.Fprint(w, "\n")
 				w.Flush()
 			case <-ctx.Done():
+				cancelPost()
 				return
 			}
 		}
@@ -96,7 +98,7 @@ func (h *MessageHandler) Stream(c *fiber.Ctx) error {
 
 	ch := h.sessions.Subscribe(sessionID)
 	if ch == nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "session not found"})
+		return c.Status(fiber.StatusNotFound).JSON(errorResponse{Error: "session not found"})
 	}
 	defer h.sessions.Unsubscribe(sessionID, ch)
 

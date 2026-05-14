@@ -2,6 +2,8 @@
 package agent
 
 import (
+	"context"
+
 	"github.com/quarkloop/runtime/pkg/loop"
 	"github.com/quarkloop/runtime/pkg/message"
 
@@ -21,15 +23,20 @@ const (
 // UserMessageMsg carries an incoming user message.
 type UserMessageMsg struct {
 	loop.BaseMessage
+	Context   context.Context
 	SessionID string
 	Content   string
 	Response  chan message.StreamMessage
 }
 
 // NewUserMessage creates a new user message.
-func NewUserMessage(sessionID, content string, resp chan message.StreamMessage) UserMessageMsg {
+func NewUserMessage(ctx context.Context, sessionID, content string, resp chan message.StreamMessage) UserMessageMsg {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	return UserMessageMsg{
 		BaseMessage: loop.NewMessage(MsgTypeUserMessage),
+		Context:     ctx,
 		SessionID:   sessionID,
 		Content:     content,
 		Response:    resp,

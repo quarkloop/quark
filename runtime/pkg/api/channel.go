@@ -27,8 +27,8 @@ func (h *ChannelHandler) ListChannels(c *fiber.Ctx) error {
 	active := h.bus.ActiveChannels()
 	available := h.bus.AvailableChannels()
 
-	return c.JSON(fiber.Map{
-		"active":    active,
-		"available": available,
+	return c.JSON(channelsResponse{
+		Active:    active,
+		Available: available,
 	})
 }

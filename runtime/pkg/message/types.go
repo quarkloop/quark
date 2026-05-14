@@ -1,8 +1,10 @@
 package message
 
+import "context"
+
 // Poster posts messages to the agent inbox.
 type Poster interface {
-	Post(sessionID, content string, resp chan StreamMessage)
+	Post(ctx context.Context, sessionID, content string, resp chan StreamMessage)
 }
 
 // SessionAccess provides session state for message handlers.

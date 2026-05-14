@@ -28,12 +28,12 @@ func (h *AgentHandler) Info(c *fiber.Ctx) error {
 		busInfo = h.agent.Bus.ActiveChannels()
 	}
 
-	return c.JSON(fiber.Map{
-		"id":           h.agent.ID,
-		"sessions":     len(h.agent.Sessions.List()),
-		"work_status":  h.agent.Plan.GetStatus(),
-		"default_model": h.agent.Models.Default,
-		"models":       h.agent.Models.List(),
-		"channels":     busInfo,
+	return c.JSON(agentInfoResponse{
+		ID:           h.agent.ID,
+		Sessions:     len(h.agent.Sessions.List()),
+		WorkStatus:   h.agent.Plan.GetStatus(),
+		DefaultModel: h.agent.Models.Default,
+		Models:       h.agent.Models.List(),
+		Channels:     busInfo,
 	})
 }

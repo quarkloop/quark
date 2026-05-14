@@ -20,10 +20,10 @@ func (h *SystemHandler) RegisterRoutes(g fiber.Router) {
 
 // Health handles GET /health.
 func (h *SystemHandler) Health(c *fiber.Ctx) error {
-	return c.JSON(fiber.Map{"status": "ok"})
+	return c.JSON(statusResponse{Status: "ok"})
 }
 
 // Stop handles POST /v1/stop.
 func (h *SystemHandler) Stop(c *fiber.Ctx) error {
-	return c.JSON(fiber.Map{"status": "stopping"})
+	return c.JSON(statusResponse{Status: "stopping"})
 }

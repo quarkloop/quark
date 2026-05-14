@@ -77,5 +77,9 @@ func errorHandler(c *fiber.Ctx, err error) error {
 	if e, ok := err.(*fiber.Error); ok {
 		code = e.Code
 	}
-	return c.Status(code).JSON(fiber.Map{"error": err.Error()})
+	return c.Status(code).JSON(errorResponse{Error: err.Error()})
+}
+
+type errorResponse struct {
+	Error string `json:"error"`
 }

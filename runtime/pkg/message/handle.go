@@ -48,6 +48,6 @@ func Handle(ctx context.Context, history []Message, llmClient *llm.Client, syste
 
 	// Infer (LLM call → tool loop → streaming)
 	return llmClient.Infer(ctx, msgs, tools, onTool, func(msgType string, data any) {
-		resp <- StreamMessage{Type: msgType, Data: data}
+		Emit(ctx, resp, StreamMessage{Type: msgType, Data: data})
 	}, finalGuard)
 }

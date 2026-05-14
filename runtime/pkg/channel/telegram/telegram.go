@@ -102,7 +102,7 @@ func (c *TelegramChannel) handleUpdate(ctx context.Context, u update) {
 	c.ensureSn(chatID, "telegram", title)
 
 	resp := make(chan message.StreamMessage, 64)
-	c.poster.Post(chatID, u.Message.Text, resp)
+	c.poster.Post(ctx, chatID, u.Message.Text, resp)
 
 	// Collect full response
 	var sb strings.Builder

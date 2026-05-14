@@ -183,8 +183,8 @@ func (a *Agent) registerHandlers() {
 }
 
 // Post sends a user message to the agent.
-func (a *Agent) Post(sessionID, content string, resp chan message.StreamMessage) {
-	a.loop.Send(NewUserMessage(sessionID, content, resp))
+func (a *Agent) Post(ctx context.Context, sessionID, content string, resp chan message.StreamMessage) {
+	a.loop.Send(NewUserMessage(ctx, sessionID, content, resp))
 }
 
 // Send sends a typed message to the agent loop.
@@ -277,6 +277,11 @@ func (a *Agent) handleUserMessage(ctx context.Context, msg loop.Message) error {
 	userMsg := msg.(UserMessageMsg)
 	defer close(userMsg.Response)
 
+	requestCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stopRequestCancel := context.AfterFunc(userMsg.Context, cancel)
+	defer stopRequestCancel()
+
 	s := a.Sessions.Get(userMsg.SessionID)
 	if s == nil {
 		s = a.Sessions.GetOrCreate(userMsg.SessionID, "chat", "")
@@ -291,7 +296,7 @@ func (a *Agent) handleUserMessage(ctx context.Context, msg loop.Message) error {
 
 	history := s.GetMessages()
 	fullResponse, err := message.Handle(
-		ctx,
+		requestCtx,
 		history,
 		client,
 		a.systemPrompt(),
@@ -302,19 +307,19 @@ func (a *Agent) handleUserMessage(ctx context.Context, msg loop.Message) error {
 		a.finalGuard(),
 	)
 	if err != nil {
-		userMsg.Response <- message.StreamMessage{
+		message.Emit(requestCtx, userMsg.Response, message.StreamMessage{
 			Type: "error",
 			Data: fmt.Sprintf("Agent Error: %v", err),
-		}
+		})
 		return err
 	}
 	if a.config.PendingRefs != nil {
 		if refs := a.config.PendingRefs(); len(refs) > 0 {
 			err := fmt.Errorf("runtime validation failed: pending embeddingRef values were not consumed: %s", strings.Join(refs, ", "))
-			userMsg.Response <- message.StreamMessage{
+			message.Emit(requestCtx, userMsg.Response, message.StreamMessage{
 				Type: "error",
 				Data: fmt.Sprintf("Agent Error: %v", err),
-			}
+			})
 			return err
 		}
 	}

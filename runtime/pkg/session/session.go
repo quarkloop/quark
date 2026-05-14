@@ -12,15 +12,15 @@ import (
 // This is distinct from the supervisor's session persistence/wire types
 // (supervisor/pkg/sessions.Session and supervisor/pkg/api.Session).
 type Conversation struct {
-	mu            sync.RWMutex
-	id            string
-	sessionType   string
-	title         string
-	status        string
-	messages      []message.Message `json:"-"`
-	createdAt     string
-	updatedAt     string
-	subscribers   map[chan message.Message]struct{}
+	mu          sync.RWMutex
+	id          string
+	sessionType string
+	title       string
+	status      string
+	messages    []message.Message `json:"-"`
+	createdAt   string
+	updatedAt   string
+	subscribers map[chan message.Message]struct{}
 }
 
 // ID returns the conversation ID.
