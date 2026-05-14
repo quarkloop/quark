@@ -141,6 +141,42 @@ func TestIndexDocumentRejectsEmbeddingDimensionMismatch(t *testing.T) {
 	}
 }
 
+func TestIndexDocumentDeduplicatesPrimaryGraphWrites(t *testing.T) {
+	store := &fakeStore{}
+	svc, err := New(store)
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	err = svc.IndexDocument(context.Background(), IndexCommand{
+		ChunkID: "chunk-1",
+		Text:    "Productivity apps include calendar planning.",
+		Vector:  []float32{0.1, 0.2},
+		Entities: []indexer.Entity{
+			{ID: "category_productivity", Name: "Productivity", Type: "CATEGORY"},
+			{ID: "category_productivity", Name: "Productivity", Type: "CATEGORY"},
+			{ID: "calendar_planner", Name: "Calendar Planner", Type: "APP"},
+		},
+		Relations: []indexer.Relation{
+			{FromID: "calendar_planner", ToID: "category_productivity", Relation: "BELONGS_TO"},
+			{FromID: "calendar_planner", ToID: "category_productivity", Relation: "BELONGS_TO"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("index document: %v", err)
+	}
+
+	if len(store.upserted) != 2 {
+		t.Fatalf("upserted entities = %d, want 2: %+v", len(store.upserted), store.upserted)
+	}
+	if len(store.linked) != 2 {
+		t.Fatalf("linked entities = %d, want 2: %+v", len(store.linked), store.linked)
+	}
+	if len(store.related) != 1 {
+		t.Fatalf("relations = %d, want 1: %+v", len(store.related), store.related)
+	}
+}
+
 func TestBuildContextPackageDeduplicatesEvidence(t *testing.T) {
 	chunks := []indexer.Chunk{
 		{
@@ -182,6 +218,9 @@ func TestBuildContextPackageDeduplicatesEvidence(t *testing.T) {
 
 type fakeStore struct {
 	inserted []indexer.Chunk
+	upserted []indexer.Entity
+	linked   []string
+	related  []indexer.Relation
 	chunks   []indexer.Chunk
 	graph    *indexer.GraphFragment
 }
@@ -195,11 +234,20 @@ func (s *fakeStore) VectorSearch(context.Context, []float32, int, map[string]str
 	return s.chunks, nil
 }
 
-func (s *fakeStore) UpsertEntity(context.Context, indexer.Entity) error { return nil }
+func (s *fakeStore) UpsertEntity(_ context.Context, entity indexer.Entity) error {
+	s.upserted = append(s.upserted, entity)
+	return nil
+}
 
-func (s *fakeStore) LinkChunkEntity(context.Context, string, string) error { return nil }
+func (s *fakeStore) LinkChunkEntity(_ context.Context, _, entityID string) error {
+	s.linked = append(s.linked, entityID)
+	return nil
+}
 
-func (s *fakeStore) RelateNodes(context.Context, indexer.Relation) error { return nil }
+func (s *fakeStore) RelateNodes(_ context.Context, relation indexer.Relation) error {
+	s.related = append(s.related, relation)
+	return nil
+}
 
 func (s *fakeStore) GetNeighborhood(context.Context, string, int) (*indexer.GraphFragment, error) {
 	return s.graph, nil

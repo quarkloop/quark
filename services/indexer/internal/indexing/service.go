@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/quarkloop/services/indexer/pkg/indexer"
-	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -80,55 +79,37 @@ func (s *Service) GetContext(ctx context.Context, query ContextQuery) (*ContextR
 }
 
 func (s *Service) writePrimaryRecords(ctx context.Context, cmd IndexCommand) error {
-	g, ctx := errgroup.WithContext(ctx)
-	g.Go(func() error {
-		return s.store.InsertChunk(ctx, indexer.Chunk{
-			ID:                cmd.ChunkID,
-			Text:              cmd.Text,
-			Vector:            cloneVector(cmd.Vector),
-			Metadata:          cloneMetadata(cmd.Metadata),
-			Document:          cloneDocument(cmd.Document),
-			EmbeddingMetadata: cmd.EmbeddingMetadata,
-			Facts:             cloneFacts(cmd.Facts),
-			Citations:         cloneCitations(cmd.Citations),
-			Provenance:        cloneProvenance(cmd.Provenance),
-		})
-	})
-	for _, entity := range cmd.Entities {
-		entity := entity
-		g.Go(func() error { return s.store.UpsertEntity(ctx, entity) })
-	}
-	for _, relation := range cmd.Relations {
-		for _, endpoint := range relationEndpoints(relation) {
-			endpoint := endpoint
-			g.Go(func() error { return s.store.UpsertEntity(ctx, endpoint) })
-		}
-	}
-	if err := g.Wait(); err != nil {
+	if err := s.store.InsertChunk(ctx, indexer.Chunk{
+		ID:                cmd.ChunkID,
+		Text:              cmd.Text,
+		Vector:            cloneVector(cmd.Vector),
+		Metadata:          cloneMetadata(cmd.Metadata),
+		Document:          cloneDocument(cmd.Document),
+		EmbeddingMetadata: cmd.EmbeddingMetadata,
+		Facts:             cloneFacts(cmd.Facts),
+		Citations:         cloneCitations(cmd.Citations),
+		Provenance:        cloneProvenance(cmd.Provenance),
+	}); err != nil {
 		return fmt.Errorf("write index records: %w", err)
+	}
+	for _, entity := range primaryEntities(cmd) {
+		if err := s.store.UpsertEntity(ctx, entity); err != nil {
+			return fmt.Errorf("write index records: %w", err)
+		}
 	}
 	return nil
 }
 
 func (s *Service) writeGraphEdges(ctx context.Context, cmd IndexCommand) error {
-	g, ctx := errgroup.WithContext(ctx)
-	for _, entity := range cmd.Entities {
-		entityID := normalizedEntityID(entity)
-		if entityID == "" {
-			continue
+	for _, entityID := range linkedEntityIDs(cmd.Entities) {
+		if err := s.store.LinkChunkEntity(ctx, cmd.ChunkID, entityID); err != nil {
+			return fmt.Errorf("write graph edges: %w", err)
 		}
-		linkEntityID := entityID
-		g.Go(func() error { return s.store.LinkChunkEntity(ctx, cmd.ChunkID, linkEntityID) })
 	}
-	for _, relation := range cmd.Relations {
-		relation := relation
-		if !completeRelation(relation) {
-			continue
+	for _, relation := range uniqueRelations(cmd.Relations) {
+		if err := s.store.RelateNodes(ctx, relation); err != nil {
+			return fmt.Errorf("write graph edges: %w", err)
 		}
-		g.Go(func() error { return s.store.RelateNodes(ctx, relation) })
-	}
-	if err := g.Wait(); err != nil {
-		return fmt.Errorf("write graph edges: %w", err)
 	}
 	return nil
 }
@@ -370,6 +351,84 @@ func relationEndpoints(relation indexer.Relation) []indexer.Entity {
 		{ID: relation.FromID, Name: relation.FromID, Type: unknownEntityType},
 		{ID: relation.ToID, Name: relation.ToID, Type: unknownEntityType},
 	}
+}
+
+func primaryEntities(cmd IndexCommand) []indexer.Entity {
+	entities := make([]indexer.Entity, 0, len(cmd.Entities)+len(cmd.Relations)*2)
+	seen := make(map[string]int)
+	add := func(entity indexer.Entity) {
+		entity = normalizeEntityForWrite(entity)
+		if entity.ID == "" {
+			return
+		}
+		if existing, ok := seen[entity.ID]; ok {
+			if entities[existing].Type == unknownEntityType && entity.Type != unknownEntityType {
+				entities[existing] = entity
+			}
+			return
+		}
+		seen[entity.ID] = len(entities)
+		entities = append(entities, entity)
+	}
+	for _, entity := range cmd.Entities {
+		add(entity)
+	}
+	for _, relation := range cmd.Relations {
+		for _, endpoint := range relationEndpoints(relation) {
+			add(endpoint)
+		}
+	}
+	return entities
+}
+
+func linkedEntityIDs(entities []indexer.Entity) []string {
+	out := make([]string, 0, len(entities))
+	seen := make(map[string]struct{}, len(entities))
+	for _, entity := range entities {
+		entityID := normalizedEntityID(entity)
+		if entityID == "" {
+			continue
+		}
+		if _, ok := seen[entityID]; ok {
+			continue
+		}
+		seen[entityID] = struct{}{}
+		out = append(out, entityID)
+	}
+	return out
+}
+
+func uniqueRelations(relations []indexer.Relation) []indexer.Relation {
+	out := make([]indexer.Relation, 0, len(relations))
+	seen := make(map[string]struct{}, len(relations))
+	for _, relation := range relations {
+		if !completeRelation(relation) {
+			continue
+		}
+		key := relation.FromID + "\x00" + relation.Relation + "\x00" + relation.ToID
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, relation)
+	}
+	return out
+}
+
+func normalizeEntityForWrite(entity indexer.Entity) indexer.Entity {
+	entity.ID = strings.TrimSpace(entity.ID)
+	entity.Name = strings.TrimSpace(entity.Name)
+	entity.Type = strings.TrimSpace(entity.Type)
+	if entity.ID == "" {
+		entity.ID = indexer.EntityIDFromName(entity.Name)
+	}
+	if entity.Name == "" {
+		entity.Name = entity.ID
+	}
+	if entity.Type == "" {
+		entity.Type = unknownEntityType
+	}
+	return entity
 }
 
 func completeRelation(relation indexer.Relation) bool {
