@@ -197,6 +197,7 @@ func (r Registry) PromptBlock() string {
 	b.WriteString("## Runtime Extraction Profiles\n\n")
 	b.WriteString("When indexing documents, choose an extraction profile in runtime before mapping extracted content into the indexer canonical schema. Parser output is raw source text; semantic extraction output is separate and must be validated before indexing.\n")
 	b.WriteString("If no concrete profile fits confidently, use `generic-open` and preserve uncertainty instead of forcing a schema.\n")
+	b.WriteString("The open extraction structure supports document_type_guess, summary, key_facts, entities, relations, dates, amounts, tables, sections, citations, raw_text_references, and uncertainties. Keep raw text references separate from semantic facts.\n")
 
 	profiles := append(r.Profiles(), r.fallback)
 	sort.SliceStable(profiles, func(i, j int) bool { return profiles[i].ID < profiles[j].ID })
