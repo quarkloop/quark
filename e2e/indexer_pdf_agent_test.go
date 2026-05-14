@@ -15,6 +15,7 @@ import (
 
 	"github.com/quarkloop/e2e/utils"
 	embeddingv1 "github.com/quarkloop/pkg/serviceapi/gen/quark/embedding/v1"
+	indexerv1 "github.com/quarkloop/pkg/serviceapi/gen/quark/indexer/v1"
 	"github.com/quarkloop/pkg/serviceapi/servicekit"
 	"github.com/quarkloop/supervisor/pkg/api"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
@@ -126,6 +127,7 @@ func runAgentIndexesUploadedPDFDataset(t *testing.T, embedding utils.EmbeddingOp
 			t.Fatalf("index confirmation missing filename %q:\n%s", document.Filename, indexTrace.Text)
 		}
 	}
+	verifyPersistedPDFIndexState(t, ctx, workingDir, indexerAddr, embeddingAddr, documents)
 
 	queryCases := []indexedPDFQueryCase{
 		{
@@ -186,6 +188,62 @@ func runAgentIndexesUploadedPDFDataset(t *testing.T, embedding utils.EmbeddingOp
 			assertAnswerContainsAny(t, queryTrace.Text, queryCase.WantAny...)
 		}
 	}
+}
+
+func verifyPersistedPDFIndexState(t *testing.T, ctx context.Context, artifactDir, indexerAddr, embeddingAddr string, documents []indexedPDFDocument) {
+	t.Helper()
+	embeddingConn, err := servicekit.Dial(ctx, embeddingAddr)
+	if err != nil {
+		t.Fatalf("dial embedding service for persisted-state verification: %v", err)
+	}
+	defer embeddingConn.Close()
+	indexerConn, err := servicekit.Dial(ctx, indexerAddr)
+	if err != nil {
+		t.Fatalf("dial indexer service for persisted-state verification: %v", err)
+	}
+	defer indexerConn.Close()
+
+	embeddingClient := embeddingv1.NewEmbeddingServiceClient(embeddingConn)
+	indexerClient := indexerv1.NewIndexerServiceClient(indexerConn)
+	report := make([]map[string]any, 0, len(documents))
+	for _, document := range documents {
+		embedding, err := embeddingClient.Embed(ctx, &embeddingv1.EmbedRequest{
+			Input: document.Name + " " + document.Filename,
+		})
+		if err != nil {
+			t.Fatalf("embed verification query for %s: %v", document.Filename, err)
+		}
+		resp, err := indexerClient.GetContext(ctx, &indexerv1.QueryRequest{
+			QueryVector: embedding.GetVector(),
+			Limit:       1,
+			Depth:       1,
+			Filters:     map[string]string{"filename": document.Filename},
+		})
+		if err != nil {
+			t.Fatalf("query persisted index state for %s: %v", document.Filename, err)
+		}
+		if len(resp.GetChunks()) == 0 {
+			t.Fatalf("persisted index state missing chunk for %s", document.Filename)
+		}
+		chunk := resp.GetChunks()[0]
+		if got := chunk.GetMetadata()["filename"]; got != document.Filename {
+			t.Fatalf("persisted chunk filename = %q, want %q: %+v", got, document.Filename, chunk.GetMetadata())
+		}
+		if chunk.GetEmbeddingMetadata().GetDimensions() != embedding.GetDimensions() {
+			t.Fatalf("persisted embedding dimensions for %s = %d, want %d", document.Filename, chunk.GetEmbeddingMetadata().GetDimensions(), embedding.GetDimensions())
+		}
+		report = append(report, map[string]any{
+			"filename":           document.Filename,
+			"chunk_id":           chunk.GetId(),
+			"score":              chunk.GetScore(),
+			"embedding_provider": chunk.GetEmbeddingMetadata().GetProvider(),
+			"embedding_model":    chunk.GetEmbeddingMetadata().GetModel(),
+			"embedding_dims":     chunk.GetEmbeddingMetadata().GetDimensions(),
+			"citations":          resp.GetCitations(),
+			"context_confidence": resp.GetContextPackage().GetConfidence(),
+		})
+	}
+	writeJSONArtifact(t, artifactDir, "direct-index-state.json", report)
 }
 
 func startEmbeddingServiceAt(t *testing.T, binary, addr string, embedding utils.EmbeddingOptions) {
