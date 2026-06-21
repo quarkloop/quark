@@ -28,7 +28,11 @@ JAVA        ?= java
 MAVEN_OPTS  ?= -B -q
 
 # ----- Go options -----
-GOFLAGS     ?= -trimpath
+# -buildvcs=false disables Go 1.18+ automatic VCS stamping, which fails
+# with "error obtaining VCS status: exit status 128" when the .git
+# directory is unreadable (CI, sandboxed builds, Docker with mismatched
+# ownership). We use -trimpath for reproducibility instead.
+GOFLAGS     ?= -trimpath -buildvcs=false
 
 # ----- Project paths (relative — no absolute paths) -----
 CLI_DIR          := cli
@@ -205,17 +209,17 @@ docker-build-java: ## Build Java project in a clean Docker container (verifies n
 	@printf "$(C_GREEN)✓ Java Docker build complete$(C_RESET)\n"
 
 docker-build-go: ## Build Go CLI in a clean Docker container (verifies no host deps)
-	@printf "$(C_BLUE)> Building Go in Docker (golang:1.26)...$(C_RESET)\n"
-	docker run --rm -v "$$PWD":/app -w /app/cli golang:1.26 \
-		go build -trimpath -o /app/$(CLI_BIN) .
+	@printf "$(C_BLUE)> Building Go in Docker (golang:1.24)...$(C_RESET)\n"
+	docker run --rm -v "$$PWD":/app -w /app/cli golang:1.24 \
+		go build -trimpath -buildvcs=false -o /app/$(CLI_BIN) .
 	@printf "$(C_GREEN)✓ Go Docker build complete: $(CLI_BIN)$(C_RESET)\n"
 
 docker-verify: ## Full clean build + test in Docker (CI-friendly, no host deps)
 	@printf "$(C_BLUE)> Full verify in Docker...$(C_RESET)\n"
 	docker run --rm -v "$$PWD":/app -w /app maven:3.9-eclipse-temurin-21 \
 		mvn -B clean verify
-	docker run --rm -v "$$PWD":/app -w /app/cli golang:1.26 \
-		sh -c 'go vet ./... && go test ./... && go build -trimpath -o /app/$(CLI_BIN) .'
+	docker run --rm -v "$$PWD":/app -w /app/cli golang:1.24 \
+		sh -c 'go vet ./... && go test ./... && go build -trimpath -buildvcs=false -o /app/$(CLI_BIN) .'
 	@printf "$(C_GREEN)✓ Docker verify complete$(C_RESET)\n"
 
 # =============================================================================

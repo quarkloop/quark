@@ -60,14 +60,14 @@ COPY example/simple-streaming/runner/src example/simple-streaming/runner/src
 RUN mvn -B clean install -DskipTests
 
 # ----- Stage 2: Build Go CLI -----
-FROM golang:1.26 AS go-builder
+FROM golang:1.24 AS go-builder
 
 WORKDIR /build
 COPY cli/go.mod cli/go.sum ./
 RUN go mod download
 
 COPY cli/ .
-RUN go vet ./... && go test ./... && go build -trimpath -o /quarkctl .
+RUN go vet ./... && go test ./... && go build -trimpath -buildvcs=false -o /quarkctl .
 
 # ----- Stage 3: Verify image (small, just the artifacts) -----
 FROM eclipse-temurin:21-jre AS verify
