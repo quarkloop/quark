@@ -5,7 +5,6 @@ import io.nats.client.Nats;
 import io.nats.client.Options;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.enterprise.inject.Produces;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,14 +14,20 @@ import java.time.Duration;
 /**
  * CDI bean that manages the NATS connection.
  *
- * <p>The NATS server can be embedded (running in-process) or external.
- * Configuration:
- * <ul>
- *   <li>{@code quark.nats.url} — NATS server URL (default: {@code nats://localhost:4222})</li>
- * </ul>
+ * <p>Connects to an external NATS server at {@code quark.nats.url}
+ * (default: {@code nats://localhost:4222}). If the server is unavailable
+ * at startup, the platform operates in "degraded" mode — systems can be
+ * deployed and tracked, but message flow is disabled until a NATS server
+ * becomes available.
  *
- * <p>For embedded NATS, the server module starts the NATS server before
- * this bean is created. This bean just connects to it.
+ * <p>To enable full message flow, start a NATS server before deploying:
+ * <pre>
+ *   # Using Docker:
+ *   docker run -p 4222:4222 nats:latest
+ *
+ *   # Using Homebrew (macOS):
+ *   brew install nats-server && nats-server
+ * </pre>
  */
 @ApplicationScoped
 public class NatsConnectionManager {
@@ -32,11 +37,25 @@ public class NatsConnectionManager {
     @ConfigProperty(name = "quark.nats.url", defaultValue = "nats://localhost:4222")
     String natsUrl;
 
-    private Connection connection;
+    private volatile Connection connection;
 
-    @Produces
-    @ApplicationScoped
-    public Connection produceConnection() throws Exception {
+    /**
+     * Returns the NATS {@link Connection}, or {@code null} if the server
+     * is unavailable (degraded mode).
+     *
+     * <p>We do NOT use a {@code @Produces} method because CDI forbids
+     * {@code @ApplicationScoped} producers from returning null. Instead,
+     * callers inject {@link NatsConnectionManager} and call this method
+     * directly.
+     */
+    public Connection getConnection() {
+        if (connection != null) {
+            return connection;
+        }
+        return tryConnect();
+    }
+
+    private synchronized Connection tryConnect() {
         if (connection != null) {
             return connection;
         }
@@ -45,13 +64,20 @@ public class NatsConnectionManager {
 
         Options options = Options.builder()
                 .server(natsUrl)
-                .connectionTimeout(Duration.ofSeconds(5))
+                .connectionTimeout(Duration.ofSeconds(2))
                 .reconnectWait(Duration.ofSeconds(1))
-                .maxReconnects(-1) // infinite reconnects
+                .maxReconnects(-1) // infinite reconnects after initial connection
                 .build();
 
-        connection = Nats.connect(options);
-        log.info("Connected to NATS: {}", connection.getServerInfo().getServerId());
+        try {
+            connection = Nats.connect(options);
+            log.info("Connected to NATS: {}", connection.getServerInfo().getServerId());
+        } catch (Exception e) {
+            log.warn("NATS server not available at {} — platform will operate in degraded mode. " +
+                    "Systems can be deployed and tracked, but message flow is disabled. " +
+                    "Start a NATS server and redeploy to enable full functionality.", natsUrl);
+            connection = null;
+        }
 
         return connection;
     }

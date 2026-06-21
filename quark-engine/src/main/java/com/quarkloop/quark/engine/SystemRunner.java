@@ -53,7 +53,7 @@ public class SystemRunner {
     public static final String CONFIG_KEY_NODE = "_quark_node";
 
     private final NodeRegistry registry;
-    private final Connection natsConnection;
+    private final NatsConnectionManager natsConnectionManager;
     private final ExecutorService executor;
 
     // Active subscriptions for cleanup, keyed by system name + namespace
@@ -63,9 +63,9 @@ public class SystemRunner {
     private final java.util.Map<String, RuntimeSystemDeployment> deployments = new java.util.concurrent.ConcurrentHashMap<>();
 
     @Inject
-    public SystemRunner(NodeRegistry registry, Connection natsConnection) {
+    public SystemRunner(NodeRegistry registry, NatsConnectionManager natsConnectionManager) {
         this.registry = registry;
-        this.natsConnection = natsConnection;
+        this.natsConnectionManager = natsConnectionManager;
         this.executor = Executors.newThreadPerTaskExecutor(
             Thread.ofVirtual().name("quark-engine-", 0).factory()
         );
@@ -120,9 +120,12 @@ public class SystemRunner {
         for (SourceProvider sp : deployment.sources()) {
             try { sp.stop(); } catch (Exception e) { log.warn("Failed to stop source", e); }
         }
-        // Close NATS dispatchers
-        for (io.nats.client.Dispatcher d : deployment.dispatchers()) {
-            try { natsConnection.closeDispatcher(d); } catch (Exception e) { log.warn("Failed to close dispatcher", e); }
+        // Close NATS dispatchers (if connected)
+        Connection conn = natsConnectionManager.getConnection();
+        if (conn != null) {
+            for (io.nats.client.Dispatcher d : deployment.dispatchers()) {
+                try { conn.closeDispatcher(d); } catch (Exception e) { log.warn("Failed to close dispatcher", e); }
+            }
         }
         // Also clear from global lists (legacy)
         activeEndpoints.removeAll(deployment.endpoints());
@@ -183,40 +186,51 @@ public class SystemRunner {
 
         Object provider = factory.create(config);
 
-        // 3. Create publisher with ACL
-        Set<String> allowedEvents = new HashSet<>(nodeDef.events());
-        NatsQuarkPublisher publisher = new NatsQuarkPublisher(
-                natsConnection,
-                system.name(),
-                system.namespace().value(),
-                nodeDef.name(),
-                allowedEvents
-        );
+        // 3. If NATS is available, create publisher and wire subscriptions.
+        //    If NATS is NOT available (degraded mode), skip wiring — the
+        //    system is still tracked in the runtime registry and lifecycle
+        //    events are emitted, but no messages flow.
+        Connection natsConnection = natsConnectionManager.getConnection();
+        if (natsConnection != null) {
+            // Create publisher with ACL
+            Set<String> allowedEvents = new HashSet<>(nodeDef.events());
+            NatsQuarkPublisher publisher = new NatsQuarkPublisher(
+                    natsConnection,
+                    system.name(),
+                    system.namespace().value(),
+                    nodeDef.name(),
+                    allowedEvents
+            );
 
-        // 4. If the node has listens, create NATS subscriptions
-        if (!nodeDef.listens().isEmpty()) {
-            createSubscriptions(system, nodeDef, provider, publisher, deployment);
-        }
+            // If the node has listens, create NATS subscriptions
+            if (!nodeDef.listens().isEmpty()) {
+                createSubscriptions(system, nodeDef, provider, publisher, deployment, natsConnection);
+            }
 
-        // 5. If the node is a Source or Endpoint, call start()
-        if (provider instanceof SourceProvider sp) {
-            sp.start(publisher, config);
-            activeSources.add(sp);
-            deployment.addSource(sp);
-        } else if (provider instanceof EndpointProvider ep) {
-            ep.start(publisher, config);
-            activeEndpoints.add(ep);
-            deployment.addEndpoint(ep);
+            // If the node is a Source or Endpoint, call start()
+            if (provider instanceof SourceProvider sp) {
+                sp.start(publisher, config);
+                activeSources.add(sp);
+                deployment.addSource(sp);
+            } else if (provider instanceof EndpointProvider ep) {
+                ep.start(publisher, config);
+                activeEndpoints.add(ep);
+                deployment.addEndpoint(ep);
+            }
+        } else {
+            log.warn("NATS not connected — skipping wiring for node {} (degraded mode)", nodeDef.name());
         }
 
         deployment.incrementNodeCount();
-        log.info("Node {} deployed (listens={}, events={})",
-                nodeDef.name(), nodeDef.listens(), nodeDef.events());
+        log.info("Node {} deployed (listens={}, events={}, nats={})",
+                nodeDef.name(), nodeDef.listens(), nodeDef.events(),
+                natsConnection != null ? "connected" : "disconnected");
     }
 
     private void createSubscriptions(SystemDefinition system, NodeDefinition nodeDef,
                                       Object provider, NatsQuarkPublisher publisher,
-                                      RuntimeSystemDeployment deployment) {
+                                      RuntimeSystemDeployment deployment,
+                                      Connection natsConnection) {
         io.nats.client.Dispatcher dispatcher = natsConnection.createDispatcher(msg -> {
             // This callback runs on NATS dispatcher thread
             try {
