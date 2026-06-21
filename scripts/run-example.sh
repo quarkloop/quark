@@ -30,7 +30,7 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
 # ---- Locate artifacts ------------------------------------------------------
-SERVER_JAR="quark-server/target/quarkus-app/quarkus-run.jar"
+SERVER_JAR="quark-server/target/quark-server-0.1.0-SNAPSHOT-runner.jar"
 CLI_BIN="cli/quarkctl"
 
 if [ ! -f "$SERVER_JAR" ]; then

@@ -143,7 +143,7 @@ server-dev: ## Start Quarkus dev mode (port 8080, hot reload)
 
 run-server: build-java ## Start the production server (port 8080)
 	@printf "$(C_BLUE)> Starting Quark server (Ctrl+C to stop)...$(C_RESET)\n"
-	@java -jar quark-server/target/quarkus-app/quarkus-run.jar
+	@java -jar quark-server/target/quark-server-0.1.0-SNAPSHOT-runner.jar
 
 run-example: build ## Deploy and observe the streaming example via CLI→Server workflow
 	@printf "$(C_BLUE)> Running streaming example ($(EXAMPLE_DURATION)s)...$(C_RESET)\n"
