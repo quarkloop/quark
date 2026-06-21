@@ -1,0 +1,39 @@
+# Maven
+target/
+!.mvn/wrapper/maven-wrapper.jar
+
+# Go
+cli/quarkctl
+cli/dist/
+dist/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
+.factorypath
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Platform state (runtime data)
+quark-state/
+example/simple-streaming/json/*.jsonl
+
+# Do NOT commit these — they are build artifacts and workspace files
+upload/
+download/
+workspace/
+tool-results/
+worklog.md
+*.zip
+.env
