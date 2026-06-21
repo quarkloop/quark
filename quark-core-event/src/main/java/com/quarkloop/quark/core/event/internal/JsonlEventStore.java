@@ -333,6 +333,13 @@ public class JsonlEventStore implements EventStore {
     }
 
     private boolean matches(NodeEvent event, EventFilter filter) {
+        // Namespace check is a defensive measure — the candidateFiles() walk
+        // already restricts to the right directory, but this ensures that
+        // even if a future caller constructs a filter that crosses
+        // namespaces, the matches() gate catches it.
+        if (filter.namespace() != null && !filter.namespace().equals(event.namespace())) {
+            return false;
+        }
         if (filter.nodeName() != null && !filter.nodeName().equals(event.nodeName())) {
             return false;
         }

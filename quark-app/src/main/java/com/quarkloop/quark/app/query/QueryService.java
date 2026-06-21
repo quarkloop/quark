@@ -4,6 +4,7 @@ import com.quarkloop.quark.core.domain.identity.Namespace;
 import com.quarkloop.quark.core.domain.node.Node;
 import com.quarkloop.quark.core.domain.state.HealthStatus;
 import com.quarkloop.quark.core.domain.state.NodeState;
+import com.quarkloop.quark.core.domain.system.NodeDefinition;
 import com.quarkloop.quark.core.engine.lifecycle.RuntimeNode;
 import com.quarkloop.quark.core.engine.lifecycle.RuntimeSystem;
 import com.quarkloop.quark.core.engine.lifecycle.SystemRuntimeRegistry;
@@ -13,6 +14,7 @@ import jakarta.inject.Inject;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -126,6 +128,21 @@ public class QueryService {
 
     private NodeDetail toNodeDetail(RuntimeSystem rs, RuntimeNode rn) {
         Node def = rn.definition();
+        // Look up the NodeDefinition from the system definition to get
+        // listens/events (the domain Node interface doesn't expose them).
+        NodeDefinition nodeDef = rs.definition().nodes().get(def.name());
+        List<String> listens = (nodeDef != null) ? nodeDef.listens() : List.of();
+        List<String> events = (nodeDef != null) ? nodeDef.events() : List.of();
+
+        // Filter out engine-internal config keys (prefixed with _quark_)
+        // so they don't leak to clients.
+        Map<String, Object> filteredConfig = new java.util.HashMap<>();
+        for (var entry : def.config().asMap().entrySet()) {
+            if (!entry.getKey().startsWith("_quark_")) {
+                filteredConfig.put(entry.getKey(), entry.getValue());
+            }
+        }
+
         return new NodeDetail(
                 def.name(),
                 rs.name(),
@@ -138,32 +155,14 @@ public class QueryService {
                 rn.errorMessage(),
                 def.metadata().createdAt().toString(),
                 def.metadata().updatedAt().toString(),
-                def.config().asMap(),
+                filteredConfig,
                 def.metadata().labels().values(),
                 def.metadata().annotations().values(),
-                rn instanceof RuntimeNode ? List.of() : List.of(),
-                List.of(),
-                listensFor(def),
-                eventsFor(def)
+                listens,
+                events,
+                listens,
+                events
         );
-    }
-
-    /**
-     * Pulls the `listens` and `events` arrays from the original
-     * SystemDefinition by looking up the NodeDefinition.
-     */
-    @SuppressWarnings("unused")
-    private List<String> listensFor(Node def) {
-        // NodeDefinition carries the listens/events, but the domain Node
-        // interface doesn't expose them. They live on the runtime system's
-        // definition(). For now, return empty — the REST layer can also
-        // fetch the source file to recover these.
-        return List.of();
-    }
-
-    @SuppressWarnings("unused")
-    private List<String> eventsFor(Node def) {
-        return List.of();
     }
 
     private String overallState(RuntimeSystem rs) {

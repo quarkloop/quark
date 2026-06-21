@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -46,7 +47,7 @@ public final class NatsQuarkPublisher implements QuarkPublisher {
      */
     public NatsQuarkPublisher(Connection natsConnection, String systemName,
                                String namespace, String nodeName, Set<String> allowedEvents) {
-        this.natsConnection = natsConnection;
+        this.natsConnection = Objects.requireNonNull(natsConnection, "natsConnection cannot be null");
         this.systemName = systemName;
         this.namespace = namespace;
         this.nodeName = nodeName;
