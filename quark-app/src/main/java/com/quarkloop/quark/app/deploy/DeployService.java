@@ -13,7 +13,9 @@ import com.quarkloop.quark.core.event.EventBus;
 import com.quarkloop.quark.core.script.SystemParseResult;
 import com.quarkloop.quark.core.script.SystemParser;
 import com.quarkloop.quark.engine.SystemRunner;
+import io.quarkus.runtime.StartupEvent;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -105,8 +107,18 @@ public class DeployService {
         // 3. Execute on NATS (wires subscriptions, starts sources/endpoints)
         systemRunner.deploy(systemDef);
 
-        // 4. Track in runtime registry + start lifecycle (CREATING -> ACTIVE)
-        RuntimeSystem runtime = systemDeployer.deploy(systemDef);
+        // 4. Track in runtime registry + start lifecycle (CREATING -> ACTIVE).
+        //    If this fails, roll back the NATS wiring so the system isn't
+        //    left running "invisibly" (NATS live but no registry entry).
+        RuntimeSystem runtime;
+        try {
+            runtime = systemDeployer.deploy(systemDef);
+        } catch (Exception e) {
+            log.error("SystemDeployer failed for {}/{} — rolling back NATS wiring",
+                    systemDef.namespace().value(), systemDef.name(), e);
+            systemRunner.undeploy(systemDef.namespace().value(), systemDef.name());
+            throw e;
+        }
 
         // 5. Persist the original source so we can recover on restart
         try {
@@ -168,6 +180,18 @@ public class DeployService {
         Files.createDirectories(sourceFile.getParent());
         Files.writeString(sourceFile, source, StandardCharsets.UTF_8);
         log.debug("Persisted source to {}", sourceFile);
+    }
+
+    /**
+     * On server startup, recover any previously-deployed systems from disk.
+     * Looks for {@code $STATE_ROOT/systems/<ns>/<sys>/source.ts} files and
+     * re-deploys them so the platform resumes its pre-restart state.
+     */
+    void onStart(@Observes StartupEvent event) {
+        List<String> recovered = recoverFromDisk();
+        if (!recovered.isEmpty()) {
+            log.info("Recovered {} system(s) from disk: {}", recovered.size(), recovered);
+        }
     }
 
     /**
