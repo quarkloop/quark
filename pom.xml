@@ -173,6 +173,27 @@
                 <artifactId>graal-sdk</artifactId>
                 <version>${graaljs.version}</version>
             </dependency>
+            <!--
+                truffle-api and regex are REQUIRED at runtime by the GraalJS
+                Engine, but Quarkus's build-time dependency pruning strips
+                them because no application code directly references
+                com.oracle.truffle.* or org.graalvm.regex.* classes.
+                Without these jars, Engine.newBuilder().build() fails with:
+                    NoClassDefFoundError: org/graalvm/polyglot/impl/AbstractPolyglotImpl
+                because the META-INF/services/org.graalvm.polyglot.impl.AbstractPolyglotImpl
+                service file (which points to com.oracle.truffle.polyglot.PolyglotImpl)
+                lives inside truffle-api.jar.
+            -->
+            <dependency>
+                <groupId>org.graalvm.truffle</groupId>
+                <artifactId>truffle-api</artifactId>
+                <version>${graaljs.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.graalvm.regex</groupId>
+                <artifactId>regex</artifactId>
+                <version>${graaljs.version}</version>
+            </dependency>
 
             <!-- NATS Java client -->
             <dependency>

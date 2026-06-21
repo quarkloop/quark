@@ -27,6 +27,21 @@
             <groupId>org.graalvm.sdk</groupId>
             <artifactId>graal-sdk</artifactId>
         </dependency>
+        <!--
+            truffle-api and regex must be declared explicitly so that
+            Quarkus's build-time dependency pruning does not strip them.
+            They are required at runtime for the GraalJS Engine to load
+            (the Engine discovers its polyglot implementation via a
+            ServiceLoader file that lives inside truffle-api.jar).
+        -->
+        <dependency>
+            <groupId>org.graalvm.truffle</groupId>
+            <artifactId>truffle-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.graalvm.regex</groupId>
+            <artifactId>regex</artifactId>
+        </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>

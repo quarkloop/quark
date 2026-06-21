@@ -111,6 +111,29 @@
             <artifactId>jnats</artifactId>
         </dependency>
 
+        <!--
+            GraalJS runtime jars that MUST be declared at the application
+            module level. Quarkus's build-time pruning only preserves
+            dependencies declared directly in the application module's
+            pom.xml. Library-module declarations (e.g. in quark-core-script)
+            are subject to pruning.
+
+            truffle-api.jar contains the ServiceLoader file that the GraalJS
+            Engine uses to discover its polyglot implementation. Without it:
+                NoClassDefFoundError: org/graalvm/polyglot/impl/AbstractPolyglotImpl
+
+            regex.jar is required by the JS language for regular expression
+            support.
+        -->
+        <dependency>
+            <groupId>org.graalvm.truffle</groupId>
+            <artifactId>truffle-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.graalvm.regex</groupId>
+            <artifactId>regex</artifactId>
+        </dependency>
+
         <!-- Test -->
         <dependency>
             <groupId>io.quarkus</groupId>

@@ -45,9 +45,71 @@ public class GraalJsSystemParser implements SystemParser {
 
     private static final Logger log = LoggerFactory.getLogger(GraalJsSystemParser.class);
 
-    private final Engine engine = Engine.newBuilder()
-            .option("engine.WarnInterpreterOnly", "false")
-            .build();
+    /**
+     * Force Quarkus's build-time bytecode analysis to detect direct references
+     * to classes in {@code truffle-api.jar} and {@code regex.jar}. Without
+     * these references, Quarkus prunes those jars from the runtime, causing
+     * {@code NoClassDefFoundError: org/graalvm/polyglot/impl/AbstractPolyglotImpl}
+     * when {@link Engine#newBuilder()} tries to load the polyglot implementation
+     * via ServiceLoader.
+     */
+    static {
+        //noinspection ResultOfMethodCallIgnored
+        GraalRuntimeReferences.TRUFFLE_LANGUAGE.getName();
+        //noinspection ResultOfMethodCallIgnored
+        GraalRuntimeReferences.POLYGLOT_IMPL.getName();
+        //noinspection ResultOfMethodCallIgnored
+        GraalRuntimeReferences.REGEX_LANGUAGE.getName();
+    }
+
+    /**
+     * The GraalJS {@link Engine} is created lazily (not in a field initializer)
+     * to control the thread's context classloader at creation time.
+     *
+     * <p>Quarkus's fast-jar layout splits GraalVM jars across two classloaders:
+     * <ul>
+     *   <li>{@code lib/boot/} (system classloader) — {@code truffle-api.jar}
+     *       containing {@code com.oracle.truffle.polyglot.PolyglotImpl}</li>
+     *   <li>{@code lib/main/} (Quarkus classloader) — {@code graal-sdk.jar}
+     *       containing {@code org.graalvm.polyglot.impl.AbstractPolyglotImpl}
+     *       (the superclass of {@code PolyglotImpl})</li>
+     * </ul>
+     *
+     * <p>When {@link Engine#newBuilder()}.build() uses {@link java.util.ServiceLoader}
+     * to discover the polyglot implementation, it may use a classloader that
+     * can see {@code PolyglotImpl} but NOT its superclass {@code AbstractPolyglotImpl},
+     * causing {@code NoClassDefFoundError}.
+     *
+     * <p>Setting the thread's context classloader to the Quarkus application
+     * classloader (which can see BOTH {@code lib/main/} directly AND
+     * {@code lib/boot/} via parent delegation) before creating the Engine
+     * resolves the split-classloader issue.
+     */
+    private volatile Engine engine;
+
+    private Engine getEngine() {
+        Engine local = engine;
+        if (local != null) {
+            return local;
+        }
+        synchronized (this) {
+            if (engine == null) {
+                Thread current = Thread.currentThread();
+                ClassLoader original = current.getContextClassLoader();
+                // Use this class's classloader (Quarkus app classloader) which
+                // can see both lib/main/ (graal-sdk) and lib/boot/ (truffle-api).
+                current.setContextClassLoader(GraalJsSystemParser.class.getClassLoader());
+                try {
+                    engine = Engine.newBuilder()
+                            .option("engine.WarnInterpreterOnly", "false")
+                            .build();
+                } finally {
+                    current.setContextClassLoader(original);
+                }
+            }
+            return engine;
+        }
+    }
 
     @Override
     @SuppressWarnings("unchecked")
@@ -63,7 +125,7 @@ public class GraalJsSystemParser implements SystemParser {
 
         // 2. Create sandboxed GraalJS context
         try (Context ctx = Context.newBuilder("js")
-                .engine(engine)
+                .engine(getEngine())
                 .allowHostAccess(HostAccess.NONE)
                 .allowHostClassLookup(name -> false)
                 .allowIO(false)
