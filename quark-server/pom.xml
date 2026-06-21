@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.quarkloop.quark</groupId>
+        <artifactId>quark-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>quark-server</artifactId>
+    <name>Quark Server</name>
+    <description>Quarkus application runner — assembles all modules into the deployable server.</description>
+
+    <dependencies>
+        <!-- All modules assembled here -->
+        <dependency>
+            <groupId>com.quarkloop.quark</groupId>
+            <artifactId>quark-core-domain</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.quarkloop.quark</groupId>
+            <artifactId>quark-core-script</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.quarkloop.quark</groupId>
+            <artifactId>quark-core-event</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.quarkloop.quark</groupId>
+            <artifactId>quark-core-registry</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.quarkloop.quark</groupId>
+            <artifactId>quark-core-engine</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.quarkloop.quark</groupId>
+            <artifactId>quark-engine</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.quarkloop.quark</groupId>
+            <artifactId>quark-adapter-state</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.quarkloop.quark</groupId>
+            <artifactId>quark-app</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.quarkloop.quark</groupId>
+            <artifactId>quark-api</artifactId>
+        </dependency>
+
+        <!-- Node providers -->
+        <dependency>
+            <groupId>com.quarkloop.quark</groupId>
+            <artifactId>provider-stubs</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.quarkloop.quark</groupId>
+            <artifactId>provider-timer</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.quarkloop.quark</groupId>
+            <artifactId>provider-cpu-profiler</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.quarkloop.quark</groupId>
+            <artifactId>provider-memory-profiler</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.quarkloop.quark</groupId>
+            <artifactId>provider-list</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.quarkloop.quark</groupId>
+            <artifactId>provider-json-writer</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.quarkloop.quark</groupId>
+            <artifactId>provider-streaming-endpoint</artifactId>
+        </dependency>
+
+        <!-- Quarkus runtime -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-arc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-rest-jackson</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-smallrye-health</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-smallrye-openapi</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-scheduler</artifactId>
+        </dependency>
+
+        <!-- NATS -->
+        <dependency>
+            <groupId>io.nats</groupId>
+            <artifactId>jnats</artifactId>
+        </dependency>
+
+        <!-- Test -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-junit5</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.rest-assured</groupId>
+            <artifactId>rest-assured</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>${quarkus.platform.group-id}</groupId>
+                <artifactId>quarkus-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>
