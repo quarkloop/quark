@@ -261,64 +261,49 @@ Policies intercept messages — they receive, evaluate, and either allow (publis
 
 ---
 
-## 6. NATS JetStream Design
+## 6. NATS Messaging Design
 
-### 6.1 Embedded NATS Server
+### 6.1 External NATS Server
 
-The Quark server embeds a NATS server in-process. No external NATS installation required. The embedded server:
-- Listens on a configurable port (default: 4222)
-- Enables JetStream for message persistence
-- Enforces per-subject ACLs for publish authorization
+The Quark server connects to an **external** NATS server at `nats://localhost:4222` (configurable via `quark.nats.url`). Start one before deploying systems:
 
-### 6.2 JetStream Streams
+```bash
+# Using Docker:
+docker run -p 4222:4222 nats:latest
 
-Each system creates a JetStream Stream that persists all messages for the system's subjects:
-
-```
-Stream: monitor-alice
-  Subjects: monitor.alice.>
-  Storage: File
-  Retention: WorkQueue (messages deleted after acknowledgment)
+# Using Homebrew (macOS):
+brew install nats-server && nats-server
 ```
 
-Messages are persisted to disk. If the server crashes, messages are recovered on restart. Consumers resume from their last acknowledged position.
+If no NATS server is available, the platform operates in **degraded mode**: systems can be deployed and tracked in the runtime registry, lifecycle events are emitted, but message flow between nodes is disabled. Start a NATS server and redeploy to enable full functionality.
 
-### 6.3 JetStream Consumers
+### 6.2 Core NATS Messaging (v0.1)
 
-For each node with `listens`, the engine creates a JetStream Consumer:
+This release uses **NATS Core** messaging (not JetStream). The implications:
 
-```
-Consumer: monitor-alice-cpu
-  Filter: monitor.alice.timer.tick
-  Deliver: monitor.alice.cpu.inbox
-  MaxDeliver: 3 (from onFailure.retry)
-  AckPolicy: Explicit
-  Backoff: [100ms, 200ms, 400ms]
-```
+- **No message persistence** — messages are delivered to currently-connected subscribers only. If a subscriber is offline, the message is lost.
+- **No automatic retries** — `onFailure.retry` is parsed but not yet enforced. A failed `onMessage()` call logs the error and acknowledges the message.
+- **No fallback routing** — `onFailure.routeTo` is parsed but the `<sys>.<ns>.fallback.<node>` subject is never published to.
+- **ACLs are enforced in-process** — `NatsQuarkPublisher` checks that the event is in the node's declared `events` list before publishing. This is a defense-in-depth measure, not a NATS transport-level ACL.
 
-The consumer pulls messages, delivers them to `provider.onMessage()`, and waits for acknowledgment. If the provider throws, the message is NAK'd and retried up to `MaxDeliver` times. After max retries, the message is routed to the fallback subject.
+### 6.3 Subscriptions
 
-### 6.4 Fallback Routing
+For each node with `listens`, the engine creates a NATS core subscription via `Connection.createDispatcher()` + `dispatcher.subscribe(fullSubject)`. The dispatcher's message handler:
 
-When a node fails after all retries:
+1. Wraps the NATS message in a `NatsQuarkMessage`
+2. Dispatches to the provider's `onMessage()`
+3. On success: `msg.ack()` (no-op in core NATS)
+4. On exception: logs the error and `msg.nak()` (no-op in core NATS)
 
-1. Engine publishes the original message + error context to `<system>.<namespace>.fallback.<nodeName>`
-2. Any node that `listens` to that fallback subject receives it
-3. The failed message is acknowledged (removed from the stream)
+### 6.4 Planned: JetStream Upgrade
 
-Example:
-```typescript
-cpu: {
-    listens: ["timer.tick"],
-    events: ["data"],
-    onFailure: { retry: 3, routeTo: "writer" },
-},
-writer: {
-    listens: ["cpu.data", "memory.data", "fallback.cpu", "fallback.memory"],
-},
-```
+A future release will upgrade to JetStream for:
+- Persistent streams per system (`<sys>.<ns>.>`)
+- Durable consumers with `MaxDeliver` and exponential backoff (wired to `onFailure.retry`)
+- Fallback subject routing after max retries (wired to `onFailure.routeTo`)
+- Transport-level publish ACLs
 
-If `cpu` fails 3 times, the message goes to `monitor.alice.fallback.cpu`. The writer receives it as a regular message — the payload includes the original data plus error metadata.
+The `onFailure` config field is parsed and stored today so that `.quark.ts` files are forward-compatible with the JetStream upgrade.
 
 ---
 
@@ -334,9 +319,9 @@ CREATING → ACTIVE → PAUSED → DRAINING → ARCHIVED → DELETED
 State transitions emit `NODE_STATE_CHANGED` events. The lifecycle is managed by the engine — providers don't control it.
 
 When a node is paused:
-- Its NATS consumer is paused (stops pulling messages)
-- Messages accumulate in the JetStream stream
-- On resume, the consumer resumes from where it left off
+- Its lifecycle state transitions to `PAUSED`
+- The NATS subscription remains active (messages continue to be delivered and acknowledged)
+- A future JetStream upgrade will pause the consumer so messages accumulate for later delivery
 
 ---
 
@@ -374,12 +359,10 @@ $QUARK_STATE_ROOT/
     └── <namespace>/
         └── <system-name>/
             ├── source.ts                        Original .quark.ts file
-            ├── system.meta.json                 Deployment metadata
-            ├── state.json                       Current lifecycle snapshot
             ├── events.jsonl                     Per-system event log
-            └── jetstream/                       NATS JetStream data
-                └── monitor-alice/               Stream data files
 ```
+
+> **Note**: `system.meta.json` and `state.json` are planned but not yet written by v0.1. NATS JetStream data files will appear here once JetStream is implemented (see §6.4).
 
 ---
 

@@ -12,7 +12,7 @@ A Go-based command-line interface for the Quark platform, modeled after `kubectl
 
 ## Installation
 
-**Prerequisite**: Go 1.26.4 or later.
+**Prerequisite**: Go 1.24 or later.
 
 ### Via Makefile (recommended)
 

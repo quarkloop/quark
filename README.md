@@ -58,14 +58,9 @@ quark/
     ├── main.go
     ├── cmd/                             ← Cobra commands (system, node, registry, event, health)
     └── internal/                        ← HTTP client + model + output printers
-
-npm/                                     ← quark.d.ts npm package
-└── quark.d.ts/
-    ├── package.json
-    ├── index.js                         ← Runtime:  function
-    ├── index.d.ts                       ← TypeScript type definitions
-    └── README.md                        ← Installation and usage guide
 ```
+
+> **Note**: An npm package for `quark.d.ts` TypeScript type definitions is planned. For now, run `quarkctl init` in your project directory to generate a local `quark.d.ts` file for IDE autocomplete.
 
 ---
 
