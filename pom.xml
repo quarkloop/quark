@@ -1,0 +1,314 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.quarkloop.quark</groupId>
+    <artifactId>quark-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <name>Quark Platform</name>
+    <description>A universal runtime for programmable nodes</description>
+
+    <properties>
+        <!-- Java -->
+        <java.version>21</java.version>
+        <maven.compiler.source>${java.version}</maven.compiler.source>
+        <maven.compiler.target>${java.version}</maven.compiler.target>
+        <maven.compiler.release>${java.version}</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+        <!-- Quarkus -->
+        <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
+        <quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id>
+        <quarkus.platform.version>3.17.8</quarkus.platform.version>
+
+        <!-- Dependencies -->
+        <snakeyaml-engine.version>2.9</snakeyaml-engine.version>
+        <graaljs.version>23.0.2</graaljs.version>
+        <nats.version>2.20.2</nats.version>
+        <nats-server.version>0.5.0</nats-server.version>
+
+        <!-- Test -->
+        <assertj.version>3.27.3</assertj.version>
+        <mockito.version>5.15.2</mockito.version>
+        <awaitility.version>4.2.2</awaitility.version>
+
+        <!-- Plugins -->
+        <compiler-plugin.version>3.14.0</compiler-plugin.version>
+        <surefire-plugin.version>3.5.2</surefire-plugin.version>
+        <failsafe-plugin.version>3.5.2</failsafe-plugin.version>
+        <jandex-plugin.version>3.2.3</jandex-plugin.version>
+    </properties>
+
+    <modules>
+        <!-- Framework / runtime modules -->
+        <module>quark-core-domain</module>
+        <module>quark-core-event</module>
+        <module>quark-core-registry</module>
+        <module>quark-core-script</module>
+        <module>quark-core-engine</module>
+        <module>quark-engine</module>
+        <module>quark-adapter-state</module>
+        <module>quark-app</module>
+        <module>quark-api</module>
+        <module>quark-server</module>
+        <!-- Node provider modules (kept separate from the framework) -->
+        <module>providers</module>
+    </modules>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- Quarkus BOM -->
+            <dependency>
+                <groupId>${quarkus.platform.group-id}</groupId>
+                <artifactId>${quarkus.platform.artifact-id}</artifactId>
+                <version>${quarkus.platform.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- Internal modules -->
+            <dependency>
+                <groupId>com.quarkloop.quark</groupId>
+                <artifactId>quark-core-domain</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.quarkloop.quark</groupId>
+                <artifactId>quark-core-script</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.quarkloop.quark</groupId>
+                <artifactId>quark-engine</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.quarkloop.quark</groupId>
+                <artifactId>quark-core-event</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.quarkloop.quark</groupId>
+                <artifactId>quark-core-registry</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.quarkloop.quark</groupId>
+                <artifactId>quark-core-engine</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.quarkloop.quark</groupId>
+                <artifactId>quark-adapter-state</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.quarkloop.quark</groupId>
+                <artifactId>quark-app</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.quarkloop.quark</groupId>
+                <artifactId>quark-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- Provider modules (artifact = provider-*) -->
+            <dependency>
+                <groupId>com.quarkloop.quark</groupId>
+                <artifactId>provider-stubs</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.quarkloop.quark</groupId>
+                <artifactId>provider-timer</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.quarkloop.quark</groupId>
+                <artifactId>provider-cpu-profiler</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.quarkloop.quark</groupId>
+                <artifactId>provider-memory-profiler</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.quarkloop.quark</groupId>
+                <artifactId>provider-list</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.quarkloop.quark</groupId>
+                <artifactId>provider-json-writer</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.quarkloop.quark</groupId>
+                <artifactId>provider-streaming-endpoint</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- SnakeYAML Engine (YAML 1.2) -->
+            <dependency>
+                <groupId>org.snakeyaml</groupId>
+                <artifactId>snakeyaml-engine</artifactId>
+                <version>${snakeyaml-engine.version}</version>
+            </dependency>
+
+            <!-- GraalJS (JavaScript engine for .quark.ts evaluation) -->
+            <dependency>
+                <groupId>org.graalvm.js</groupId>
+                <artifactId>js</artifactId>
+                <version>${graaljs.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.graalvm.sdk</groupId>
+                <artifactId>graal-sdk</artifactId>
+                <version>${graaljs.version}</version>
+            </dependency>
+
+            <!-- NATS Java client -->
+            <dependency>
+                <groupId>io.nats</groupId>
+                <artifactId>jnats</artifactId>
+                <version>${nats.version}</version>
+            </dependency>
+
+            <!-- Embedded NATS server -->
+            <dependency>
+                <groupId>io.nats</groupId>
+                <artifactId>nats-server</artifactId>
+                <version>${nats-server.version}</version>
+            </dependency>
+
+            <!-- Test -->
+            <dependency>
+                <groupId>org.assertj</groupId>
+                <artifactId>assertj-core</artifactId>
+                <version>${assertj.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.mockito</groupId>
+                <artifactId>mockito-core</artifactId>
+                <version>${mockito.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.mockito</groupId>
+                <artifactId>mockito-junit-jupiter</artifactId>
+                <version>${mockito.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.awaitility</groupId>
+                <artifactId>awaitility</artifactId>
+                <version>${awaitility.version}</version>
+                <scope>test</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>${quarkus.platform.group-id}</groupId>
+                    <artifactId>quarkus-maven-plugin</artifactId>
+                    <version>${quarkus.platform.version}</version>
+                    <extensions>true</extensions>
+                    <executions>
+                        <execution>
+                            <goals>
+                                <goal>build</goal>
+                                <goal>generate-code</goal>
+                                <goal>generate-code-tests</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>${compiler-plugin.version}</version>
+                    <configuration>
+                        <release>${java.version}</release>
+                        <compilerArgs>
+                            <arg>-parameters</arg>
+                        </compilerArgs>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>${surefire-plugin.version}</version>
+                    <configuration>
+                        <systemPropertyVariables>
+                            <java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>
+                        </systemPropertyVariables>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-failsafe-plugin</artifactId>
+                    <version>${failsafe-plugin.version}</version>
+                    <executions>
+                        <execution>
+                            <goals>
+                                <goal>integration-test</goal>
+                                <goal>verify</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                    <configuration>
+                        <systemPropertyVariables>
+                            <java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>
+                        </systemPropertyVariables>
+                    </configuration>
+                </plugin>
+                <!-- Jandex: generates META-INF/jandex.idx in every module so
+                     Quarkus can discover @ApplicationScoped beans in dependency
+                     JARs. Without this, only the application module (quark-server)
+                     is indexed, and beans in quark-core-engine, quark-adapter-state,
+                     etc. are invisible to CDI. -->
+                <plugin>
+                    <groupId>io.smallrye</groupId>
+                    <artifactId>jandex-maven-plugin</artifactId>
+                    <version>${jandex-plugin.version}</version>
+                    <executions>
+                        <execution>
+                            <id>make-index</id>
+                            <goals>
+                                <goal>jandex</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+            </plugin>
+            <!-- Active in ALL modules so every JAR gets a Jandex index.
+                 Quarkus uses this index to discover CDI beans. -->
+            <plugin>
+                <groupId>io.smallrye</groupId>
+                <artifactId>jandex-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>
