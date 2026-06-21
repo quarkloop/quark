@@ -4,6 +4,8 @@ import (
         "encoding/json"
         "fmt"
         "io"
+
+        "github.com/quarkloop/quark/cli/internal/client"
 )
 
 // JSONPrinter emits the raw API response as indented JSON.
@@ -38,21 +40,22 @@ func (p *JSONPrinter) PrintSuccess(message string) error {
         return p.print(map[string]string{"status": "ok", "message": message})
 }
 func (p *JSONPrinter) PrintError(err error) error {
-        // Try to extract a structured API error first — either our local
-        // *APIError or anything that looks like one (duck-typed: has Code +
-        // Message + optional Details fields). This avoids an import cycle
-        // with the client package.
-        if apiErr, ok := err.(*APIError); ok {
-                return p.print(apiErr)
-        }
-        if coder, ok := err.(interface{ GetCode() string }); ok {
+        // Check for client.APIError first (the actual type returned by the
+        // HTTP client). We import the client package — no cycle exists
+        // because client doesn't import output.
+        if apiErr, ok := err.(*client.APIError); ok {
                 return p.print(map[string]interface{}{
-                        "code":    coder.GetCode(),
-                        "message": err.Error(),
+                        "statusCode": apiErr.StatusCode,
+                        "code":       apiErr.Response.Code,
+                        "message":    apiErr.Response.Message,
+                        "details":    apiErr.Response.Details,
                 })
         }
-        // Fall back to the raw error message. The client.APIError string
-        // form already includes the status code and message.
+        // Fall back to our local APIError type (used by PrintDeployResult).
+        if localErr, ok := err.(*APIError); ok {
+                return p.print(localErr)
+        }
+        // Plain error — emit a simple object.
         return p.print(map[string]string{"error": err.Error()})
 }
 

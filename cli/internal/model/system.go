@@ -56,12 +56,12 @@ type NodeState struct {
 
 // SystemDetail is the response for GET /systems/{name}.
 type SystemDetail struct {
-        Name      string      `json:"name"`
-        Namespace string      `json:"namespace"`
-        State     string      `json:"state"`
-        Health    string      `json:"health"`
-        CreatedAt time.Time   `json:"createdAt,omitempty"`
-        UpdatedAt time.Time   `json:"updatedAt,omitempty"`
-        Version   int64       `json:"version"`
-        Nodes     []NodeState `json:"nodes"`
+        Name      string        `json:"name"`
+        Namespace string        `json:"namespace"`
+        State     string        `json:"state"`
+        Health    string        `json:"health"`
+        CreatedAt time.Time     `json:"createdAt,omitempty"`
+        UpdatedAt time.Time     `json:"updatedAt,omitempty"`
+        Version   int64         `json:"version"`
+        Nodes     []NodeSummary `json:"nodes"`
 }

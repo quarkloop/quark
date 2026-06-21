@@ -265,11 +265,19 @@ public class StreamingEndpointFactory implements NodeImplementationFactory<Endpo
             routes.put(route, endpoint);
         }
 
-        void unregister(StreamingEndpoint endpoint) {
+        synchronized void unregister(StreamingEndpoint endpoint) {
             String route = "/" + ConfigProvider.getConfig()
                     .getOptionalValue("quark.streaming.path-prefix", String.class).orElse("stream")
                     + "/" + endpoint.namespace() + "/" + endpoint.systemName() + "/" + endpoint.nodeName();
             routes.remove(route);
+            // If no more routes are registered, stop the HTTP server and
+            // remove it from the shared map so the port is released.
+            if (routes.isEmpty()) {
+                server.stop(0);
+                String key = server.getAddress().getHostString() + ":" + server.getAddress().getPort();
+                SHARED_SERVERS.remove(key);
+                log.info("Stopped streaming HTTP server at {} (no more endpoints registered)", key);
+            }
         }
     }
 }
