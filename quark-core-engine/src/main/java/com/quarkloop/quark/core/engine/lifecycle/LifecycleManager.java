@@ -65,27 +65,35 @@ public class LifecycleManager {
     public StateTransition transitionTo(
             Namespace namespace, String systemName,
             RuntimeNode rn, NodeState target, String trigger) {
-        NodeState from = rn.state();
-        if (from == target) {
-            log.debug("No-op transition for {} (already {})", rn.definition().name(), from);
-            return new StateTransition(from, target, trigger, java.time.Instant.now());
+        // Synchronize on the runtime node so the read-validate-write
+        // sequence is atomic. Without this, two concurrent lifecycle
+        // operations on the same node could both read the same `from`
+        // state, both validate, both write — producing duplicate events
+        // and a double version increment.
+        synchronized (rn) {
+            NodeState from = rn.state();
+            if (from == target) {
+                log.debug("No-op transition for {} (already {})", rn.definition().name(), from);
+                return new StateTransition(from, target, trigger, java.time.Instant.now());
+            }
+            if (!LifecycleStateMachine.isValidTransition(from, target)) {
+                throw new IllegalStateException(String.format(
+                        "Invalid state transition for node %s in system %s/%s: %s -> %s",
+                        rn.definition().name(), namespace.value(), systemName, from, target));
+            }
+            rn.setState(target);
+            StateTransition t = new StateTransition(from, target, trigger, java.time.Instant.now());
+            NodeEvent event = NodeEvent.of(
+                    NodeEventKind.NODE_STATE_CHANGED,
+                    rn.definition().name(),
+                    systemName,
+                    namespace.value(),
+                    Map.of("from", from.name(), "to", target.name(), "trigger", trigger));
+            eventBus.publish(event);
+            log.debug("Transitioned {}/{} {} : {} -> {}",
+                    namespace.value(), systemName, rn.definition().name(), from, target);
+            return t;
         }
-        if (!LifecycleStateMachine.isValidTransition(from, target)) {
-            throw new IllegalStateException(String.format(
-                    "Invalid state transition for node %s: %s -> %s",
-                    rn.definition().name(), from, target));
-        }
-        rn.setState(target);
-        StateTransition t = new StateTransition(from, target, trigger, java.time.Instant.now());
-        NodeEvent event = NodeEvent.of(
-                NodeEventKind.NODE_STATE_CHANGED,
-                rn.definition().name(),
-                systemName,
-                namespace.value(),
-                Map.of("from", from.name(), "to", target.name(), "trigger", trigger));
-        eventBus.publish(event);
-        log.debug("Transitioned {} : {} -> {}", rn.definition().name(), from, target);
-        return t;
     }
 
     public RuntimeNode getNode(Namespace namespace, String systemName, String nodeName) {
