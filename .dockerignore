@@ -1,0 +1,31 @@
+# Build artifacts
+**/target/
+cli/quarkctl
+dist/
+
+# IDE / OS files
+.idea/
+.vscode/
+*.iml
+.DS_Store
+*.swp
+*.swo
+
+# Maven wrapper logs
+.mvn/wrapper/maven-wrapper.jar.log
+
+# Platform state (runtime data, not build input)
+quark-state/
+example/simple-streaming/json/*.jsonl
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Docs (not needed for build)
+*.md
+docs/
