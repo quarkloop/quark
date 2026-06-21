@@ -30,7 +30,6 @@
         <snakeyaml-engine.version>2.9</snakeyaml-engine.version>
         <graaljs.version>23.0.2</graaljs.version>
         <nats.version>2.20.2</nats.version>
-        <nats-server.version>0.5.0</nats-server.version>
 
         <!-- Test -->
         <assertj.version>3.27.3</assertj.version>
@@ -200,13 +199,6 @@
                 <groupId>io.nats</groupId>
                 <artifactId>jnats</artifactId>
                 <version>${nats.version}</version>
-            </dependency>
-
-            <!-- Embedded NATS server -->
-            <dependency>
-                <groupId>io.nats</groupId>
-                <artifactId>nats-server</artifactId>
-                <version>${nats-server.version}</version>
             </dependency>
 
             <!-- Test -->
