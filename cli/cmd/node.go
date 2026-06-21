@@ -96,7 +96,9 @@ func runNodeList(cmd *cobra.Command, args []string) error {
         }
         c := newClient()
         p := newPrinter()
-        list, err := c.ListNodes(ctx(), ns, nodeSystem)
+        ctx, cancel := ctx()
+        defer cancel()
+        list, err := c.ListNodes(ctx, ns, nodeSystem)
         if err != nil {
                 return p.PrintError(err)
         }
@@ -110,7 +112,9 @@ func runNodeGet(cmd *cobra.Command, args []string) error {
         }
         c := newClient()
         p := newPrinter()
-        detail, err := c.GetNode(ctx(), args[0], ns, nodeSystem)
+        ctx, cancel := ctx()
+        defer cancel()
+        detail, err := c.GetNode(ctx, args[0], ns, nodeSystem)
         if err != nil {
                 return p.PrintError(err)
         }
@@ -127,7 +131,9 @@ func runNodeLifecycle(action string) func(*cobra.Command, []string) error {
                 }
                 c := newClient()
                 p := newPrinter()
-                if err := c.NodeLifecycle(ctx(), action, args[0], ns, nodeSystem); err != nil {
+                ctx, cancel := ctx()
+                defer cancel()
+                if err := c.NodeLifecycle(ctx, action, args[0], ns, nodeSystem); err != nil {
                         return p.PrintError(err)
                 }
                 return p.PrintSuccess(fmt.Sprintf("Node %s/%s/%s %s.", ns, nodeSystem, args[0], action))

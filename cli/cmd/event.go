@@ -3,9 +3,11 @@ package cmd
 import (
         "context"
         "fmt"
+        "os"
         "time"
 
         "github.com/quarkloop/quark/cli/internal/client"
+        "github.com/quarkloop/quark/cli/internal/model"
         "github.com/spf13/cobra"
 )
 
@@ -90,7 +92,9 @@ func runEventList(cmd *cobra.Command, args []string) error {
         }
         c := newClient()
         p := newPrinter()
-        events, err := c.ListEvents(ctx(), opts)
+        ctx, cancel := ctx()
+        defer cancel()
+        events, err := c.ListEvents(ctx, opts)
         if err != nil {
                 return p.PrintError(err)
         }
@@ -104,7 +108,9 @@ func runEventCount(cmd *cobra.Command, args []string) error {
         }
         c := newClient()
         p := newPrinter()
-        count, err := c.CountEvents(ctx(), opts)
+        ctx, cancel := ctx()
+        defer cancel()
+        count, err := c.CountEvents(ctx, opts)
         if err != nil {
                 return p.PrintError(err)
         }
@@ -118,11 +124,17 @@ func runEventWatch(cmd *cobra.Command, args []string) error {
         }
         c := newClient()
         p := newPrinter()
-        opts.Limit = 0
+        opts.Limit = 1000 // fetch up to 1000 per poll; we filter client-side
         watchCtx := signalContext()
         ticker := time.NewTicker(eventWatchEvery)
         defer ticker.Stop()
         fmt.Fprintln(stdout(), "Watching events (Ctrl+C to stop)...")
+
+        // Track the last-seen event ID so we only print NEW events on each
+        // poll. Without this, every poll reprints the most recent event.
+        var lastSeenID string
+        consecutiveErrors := 0
+
         for {
                 select {
                 case <-watchCtx.Done():
@@ -132,10 +144,28 @@ func runEventWatch(cmd *cobra.Command, args []string) error {
                         events, err := c.ListEvents(listCtx, opts)
                         cancel()
                         if err != nil {
+                                consecutiveErrors++
+                                if consecutiveErrors == 5 {
+                                        fmt.Fprintf(os.Stderr, "  (5 consecutive errors — last: %v)\n", err)
+                                }
                                 continue
                         }
-                        if len(events) > 0 {
-                                _ = p.PrintEventList(events[len(events)-1:])
+                        consecutiveErrors = 0
+
+                        // Filter to events newer than lastSeenID.
+                        // Event IDs are UUIDs generated in timestamp order by the
+                        // server, so string comparison is a reasonable proxy for
+                        // ordering. For a robust solution the server would expose
+                        // a sequence number, but UUIDs work in practice.
+                        var fresh []model.Event
+                        for _, e := range events {
+                                if e.ID > lastSeenID {
+                                        fresh = append(fresh, e)
+                                }
+                        }
+                        if len(fresh) > 0 {
+                                _ = p.PrintEventList(fresh)
+                                lastSeenID = fresh[len(fresh)-1].ID
                         }
                 }
         }

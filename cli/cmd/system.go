@@ -74,7 +74,9 @@ func runSystemDeploy(cmd *cobra.Command, args []string) error {
         }
         c := newClient()
         p := newPrinter()
-        resp, err := c.DeploySystem(ctx(), source, ns)
+        ctx, cancel := ctx()
+        defer cancel()
+        resp, err := c.DeploySystem(ctx, source, ns)
         if err != nil {
                 if failureErr, ok := err.(*client.DeployFailureError); ok {
                         return p.PrintDeployResult(&output.DeployFailurePayload{
@@ -94,7 +96,9 @@ func runSystemList(cmd *cobra.Command, args []string) error {
         }
         c := newClient()
         p := newPrinter()
-        list, err := c.ListSystems(ctx(), ns)
+        ctx, cancel := ctx()
+        defer cancel()
+        list, err := c.ListSystems(ctx, ns)
         if err != nil {
                 return p.PrintError(err)
         }
@@ -108,7 +112,9 @@ func runSystemGet(cmd *cobra.Command, args []string) error {
         }
         c := newClient()
         p := newPrinter()
-        detail, err := c.GetSystem(ctx(), args[0], ns)
+        ctx, cancel := ctx()
+        defer cancel()
+        detail, err := c.GetSystem(ctx, args[0], ns)
         if err != nil {
                 return p.PrintError(err)
         }
@@ -121,7 +127,9 @@ func runSystemSource(cmd *cobra.Command, args []string) error {
                 return err
         }
         c := newClient()
-        source, err := c.GetSystemSource(ctx(), args[0], ns)
+        ctx, cancel := ctx()
+        defer cancel()
+        source, err := c.GetSystemSource(ctx, args[0], ns)
         if err != nil {
                 return newPrinter().PrintError(err)
         }
@@ -136,7 +144,9 @@ func runSystemDelete(cmd *cobra.Command, args []string) error {
         }
         c := newClient()
         p := newPrinter()
-        if err := c.DeleteSystem(ctx(), args[0], ns); err != nil {
+        ctx, cancel := ctx()
+        defer cancel()
+        if err := c.DeleteSystem(ctx, args[0], ns); err != nil {
                 return p.PrintError(err)
         }
         return p.PrintSuccess(fmt.Sprintf("System %s/%s undeployed.", ns, args[0]))

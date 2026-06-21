@@ -40,7 +40,9 @@ func init() {
 func runRegistryList(cmd *cobra.Command, args []string) error {
 	c := newClient()
 	p := newPrinter()
-	list, err := c.ListRegistry(ctx(), registryCategory, registryQuery)
+	ctx, cancel := ctx()
+	defer cancel()
+	list, err := c.ListRegistry(ctx, registryCategory, registryQuery)
 	if err != nil {
 		return p.PrintError(err)
 	}
@@ -50,7 +52,9 @@ func runRegistryList(cmd *cobra.Command, args []string) error {
 func runRegistryGet(cmd *cobra.Command, args []string) error {
 	c := newClient()
 	p := newPrinter()
-	entry, err := c.GetRegistryEntry(ctx(), args[0])
+	ctx, cancel := ctx()
+	defer cancel()
+	entry, err := c.GetRegistryEntry(ctx, args[0])
 	if err != nil {
 		return p.PrintError(err)
 	}

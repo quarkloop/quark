@@ -51,7 +51,9 @@ func init() {
 func runHealthPlatform(cmd *cobra.Command, args []string) error {
         c := newClient()
         p := newPrinter()
-        h, err := c.PlatformHealth(ctx())
+        ctx, cancel := ctx()
+        defer cancel()
+        h, err := c.PlatformHealth(ctx)
         if err != nil {
                 return p.PrintError(err)
         }
@@ -61,7 +63,9 @@ func runHealthPlatform(cmd *cobra.Command, args []string) error {
 func runHealthNamespace(cmd *cobra.Command, args []string) error {
         c := newClient()
         p := newPrinter()
-        h, err := c.NamespaceHealth(ctx(), args[0])
+        ctx, cancel := ctx()
+        defer cancel()
+        h, err := c.NamespaceHealth(ctx, args[0])
         if err != nil {
                 return p.PrintError(err)
         }
@@ -75,7 +79,9 @@ func runHealthSystem(cmd *cobra.Command, args []string) error {
         }
         c := newClient()
         p := newPrinter()
-        h, err := c.SystemHealth(ctx(), args[0], ns)
+        ctx, cancel := ctx()
+        defer cancel()
+        h, err := c.SystemHealth(ctx, args[0], ns)
         if err != nil {
                 return p.PrintError(err)
         }
@@ -89,7 +95,9 @@ func runHealthNode(cmd *cobra.Command, args []string) error {
         }
         c := newClient()
         p := newPrinter()
-        h, err := c.NodeHealth(ctx(), args[0], ns, healthNodeSystem)
+        ctx, cancel := ctx()
+        defer cancel()
+        h, err := c.NodeHealth(ctx, args[0], ns, healthNodeSystem)
         if err != nil {
                 return p.PrintError(err)
         }
