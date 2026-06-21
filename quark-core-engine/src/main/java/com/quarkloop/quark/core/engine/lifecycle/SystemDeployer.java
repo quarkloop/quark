@@ -118,9 +118,6 @@ public class SystemDeployer {
             case STORE -> new Store(def.name(), def.uri(), def.config(), metadata);
             case ENDPOINT -> new Endpoint(def.name(), def.uri(), def.config(), metadata);
             case POLICY -> new Policy(def.name(), def.uri(), def.config(), metadata);
-            case system -> throw new DeploymentException(
-                    "System-as-node composition is not yet supported. Node " +
-                            def.name() + " references system URI " + def.uri());
         };
     }
 }

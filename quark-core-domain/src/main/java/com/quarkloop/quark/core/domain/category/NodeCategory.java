@@ -10,8 +10,7 @@ public enum NodeCategory {
     FUNCTION("function", true),
     STORE("store", false),
     ENDPOINT("endpoint", false),
-    POLICY("policy", false),
-    system("system", false);
+    POLICY("policy", false);
 
     private final String label;
     private final boolean active;
