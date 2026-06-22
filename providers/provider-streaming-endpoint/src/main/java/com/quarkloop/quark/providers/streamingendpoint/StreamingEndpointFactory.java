@@ -200,6 +200,10 @@ public class StreamingEndpointFactory implements NodeImplementationFactory<Endpo
             clientLocks.remove(os);
         }
 
+        Object getClientLock(OutputStream os) {
+            return clientLocks.get(os);
+        }
+
         String namespace() { return namespace; }
         String systemName() { return systemName; }
         String nodeName() { return nodeName; }
@@ -237,18 +241,25 @@ public class StreamingEndpointFactory implements NodeImplementationFactory<Endpo
                 exchange.sendResponseHeaders(200, 0);
                 OutputStream os = exchange.getResponseBody();
                 endpoint.addClient(os);
-                // Block until the client disconnects (read returns -1) or
-                // the JVM shuts down. The dispatcher thread is virtual so
-                // this is cheap.
+                // Keep the connection open. For GET requests, getRequestBody()
+                // returns -1 immediately (no body), so we can't rely on it to
+                // detect client disconnect. Instead, we sleep in a loop and
+                // periodically write SSE comments as keepalive. When the client
+                // disconnects, the write throws IOException.
                 try {
-                    byte[] buf = new byte[64];
-                    //noinspection InfiniteLoopStatement
-                    while (true) {
-                        int read = exchange.getRequestBody().read(buf);
-                        if (read == -1) break;
+                    while (!Thread.currentThread().isInterrupted()) {
+                        Thread.sleep(2000);
+                        // Write a keepalive comment — SSE clients ignore lines
+                        // starting with ':'. This also detects disconnects.
+                        synchronized (endpoint.getClientLock(os)) {
+                            os.write(": keepalive\n\n".getBytes(StandardCharsets.UTF_8));
+                            os.flush();
+                        }
                     }
-                } catch (IOException ignored) {
+                } catch (IOException e) {
                     // Client closed the connection
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
                 } finally {
                     endpoint.removeClient(os);
                     try { os.close(); } catch (IOException ignored) {}
