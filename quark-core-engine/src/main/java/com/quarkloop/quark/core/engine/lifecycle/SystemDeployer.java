@@ -132,23 +132,19 @@ public class SystemDeployer {
                     " failed for " + def.uri() + " (" + def.name() + "): " + e.getMessage(), e);
         }
 
-        if (messageBus.isConnected()) {
-            Set<String> allowedEvents = new HashSet<>(def.events());
-            QuarkPublisher publisher = messageBus.createPublisher(
-                    system.name(), system.namespace().value(), def.name(), allowedEvents);
+        Set<String> allowedEvents = new HashSet<>(def.events());
+        QuarkPublisher publisher = messageBus.createPublisher(
+                system.name(), system.namespace().value(), def.name(), allowedEvents);
 
-            if (!def.listens().isEmpty())
-                createSubscriptions(system, def, provider, publisher);
+        if (!def.listens().isEmpty())
+            createSubscriptions(system, def, provider, publisher);
 
-            if (provider instanceof SourceProvider sp) {
-                sp.start(publisher, config);
-                runtimeContext.recordSource(system.namespace().value(), system.name(), def.name(), sp);
-            } else if (provider instanceof EndpointProvider ep) {
-                ep.start(publisher, config);
-                runtimeContext.recordEndpoint(system.namespace().value(), system.name(), def.name(), ep);
-            }
-        } else {
-            log.warn("Bus not connected — skipping wiring for node {} (degraded mode)", def.name());
+        if (provider instanceof SourceProvider sp) {
+            sp.start(publisher, config);
+            runtimeContext.recordSource(system.namespace().value(), system.name(), def.name(), sp);
+        } else if (provider instanceof EndpointProvider ep) {
+            ep.start(publisher, config);
+            runtimeContext.recordEndpoint(system.namespace().value(), system.name(), def.name(), ep);
         }
 
         Node domainNode = createDomainNode(def, factory.descriptor());

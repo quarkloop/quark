@@ -42,6 +42,34 @@ if [ ! -x "$CLI_BIN" ]; then
     exit 1
 fi
 
+# ---- Start NATS server ------------------------------------------------------
+echo "▶ Starting NATS server (background)..."
+NATS_BIN=""
+for candidate in nats-server /usr/local/bin/nats-server /opt/homebrew/bin/nats-server; do
+    if command -v "$candidate" >/dev/null 2>&1; then NATS_BIN="$candidate"; break; fi
+done
+if [ -z "$NATS_BIN" ]; then
+    echo "❌ nats-server not found. Install it: https://docs.nats.io/nats-concepts/what-is-nats/walkthrough_install" >&2
+    exit 1
+fi
+$NATS_BIN > /tmp/quark-nats.log 2>&1 &
+NATS_PID=$!
+echo "  NATS PID: $NATS_PID"
+
+# Wait for NATS to be ready
+for i in $(seq 1 10); do
+    if curl -sf http://localhost:8222/varz >/dev/null 2>&1 || nc -z localhost 4222 2>/dev/null; then
+        echo "  ✓ NATS ready"
+        break
+    fi
+    sleep 0.5
+done
+
+cleanup_nats() {
+    kill "$NATS_PID" 2>/dev/null || true
+    wait "$NATS_PID" 2>/dev/null || true
+}
+
 # ---- Start the server ------------------------------------------------------
 echo "▶ Starting Quark server (background)..."
 STATE_DIR="$(pwd)/quark-state"
@@ -60,6 +88,9 @@ cleanup() {
     echo "⏹ Stopping server (PID $SERVER_PID)..."
     kill "$SERVER_PID" 2>/dev/null || true
     wait "$SERVER_PID" 2>/dev/null || true
+    echo "⏹ Stopping NATS (PID $NATS_PID)..."
+    kill "$NATS_PID" 2>/dev/null || true
+    wait "$NATS_PID" 2>/dev/null || true
 }
 trap cleanup EXIT
 

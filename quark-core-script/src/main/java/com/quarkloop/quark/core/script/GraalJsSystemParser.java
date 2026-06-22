@@ -322,7 +322,18 @@ public class GraalJsSystemParser implements SystemParser {
             return new SystemParseResult.Failure(errors);
         }
 
-        return new SystemParseResult.Success(new SystemDefinition(name, namespace, nodes));
+        String runtime = (String) map.get("runtime");
+        if (runtime != null && !runtime.isBlank()
+                && !runtime.equalsIgnoreCase("shared")
+                && !runtime.equalsIgnoreCase("isolated")) {
+            errors.add("Invalid runtime value: " + runtime + " (must be 'shared' or 'isolated')");
+        }
+
+        if (!errors.isEmpty()) {
+            return new SystemParseResult.Failure(errors);
+        }
+
+        return new SystemParseResult.Success(new SystemDefinition(name, namespace, nodes, runtime));
     }
 
     /**
