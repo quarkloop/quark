@@ -2,6 +2,7 @@ package com.quarkloop.quark.api.system;
 
 import com.quarkloop.quark.api.dto.SystemDtos;
 import com.quarkloop.quark.api.dto.ResponseHelpers;
+import com.quarkloop.quark.app.deploy.ApplyService;
 import com.quarkloop.quark.app.deploy.DeployService;
 import com.quarkloop.quark.app.query.QueryService;
 import com.quarkloop.quark.app.query.SourceService;
@@ -13,6 +14,7 @@ import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
+import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
@@ -36,14 +38,17 @@ import java.util.NoSuchElementException;
 public class SystemResource {
 
     private final DeployService deployService;
+    private final ApplyService applyService;
     private final QueryService queryService;
     private final SourceService sourceService;
 
     @Inject
     public SystemResource(DeployService deployService,
+                          ApplyService applyService,
                           QueryService queryService,
                           SourceService sourceService) {
         this.deployService = deployService;
+        this.applyService = applyService;
         this.queryService = queryService;
         this.sourceService = sourceService;
     }
@@ -88,6 +93,23 @@ public class SystemResource {
                     List.of(new SystemDtos.ValidationError("request", e.getMessage(), "ERROR"))
             );
             return Response.status(Response.Status.BAD_REQUEST).entity(failure).build();
+        }
+    }
+
+    /**
+     * Declarative apply: reconcile desired state with current state.
+     */
+    @PUT
+    @Path("/{name}")
+    public Response apply(@PathParam("name") String name, SystemDtos.DeploySystemRequest request) {
+        try {
+            ApplyService.ApplyResult result = applyService.apply(request.source(), request.namespace());
+            if (result.created()) return Response.status(Response.Status.CREATED).entity(result).build();
+            return Response.ok(result).build();
+        } catch (DeploymentException e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(new SystemDtos.DeploySystemFailure(e.getMessage(),
+                            List.of(new SystemDtos.ValidationError("system", e.getMessage(), "ERROR")))).build();
         }
     }
 

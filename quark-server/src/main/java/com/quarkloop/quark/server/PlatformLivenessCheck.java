@@ -1,6 +1,6 @@
 package com.quarkloop.quark.server;
 
-import com.quarkloop.quark.core.engine.lifecycle.SystemRuntimeRegistry;
+import com.quarkloop.quark.core.engine.runtime.RuntimeContext;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.health.HealthCheck;
@@ -18,16 +18,16 @@ import org.eclipse.microprofile.health.Liveness;
 @ApplicationScoped
 public class PlatformLivenessCheck implements HealthCheck {
 
-    private final SystemRuntimeRegistry runtimeRegistry;
+    private final RuntimeContext runtimeContext;
 
     @Inject
-    public PlatformLivenessCheck(SystemRuntimeRegistry runtimeRegistry) {
-        this.runtimeRegistry = runtimeRegistry;
+    public PlatformLivenessCheck(RuntimeContext runtimeContext) {
+        this.runtimeContext = runtimeContext;
     }
 
     @Override
     public HealthCheckResponse call() {
-        int systemCount = runtimeRegistry.all().size();
+        int systemCount = runtimeContext.getAllSystems().size();
         return HealthCheckResponse.named("platform-liveness")
                 .up()
                 .withData("systems", (long) systemCount)

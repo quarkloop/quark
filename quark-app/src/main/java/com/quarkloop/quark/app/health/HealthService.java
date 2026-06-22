@@ -6,7 +6,7 @@ import com.quarkloop.quark.core.domain.identity.Namespace;
 import com.quarkloop.quark.core.domain.state.HealthStatus;
 import com.quarkloop.quark.core.engine.lifecycle.RuntimeNode;
 import com.quarkloop.quark.core.engine.lifecycle.RuntimeSystem;
-import com.quarkloop.quark.core.engine.lifecycle.SystemRuntimeRegistry;
+import com.quarkloop.quark.core.engine.runtime.RuntimeContext;
 import com.quarkloop.quark.core.event.EventFilter;
 import com.quarkloop.quark.core.event.EventStore;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -30,25 +30,25 @@ import java.util.Optional;
 @ApplicationScoped
 public class HealthService {
 
-    private final SystemRuntimeRegistry registry;
+    private final RuntimeContext runtimeContext;
     private final EventStore eventStore;
 
     @Inject
-    public HealthService(SystemRuntimeRegistry registry, EventStore eventStore) {
-        this.registry = registry;
+    public HealthService(RuntimeContext runtimeContext, EventStore eventStore) {
+        this.runtimeContext = runtimeContext;
         this.eventStore = eventStore;
     }
 
     public HealthSummary platformHealth() {
-        return aggregate(registry.all());
+        return aggregate(runtimeContext.getAllSystems());
     }
 
     public HealthSummary namespaceHealth(String namespace) {
-        return aggregate(registry.listByNamespace(Namespace.of(namespace)));
+        return aggregate(runtimeContext.getSystemsByNamespace(Namespace.of(namespace)));
     }
 
     public Optional<SystemHealth> systemHealth(String namespace, String systemName) {
-        return registry.get(Namespace.of(namespace), systemName)
+        return runtimeContext.getSystem(Namespace.of(namespace), systemName)
                 .map(rs -> {
                     Map<String, String> perNode = new HashMap<>();
                     for (RuntimeNode rn : rs.nodes()) {
@@ -65,7 +65,7 @@ public class HealthService {
     }
 
     public Optional<NodeHealth> nodeHealth(String namespace, String systemName, String nodeName) {
-        return registry.getNode(Namespace.of(namespace), systemName, nodeName)
+        return runtimeContext.getNode(Namespace.of(namespace), systemName, nodeName)
                 .map(rn -> {
                     EventFilter filter = EventFilter.builder()
                             .namespace(namespace)

@@ -5,7 +5,7 @@ import com.quarkloop.quark.core.domain.state.NodeState;
 import com.quarkloop.quark.core.engine.lifecycle.LifecycleManager;
 import com.quarkloop.quark.core.engine.lifecycle.RuntimeNode;
 import com.quarkloop.quark.core.engine.lifecycle.RuntimeSystem;
-import com.quarkloop.quark.core.engine.lifecycle.SystemRuntimeRegistry;
+import com.quarkloop.quark.core.engine.runtime.RuntimeContext;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.slf4j.Logger;
@@ -34,12 +34,12 @@ public class LifecycleService {
     private static final Logger log = LoggerFactory.getLogger(LifecycleService.class);
 
     private final LifecycleManager lifecycleManager;
-    private final SystemRuntimeRegistry registry;
+    private final RuntimeContext runtimeContext;
 
     @Inject
-    public LifecycleService(LifecycleManager lifecycleManager, SystemRuntimeRegistry registry) {
+    public LifecycleService(LifecycleManager lifecycleManager, RuntimeContext runtimeContext) {
         this.lifecycleManager = lifecycleManager;
-        this.registry = registry;
+        this.runtimeContext = runtimeContext;
     }
 
     public void pause(String namespace, String systemName, String nodeName) {
@@ -96,7 +96,7 @@ public class LifecycleService {
     }
 
     private RuntimeNode lookupOrThrow(String namespace, String systemName, String nodeName) {
-        Optional<RuntimeNode> opt = registry.getNode(
+        Optional<RuntimeNode> opt = runtimeContext.getNode(
                 Namespace.of(namespace), systemName, nodeName);
         if (opt.isEmpty()) {
             throw new java.util.NoSuchElementException(

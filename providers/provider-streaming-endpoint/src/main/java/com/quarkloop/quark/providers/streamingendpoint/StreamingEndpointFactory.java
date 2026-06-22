@@ -32,7 +32,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * for every NATS message delivered to the endpoint.
  *
  * <p>URI: {@code endpoint/stream:v1}. The engine injects the runtime
- * identity ({@link SystemRunner#CONFIG_KEY_SYSTEM}, {@code _quark_namespace},
+ * identity (the engine's config key injection, {@code _quark_namespace},
  * {@code _quark_node}) into the config so the provider knows its own
  * subject-tuple.
  *
@@ -53,7 +53,7 @@ public class StreamingEndpointFactory implements NodeImplementationFactory<Endpo
     private static final Logger log = LoggerFactory.getLogger(StreamingEndpointFactory.class);
 
     /**
-     * Engine-injected config keys (mirrors {@code SystemRunner.CONFIG_KEY_*}).
+     * Engine-injected config keys (mirrors the engine's config keys).
      * Kept as string literals here so provider modules don't need to depend
      * on {@code quark-engine}.
      */

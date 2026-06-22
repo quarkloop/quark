@@ -12,7 +12,6 @@ import com.quarkloop.quark.core.engine.lifecycle.SystemDeployer;
 import com.quarkloop.quark.core.event.EventBus;
 import com.quarkloop.quark.core.script.SystemParseResult;
 import com.quarkloop.quark.core.script.SystemParser;
-import com.quarkloop.quark.engine.SystemRunner;
 import io.quarkus.runtime.StartupEvent;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
@@ -55,19 +54,16 @@ public class DeployService {
     private static final Logger log = LoggerFactory.getLogger(DeployService.class);
 
     private final SystemParser parser;
-    private final SystemRunner systemRunner;
     private final SystemDeployer systemDeployer;
     private final EventBus eventBus;
     private final StateRoot stateRoot;
 
     @Inject
     public DeployService(SystemParser parser,
-                         SystemRunner systemRunner,
                          SystemDeployer systemDeployer,
                          EventBus eventBus,
                          StateRoot stateRoot) {
         this.parser = parser;
-        this.systemRunner = systemRunner;
         this.systemDeployer = systemDeployer;
         this.eventBus = eventBus;
         this.stateRoot = stateRoot;
@@ -104,23 +100,10 @@ public class DeployService {
             );
         }
 
-        // 3. Execute on NATS (wires subscriptions, starts sources/endpoints)
-        systemRunner.deploy(systemDef);
+        // 3. Deploy (single call — SystemDeployer handles bus wiring + lifecycle)
+        RuntimeSystem runtime = systemDeployer.deploy(systemDef);
 
-        // 4. Track in runtime registry + start lifecycle (CREATING -> ACTIVE).
-        //    If this fails, roll back the NATS wiring so the system isn't
-        //    left running "invisibly" (NATS live but no registry entry).
-        RuntimeSystem runtime;
-        try {
-            runtime = systemDeployer.deploy(systemDef);
-        } catch (Exception e) {
-            log.error("SystemDeployer failed for {}/{} — rolling back NATS wiring",
-                    systemDef.namespace().value(), systemDef.name(), e);
-            systemRunner.undeploy(systemDef.namespace().value(), systemDef.name());
-            throw e;
-        }
-
-        // 5. Persist the original source so we can recover on restart
+        // 4. Persist the original source so we can recover on restart
         try {
             persistSource(systemDef, source);
         } catch (IOException e) {
@@ -153,11 +136,7 @@ public class DeployService {
      * NODE_STATE_CHANGED -> ARCHIVED event per node.
      */
     public void undeploy(String namespace, String systemName) {
-        Namespace ns = Namespace.of(namespace);
-        // Stop NATS wiring + provider resources
-        systemRunner.undeploy(namespace, systemName);
-        // Remove from runtime registry + stop lifecycle
-        systemDeployer.undeploy(ns, systemName);
+        systemDeployer.undeploy(namespace, systemName);
         log.info("Undeployed system {}/{}", namespace, systemName);
     }
 

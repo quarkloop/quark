@@ -24,6 +24,22 @@ type DeploySystemFailure struct {
         Errors  []ValidationError `json:"errors"`
 }
 
+// ApplyResult is the response for PUT /systems/{name}.
+type ApplyResult struct {
+        Name      string        `json:"name"`
+        Namespace string        `json:"namespace"`
+        Created   bool          `json:"created"`
+        Changed   bool          `json:"changed"`
+        Changes   []ApplyChange `json:"changes"`
+}
+
+// ApplyChange represents one change in a declarative apply diff.
+type ApplyChange struct {
+        Type    string `json:"type"`
+        Node    string `json:"node"`
+        Details string `json:"details"`
+}
+
 // SystemSummary is one row in GET /systems.
 type SystemSummary struct {
         Name            string    `json:"name"`

@@ -4,10 +4,8 @@ import com.quarkloop.quark.core.domain.event.NodeEvent;
 import com.quarkloop.quark.core.domain.event.NodeEventKind;
 import com.quarkloop.quark.core.domain.identity.Namespace;
 import com.quarkloop.quark.core.domain.node.Node;
-import com.quarkloop.quark.core.domain.state.HealthStatus;
-import com.quarkloop.quark.core.domain.state.NodeState;
-import com.quarkloop.quark.core.domain.state.LifecycleStateMachine;
-import com.quarkloop.quark.core.domain.state.StateTransition;
+import com.quarkloop.quark.core.domain.state.*;
+import com.quarkloop.quark.core.engine.runtime.RuntimeContext;
 import com.quarkloop.quark.core.event.EventBus;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -16,32 +14,29 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 
-/**
- * Manages lifecycle state transitions for runtime nodes.
- */
 @ApplicationScoped
 public class LifecycleManager {
 
     private static final Logger log = LoggerFactory.getLogger(LifecycleManager.class);
 
     private final EventBus eventBus;
-    private final SystemRuntimeRegistry registry;
+    private final RuntimeContext runtimeContext;
 
     @Inject
-    public LifecycleManager(EventBus eventBus, SystemRuntimeRegistry registry) {
+    public LifecycleManager(EventBus eventBus, RuntimeContext runtimeContext) {
         this.eventBus = eventBus;
-        this.registry = registry;
+        this.runtimeContext = runtimeContext;
     }
 
     public void startAll(RuntimeSystem system) {
         for (RuntimeNode rn : system.nodes()) {
             Node def = rn.definition();
-            log.info("Starting node {} in system {}", def.name(), system.name());
+            log.info("Starting node {} in system {}/{}", def.name(), system.namespace().value(), system.name());
             try {
                 transitionTo(system.namespace(), system.name(), rn, NodeState.ACTIVE, "deploy");
                 rn.setHealth(HealthStatus.HEALTHY);
             } catch (Exception e) {
-                log.error("Failed to start node {} in system {}", def.name(), system.name(), e);
+                log.error("Failed to start node {} in system {}/{}", def.name(), system.namespace().value(), system.name(), e);
                 rn.setErrorMessage(e.getMessage());
                 transitionTo(system.namespace(), system.name(), rn, NodeState.ERROR, "start-failure");
                 rn.setHealth(HealthStatus.UNHEALTHY);
@@ -57,19 +52,12 @@ public class LifecycleManager {
                     transitionTo(system.namespace(), system.name(), rn, NodeState.ARCHIVED, "drain-complete");
                 }
             } catch (Exception e) {
-                log.error("Failed to stop node {} in system {}", rn.definition().name(), system.name(), e);
+                log.error("Failed to stop node {} in system {}/{}", rn.definition().name(), system.namespace().value(), system.name(), e);
             }
         }
     }
 
-    public StateTransition transitionTo(
-            Namespace namespace, String systemName,
-            RuntimeNode rn, NodeState target, String trigger) {
-        // Synchronize on the runtime node so the read-validate-write
-        // sequence is atomic. Without this, two concurrent lifecycle
-        // operations on the same node could both read the same `from`
-        // state, both validate, both write — producing duplicate events
-        // and a double version increment.
+    public StateTransition transitionTo(Namespace namespace, String systemName, RuntimeNode rn, NodeState target, String trigger) {
         synchronized (rn) {
             NodeState from = rn.state();
             if (from == target) {
@@ -83,20 +71,15 @@ public class LifecycleManager {
             }
             rn.setState(target);
             StateTransition t = new StateTransition(from, target, trigger, java.time.Instant.now());
-            NodeEvent event = NodeEvent.of(
-                    NodeEventKind.NODE_STATE_CHANGED,
-                    rn.definition().name(),
-                    systemName,
-                    namespace.value(),
-                    Map.of("from", from.name(), "to", target.name(), "trigger", trigger));
-            eventBus.publish(event);
-            log.debug("Transitioned {}/{} {} : {} -> {}",
-                    namespace.value(), systemName, rn.definition().name(), from, target);
+            eventBus.publish(NodeEvent.of(NodeEventKind.NODE_STATE_CHANGED, rn.definition().name(),
+                    systemName, namespace.value(),
+                    Map.of("from", from.name(), "to", target.name(), "trigger", trigger)));
+            log.debug("Transitioned {}/{} {} : {} -> {}", namespace.value(), systemName, rn.definition().name(), from, target);
             return t;
         }
     }
 
     public RuntimeNode getNode(Namespace namespace, String systemName, String nodeName) {
-        return registry.getNode(namespace, systemName, nodeName).orElse(null);
+        return runtimeContext.getNode(namespace, systemName, nodeName).orElse(null);
     }
 }

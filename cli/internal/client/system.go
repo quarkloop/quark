@@ -3,6 +3,7 @@ package client
 import (
         "context"
         "fmt"
+        "net/http"
 
         "github.com/quarkloop/quark/cli/internal/model"
 )
@@ -82,6 +83,17 @@ func (c *Client) DeleteSystem(ctx context.Context, name, namespace string) error
         }
         path := fmt.Sprintf("/systems/%s%s", name, buildQuery("namespace", namespace))
         return c.delete(ctx, path)
+}
+
+// ApplySystem sends a declarative apply request (PUT /systems/{name}).
+func (c *Client) ApplySystem(ctx context.Context, name, source, namespace string) (*model.ApplyResult, error) {
+        req := model.DeploySystemRequest{Source: source, Namespace: namespace}
+        var resp model.ApplyResult
+        path := fmt.Sprintf("/systems/%s%s", name, buildQuery("namespace", namespace))
+        if err := c.do(ctx, http.MethodPut, path, req, &resp); err != nil {
+                return nil, err
+        }
+        return &resp, nil
 }
 
 // DeployFailureError is returned by DeploySystem when the server rejects

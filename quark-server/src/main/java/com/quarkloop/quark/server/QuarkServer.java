@@ -9,7 +9,7 @@ import jakarta.enterprise.event.Observes;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
-import com.quarkloop.quark.engine.SystemRunner;
+import com.quarkloop.quark.core.engine.lifecycle.SystemDeployer;
 
 import jakarta.inject.Inject;
 
@@ -23,7 +23,7 @@ import jakarta.inject.Inject;
  * <ul>
  *   <li><b>Startup</b>: log the active state root, port, and version so
  *       operators can verify the configuration at a glance.</li>
- *   <li><b>Shutdown</b>: gracefully shut down the {@link SystemRunner}'s
+ *   <li><b>Shutdown</b>: gracefully shut down the {@link SystemDeployer}'s
  *       virtual-thread executor so in-flight system executions don't get
  *       killed mid-chain.</li>
  * </ul>
@@ -46,7 +46,7 @@ public class QuarkServer implements QuarkusApplication {
     String version;
 
     @Inject
-    SystemRunner systemRunner;
+    SystemDeployer systemDeployer;
 
     void onStart(@Observes StartupEvent event) {
         log.infof("=== Quark Platform v%s starting ===", version);
@@ -60,9 +60,9 @@ public class QuarkServer implements QuarkusApplication {
     void onStop(@Observes ShutdownEvent event) {
         log.info("=== Quark Platform shutting down ===");
         try {
-            systemRunner.undeploy();
+            systemDeployer.undeployAll();
         } catch (Exception e) {
-            log.warn("Error during SystemRunner shutdown", e);
+            log.warn("Error during SystemDeployer shutdown", e);
         }
         log.info("=== Quark Platform stopped ===");
     }

@@ -7,7 +7,7 @@ import com.quarkloop.quark.core.domain.state.NodeState;
 import com.quarkloop.quark.core.domain.system.NodeDefinition;
 import com.quarkloop.quark.core.engine.lifecycle.RuntimeNode;
 import com.quarkloop.quark.core.engine.lifecycle.RuntimeSystem;
-import com.quarkloop.quark.core.engine.lifecycle.SystemRuntimeRegistry;
+import com.quarkloop.quark.core.engine.runtime.RuntimeContext;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
@@ -27,17 +27,17 @@ import java.util.Optional;
 @ApplicationScoped
 public class QueryService {
 
-    private final SystemRuntimeRegistry registry;
+    private final RuntimeContext runtimeContext;
 
     @Inject
-    public QueryService(SystemRuntimeRegistry registry) {
-        this.registry = registry;
+    public QueryService(RuntimeContext runtimeContext) {
+        this.runtimeContext = runtimeContext;
     }
 
     public List<SystemSummary> listSystems(String namespace) {
         Namespace ns = Namespace.of(namespace);
         List<SystemSummary> out = new ArrayList<>();
-        for (RuntimeSystem rs : registry.listByNamespace(ns)) {
+        for (RuntimeSystem rs : runtimeContext.getSystemsByNamespace(ns)) {
             out.add(toSummary(rs));
         }
         out.sort(Comparator.comparing(SystemSummary::name));
@@ -45,12 +45,12 @@ public class QueryService {
     }
 
     public Optional<SystemDetail> getSystem(String namespace, String systemName) {
-        return registry.get(Namespace.of(namespace), systemName)
+        return runtimeContext.getSystem(Namespace.of(namespace), systemName)
                 .map(this::toDetail);
     }
 
     public List<NodeSummary> listNodes(String namespace, String systemName) {
-        return registry.get(Namespace.of(namespace), systemName)
+        return runtimeContext.getSystem(Namespace.of(namespace), systemName)
                 .map(rs -> rs.nodes().stream()
                         .map(rn -> toNodeSummary(rs, rn))
                         .sorted(Comparator.comparing(NodeSummary::name))
@@ -60,7 +60,7 @@ public class QueryService {
 
     public List<NodeSummary> listAllNodes(String namespace) {
         List<NodeSummary> out = new ArrayList<>();
-        for (RuntimeSystem rs : registry.listByNamespace(Namespace.of(namespace))) {
+        for (RuntimeSystem rs : runtimeContext.getSystemsByNamespace(Namespace.of(namespace))) {
             for (RuntimeNode rn : rs.nodes()) {
                 out.add(toNodeSummary(rs, rn));
             }
@@ -70,9 +70,9 @@ public class QueryService {
     }
 
     public Optional<NodeDetail> getNode(String namespace, String systemName, String nodeName) {
-        return registry.getNode(Namespace.of(namespace), systemName, nodeName)
+        return runtimeContext.getNode(Namespace.of(namespace), systemName, nodeName)
                 .map(rn -> {
-                    RuntimeSystem rs = registry.get(Namespace.of(namespace), systemName).orElseThrow();
+                    RuntimeSystem rs = runtimeContext.getSystem(Namespace.of(namespace), systemName).orElseThrow();
                     return toNodeDetail(rs, rn);
                 });
     }

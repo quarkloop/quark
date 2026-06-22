@@ -3,17 +3,14 @@
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
-
     <parent>
         <groupId>com.quarkloop.quark</groupId>
         <artifactId>quark-parent</artifactId>
         <version>0.1.0-SNAPSHOT</version>
     </parent>
-
-    <artifactId>quark-engine</artifactId>
-    <name>Quark Engine</name>
-    <description>Engine layer: embedded NATS JetStream, subject routing, consumer/publisher management, retry/fallback, lifecycle.</description>
-
+    <artifactId>quark-observability</artifactId>
+    <name>Quark Observability</name>
+    <description>Micrometer metrics and OpenTelemetry tracing instrumentation.</description>
     <dependencies>
         <dependency>
             <groupId>com.quarkloop.quark</groupId>
@@ -21,27 +18,7 @@
         </dependency>
         <dependency>
             <groupId>com.quarkloop.quark</groupId>
-            <artifactId>quark-core-registry</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.quarkloop.quark</groupId>
-            <artifactId>quark-core-event</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.quarkloop.quark</groupId>
             <artifactId>quark-core-engine</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.nats</groupId>
-            <artifactId>jnats</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-databind</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.fasterxml.jackson.datatype</groupId>
-            <artifactId>jackson-datatype-jsr310</artifactId>
         </dependency>
         <dependency>
             <groupId>jakarta.enterprise</groupId>
@@ -52,6 +29,10 @@
             <artifactId>quarkus-arc</artifactId>
         </dependency>
         <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
         </dependency>
@@ -59,8 +40,6 @@
             <groupId>org.jboss.logging</groupId>
             <artifactId>jboss-logging</artifactId>
         </dependency>
-
-        <!-- Test -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
@@ -69,6 +48,7 @@
         <dependency>
             <groupId>org.assertj</groupId>
             <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 </project>
