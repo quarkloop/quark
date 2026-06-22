@@ -11,6 +11,7 @@ import com.quarkloop.quark.core.engine.runtime.RuntimeContext;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -102,12 +103,22 @@ public class QueryService {
                 .map(rn -> toNodeSummary(rs, rn))
                 .sorted(Comparator.comparing(NodeSummary::name))
                 .toList();
+        // Get creation timestamp from first node's metadata (all nodes in a system
+        // are deployed at the same time)
+        String createdAt = rs.nodes().stream().findFirst()
+                .map(rn -> rn.definition().metadata().createdAt().toString())
+                .orElse(Instant.now().toString());
+        String updatedAt = rs.nodes().stream().findFirst()
+                .map(rn -> rn.definition().metadata().updatedAt().toString())
+                .orElse(createdAt);
         return new SystemDetail(
                 rs.name(),
                 rs.namespace().value(),
                 overallState(rs),
                 rs.overallHealth().name(),
                 1L,
+                createdAt,
+                updatedAt,
                 nodes
         );
     }
@@ -193,6 +204,8 @@ public class QueryService {
             String state,
             String health,
             long version,
+            String createdAt,
+            String updatedAt,
             List<NodeSummary> nodes
     ) {}
 
