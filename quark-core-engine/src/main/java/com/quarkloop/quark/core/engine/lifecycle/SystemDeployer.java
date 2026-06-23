@@ -11,6 +11,7 @@ import com.quarkloop.quark.core.domain.system.SystemDefinition;
 import com.quarkloop.quark.core.engine.bus.MessageBus;
 import com.quarkloop.quark.core.engine.bus.Subscription;
 import com.quarkloop.quark.core.engine.metrics.NamespaceMetrics;
+import com.quarkloop.quark.core.engine.polyglot.PolyglotNodeLookup;
 import com.quarkloop.quark.core.engine.runtime.RuntimeContext;
 import com.quarkloop.quark.core.registry.NodeDescriptor;
 import com.quarkloop.quark.core.registry.NodeImplementationFactory;
@@ -37,16 +38,19 @@ public class SystemDeployer {
     private final MessageBus messageBus;
     private final RuntimeContext runtimeContext;
     private final NamespaceMetrics namespaceMetrics;
+    private final PolyglotNodeLookup polyglotLookup;
 
     @Inject
     public SystemDeployer(NodeRegistry registry, LifecycleManager lifecycleManager,
                            MessageBus messageBus, RuntimeContext runtimeContext,
-                           NamespaceMetrics namespaceMetrics) {
+                           NamespaceMetrics namespaceMetrics,
+                           PolyglotNodeLookup polyglotLookup) {
         this.registry = registry;
         this.lifecycleManager = lifecycleManager;
         this.messageBus = messageBus;
         this.runtimeContext = runtimeContext;
         this.namespaceMetrics = namespaceMetrics;
+        this.polyglotLookup = polyglotLookup;
     }
 
     public RuntimeSystem deploy(SystemDefinition system) {
@@ -64,7 +68,12 @@ public class SystemDeployer {
             Map<String, NodeImplementationFactory<?>> factories = new HashMap<>();
             List<String> missingUris = new ArrayList<>();
             for (NodeDefinition def : system.nodes().values()) {
+                // 1. Check built-in Java registry first
                 Optional<NodeImplementationFactory<?>> f = registry.lookupFactory(def.uri());
+                // 2. Fall back to polyglot registry (TypeScript/Python from catalog)
+                if (f.isEmpty()) {
+                    f = polyglotLookup.lookupFactory(def.uri());
+                }
                 if (f.isEmpty()) missingUris.add(def.uri().toString());
                 else factories.put(def.name(), f.get());
             }
