@@ -219,9 +219,14 @@ public class StreamingEndpointFactory implements NodeImplementationFactory<Endpo
 
         SharedServer(InetSocketAddress addr) throws IOException {
             this.server = com.sun.net.httpserver.HttpServer.create(addr, 0);
-            this.server.setExecutor(java.util.concurrent.Executors.newThreadPerTaskExecutor(
-                    Thread.ofVirtual().name("quark-sse-", 0).factory()
-            ));
+            // Use platform threads in native image (Truffle JIT doesn't support
+            // virtual threads). Use virtual threads in JVM mode for efficiency.
+            boolean isNative = System.getProperty("org.graalvm.nativeimage.imagecodekey") != null
+                    || "true".equals(System.getProperty("quark.native"));
+            java.util.concurrent.ThreadFactory factory = isNative
+                    ? Thread.ofPlatform().name("quark-sse-", 0).factory()
+                    : Thread.ofVirtual().name("quark-sse-", 0).factory();
+            this.server.setExecutor(java.util.concurrent.Executors.newThreadPerTaskExecutor(factory));
             // Catch-all handler — we inspect the path and dispatch.
             this.server.createContext("/", exchange -> {
                 String path = exchange.getRequestURI().getPath();

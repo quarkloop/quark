@@ -111,12 +111,13 @@ BUILD_MODE=native make run-example      # Run example with native server
 ```
 
 **Prerequisites for native mode:**
-- Mandrel 23.1.x or GraalVM 21+ with `native-image` on `$PATH`
-- Set `JAVA_HOME` to the Mandrel/GraalVM installation
+- Oracle GraalVM 21+ with `native-image` on `$PATH` (Mandrel is NOT sufficient — Truffle support requires Oracle GraalVM)
+- Set `JAVA_HOME` to the GraalVM installation
 
 **Native mode limitations:**
-- **GraalJS is not available** — GraalJS requires Truffle, which is incompatible with native-image's closed-world analysis. The `SimpleSystemParser` (regex-based) is used instead. It supports the standard `.quark.ts` syntax but not arbitrary JavaScript expressions.
-- **DuckDB persistence requires JVM mode** — DuckDB's JNI library loading is incompatible with native-image. Use JVM mode for production deployments that require DuckDB persistence.
+- **GraalJS**: Fully supported via `--macro:truffle-svm`. The GraalJS/Truffle interpreter is statically compiled into the native binary, enabling full `.quark.ts` evaluation at runtime. Requires Oracle GraalVM (not Mandrel) for the native build.
+- **Virtual threads**: Truffle JIT compilation doesn't support virtual threads. Providers automatically use platform threads in native mode (detected via `quark.native` system property).
+- **DuckDB persistence**: The DuckDB JDBC driver's native library (`libduckdb_java.so`) has a known JNI incompatibility with native image's memory model (segfault on startup). Use JVM mode for production deployments that require DuckDB persistence. In native mode, the server starts and handles deploys via NATS, but system records and events are not persisted to DuckDB.
 
 ### Build Mode Selection
 

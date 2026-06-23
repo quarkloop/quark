@@ -17,6 +17,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -74,10 +75,18 @@ public class TimerSourceFactory implements NodeImplementationFactory<SourceProvi
 
         @Override
         public void start(QuarkPublisher publisher, NodeConfig config) {
-            scheduler = Executors.newSingleThreadScheduledExecutor(
-                    Thread.ofVirtual().name("quark-timer-", 0).factory()
-            );
-            log.info("Starting timer source (interval={})", interval);
+            // Use platform threads in native image (Truffle JIT doesn't support
+            // virtual threads). Use virtual threads in JVM mode for efficiency.
+            // Detection: check if running inside a native image by testing
+            // whether the imagecodekey system property is set (GraalVM sets it
+            // at build time). Also check quark.native as a fallback.
+            boolean isNative = System.getProperty("org.graalvm.nativeimage.imagecodekey") != null
+                    || "true".equals(System.getProperty("quark.native"));
+            ThreadFactory factory = isNative
+                    ? Thread.ofPlatform().name("quark-timer-", 0).factory()
+                    : Thread.ofVirtual().name("quark-timer-", 0).factory();
+            scheduler = Executors.newSingleThreadScheduledExecutor(factory);
+            log.info("Starting timer source (interval={}, threads={})", interval, isNative ? "platform" : "virtual");
             scheduler.scheduleAtFixedRate(() -> {
                 try {
                     long n = tickCounter.incrementAndGet();

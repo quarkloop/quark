@@ -162,6 +162,11 @@ public class DataPlaneProcess {
         command.add(prefix + "quarkus.http.host=127.0.0.1");
         // Disable Swagger/OpenAPI in data-plane (not needed, saves memory)
         command.add(prefix + "quarkus.swagger-ui.always-include=false");
+        // In native mode, pass quark.native=true so providers know to use
+        // platform threads (Truffle JIT doesn't support virtual threads).
+        if (!isJarBinary()) {
+            command.add(prefix + "quark.native=true");
+        }
     }
 
     /**

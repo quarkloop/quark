@@ -22,14 +22,21 @@
         </dependency>
         <!--
             quark-core-script depends on GraalJS/Truffle for the
-            GraalJsSystemParser. In JVM mode, these JARs are on the
-            classpath and GraalJsSystemParser is used. In native mode,
-            we exclude them (via the native profile in the parent POM)
-            so the SimpleSystemParser (regex-based) is used instead.
+            GraalJsSystemParser. We exclude truffle-enterprise because
+            it contains HSPathGen which references an unresolved
+            java.nio.file.Path.resolve varargs method that breaks
+            native-image builds. The community Truffle runtime is
+            sufficient for GraalJS evaluation.
         -->
         <dependency>
             <groupId>com.quarkloop.quark</groupId>
             <artifactId>quark-core-script</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.graalvm.truffle</groupId>
+                    <artifactId>truffle-enterprise</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>com.quarkloop.quark</groupId>
@@ -173,42 +180,18 @@
     <!-- Native profile                                                          -->
     <!-- ====================================================================== -->
     <!--
-        In native mode, override the quark-core-script dependency to exclude
-        GraalJS/Truffle JARs. GraalJS requires Truffle, which is incompatible
-        with GraalVM native-image's closed-world analysis. The
-        SimpleSystemParser (regex-based) is used instead.
+        In native mode, GraalJS/Truffle is included via the macro:truffle
+        flag (passed in application.properties quarkus.native.additional-build-args).
+        The Oracle GraalVM native-image builder uses macro:truffle to
+        statically compile the Truffle language interpreter into the native
+        binary, enabling full GraalJS evaluation at runtime.
 
-        The GraalJS JARs are still present in JVM mode (the default) — only
-        the native profile excludes them.
+        This requires Oracle GraalVM (not Mandrel) for the native build,
+        because Mandrel does not include Truffle support.
     -->
     <profiles>
         <profile>
             <id>native</id>
-            <dependencies>
-                <dependency>
-                    <groupId>com.quarkloop.quark</groupId>
-                    <artifactId>quark-core-script</artifactId>
-                    <version>${project.version}</version>
-                    <exclusions>
-                        <exclusion>
-                            <groupId>org.graalvm.polyglot</groupId>
-                            <artifactId>polyglot</artifactId>
-                        </exclusion>
-                        <exclusion>
-                            <groupId>org.graalvm.polyglot</groupId>
-                            <artifactId>js</artifactId>
-                        </exclusion>
-                        <exclusion>
-                            <groupId>org.graalvm.truffle</groupId>
-                            <artifactId>truffle-api</artifactId>
-                        </exclusion>
-                        <exclusion>
-                            <groupId>org.graalvm.regex</groupId>
-                            <artifactId>regex</artifactId>
-                        </exclusion>
-                    </exclusions>
-                </dependency>
-            </dependencies>
         </profile>
     </profiles>
 </project>

@@ -66,6 +66,15 @@ public class DuckDBStore implements SystemRepository, NodeRepository, EventRepos
                     && Files.isDirectory(legacySystemsDir);
 
             log.info("Opening DuckDB database at {}", dbFile);
+
+            // In native image, DriverManager doesn't auto-discover JDBC drivers
+            // via ServiceLoader. Explicitly load the DuckDB driver class.
+            try {
+                Class.forName("org.duckdb.DuckDBDriver");
+            } catch (ClassNotFoundException e) {
+                log.warn("DuckDB driver class not found on classpath", e);
+            }
+
             connection = DriverManager.getConnection("jdbc:duckdb:" + dbFile);
             createSchema();
             log.info("DuckDB schema initialized");
