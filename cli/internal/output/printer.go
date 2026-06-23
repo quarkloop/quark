@@ -24,6 +24,8 @@ type Printer interface {
         PrintRegistryList(entries interface{}) error
         // PrintNamespaceList renders a list of namespace names.
         PrintNamespaceList(namespaces interface{}) error
+        // PrintNamespaceDetail renders a single namespace with metrics.
+        PrintNamespaceDetail(detail interface{}) error
         // PrintRegistryEntry renders a single registry entry.
         PrintRegistryEntry(entry interface{}) error
         // PrintEventList renders a list of events.

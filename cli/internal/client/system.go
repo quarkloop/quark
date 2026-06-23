@@ -17,6 +17,16 @@ func (c *Client) ListNamespaces(ctx context.Context) ([]model.NamespaceSummary, 
         return out, nil
 }
 
+// GetNamespace returns details and metrics for a single namespace.
+func (c *Client) GetNamespace(ctx context.Context, namespace string) (*model.NamespaceDetail, error) {
+        var out model.NamespaceDetail
+        path := fmt.Sprintf("/api/v1/namespaces/%s", namespace)
+        if err := c.get(ctx, path, &out); err != nil {
+                return nil, err
+        }
+        return &out, nil
+}
+
 // DeploySystem deploys a system via POST /api/v1/namespaces/{ns}/systems.
 func (c *Client) DeploySystem(ctx context.Context, source, namespace string) (*model.DeploySystemResponse, error) {
         req := model.DeploySystemRequest{Source: source, Namespace: namespace}

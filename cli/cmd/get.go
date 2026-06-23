@@ -40,6 +40,7 @@ var getSystemFlag string
 func init() {
         rootCmd.AddCommand(getCmd)
         getCmd.AddCommand(getNamespacesCmd)
+        getCmd.AddCommand(getNamespaceCmd)
         getCmd.AddCommand(getSystemsCmd)
         getCmd.AddCommand(getSystemCmd)
         getCmd.AddCommand(getNodesCmd)
@@ -61,6 +62,14 @@ var getNamespacesCmd = &cobra.Command{
         Short: "List all active namespaces",
         Args:  cobra.NoArgs,
         RunE:  runGetNamespaces,
+}
+
+// get namespace NAME
+var getNamespaceCmd = &cobra.Command{
+        Use:   "namespace NAME",
+        Short: "Get namespace details and metrics",
+        Args:  cobra.ExactArgs(1),
+        RunE:  runGetNamespace,
 }
 
 // get systems
@@ -120,6 +129,17 @@ func runGetNamespaces(cmd *cobra.Command, args []string) error {
                 return newPrinter().PrintError(err)
         }
         return newPrinter().PrintNamespaceList(list)
+}
+
+func runGetNamespace(cmd *cobra.Command, args []string) error {
+        c := newClient()
+        ctx, cancel := ctx()
+        defer cancel()
+        detail, err := c.GetNamespace(ctx, args[0])
+        if err != nil {
+                return newPrinter().PrintError(err)
+        }
+        return newPrinter().PrintNamespaceDetail(detail)
 }
 
 func runGetSystems(cmd *cobra.Command, args []string) error {

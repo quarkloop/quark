@@ -198,6 +198,46 @@ func (p *PrettyPrinter) PrintNamespaceList(namespaces interface{}) error {
         return nil
 }
 
+func (p *PrettyPrinter) PrintNamespaceDetail(detail interface{}) error {
+        d, ok := detail.(*model.NamespaceDetail)
+        if !ok {
+                return fmt.Errorf("expected *NamespaceDetail, got %T", detail)
+        }
+        fmt.Fprintf(p.w, "Namespace: %s\n", d.Namespace)
+        fmt.Fprintf(p.w, "Systems:   %d\n", d.SystemCount)
+        fmt.Fprintf(p.w, "Nodes:     %d (healthy=%d, unhealthy=%d)\n", d.NodeCount, d.HealthyNodes, d.UnhealthyNodes)
+        fmt.Fprintln(p.w)
+        fmt.Fprintln(p.w, "Metrics:")
+        fmt.Fprintf(p.w, "  CPU load:     %.1f%%\n", d.Metrics.CPU.SystemLoad*100)
+        fmt.Fprintf(p.w, "  Processors:   %d\n", d.Metrics.CPU.AvailableProcessors)
+        fmt.Fprintf(p.w, "  Heap used:    %s / %s\n", humanBytes(d.Metrics.Memory.HeapUsed), humanBytes(d.Metrics.Memory.HeapMax))
+        fmt.Fprintf(p.w, "  Heap commit:  %s\n", humanBytes(d.Metrics.Memory.HeapCommitted))
+        fmt.Fprintf(p.w, "  Non-heap:     %s\n", humanBytes(d.Metrics.Memory.NonHeapUsed))
+        if len(d.Systems) > 0 {
+                fmt.Fprintln(p.w)
+                fmt.Fprintf(p.w, "Systems (%d):\n", len(d.Systems))
+                t := newTable(p.w, []string{"NAME", "NODES", "STATE", "HEALTH"})
+                for _, s := range d.Systems {
+                        t.Append([]string{s.Name, fmt.Sprintf("%d", s.NodeCount), s.State, s.Health})
+                }
+                t.Render()
+        }
+        return nil
+}
+
+func humanBytes(b int64) string {
+        if b < 1024 {
+                return fmt.Sprintf("%d B", b)
+        }
+        if b < 1024*1024 {
+                return fmt.Sprintf("%.1f KB", float64(b)/1024)
+        }
+        if b < 1024*1024*1024 {
+                return fmt.Sprintf("%.1f MB", float64(b)/(1024*1024))
+        }
+        return fmt.Sprintf("%.1f GB", float64(b)/(1024*1024*1024))
+}
+
 func (p *PrettyPrinter) PrintRegistryList(entries interface{}) error {
         list, ok := entries.([]model.RegistryEntry)
         if !ok {
