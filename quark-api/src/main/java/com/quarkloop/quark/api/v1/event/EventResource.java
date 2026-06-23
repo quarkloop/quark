@@ -12,7 +12,7 @@ import java.time.Instant;
 /**
  * Event operations, scoped to a namespace.
  *
- * <p>Kubernetes-style: namespace is in the path.
+ * <p>Namespace is a path parameter.
  */
 @Path("/api/v1/namespaces/{namespace}/events")
 @ApplicationScoped

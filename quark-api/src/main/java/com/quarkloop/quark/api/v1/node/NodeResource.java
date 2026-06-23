@@ -14,7 +14,7 @@ import java.util.NoSuchElementException;
 /**
  * Node operations, scoped to namespace + system.
  *
- * <p>Kubernetes-style: namespace and system are in the path.
+ * <p>Namespace and system are path parameters.
  */
 @Path("/api/v1/namespaces/{namespace}/systems/{system}/nodes")
 @ApplicationScoped

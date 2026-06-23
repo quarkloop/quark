@@ -53,7 +53,7 @@ quark/
 │       ├── system.quark.ts              ← The "program" — this is ALL the user writes
 │       └── json/                        ← Output directory (server writes here)
 │
-└── cli/                                 ← Go-based CLI (kubectl-style, with --json flag)
+└── cli/                                 ← Go-based CLI (with --json flag)
     ├── go.mod                           ← (Go 1.24+)
     ├── main.go
     ├── cmd/                             ← Cobra commands (system, node, registry, event, health)

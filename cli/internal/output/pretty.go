@@ -176,17 +176,23 @@ func (p *PrettyPrinter) PrintNodeDetail(node interface{}) error {
 }
 
 func (p *PrettyPrinter) PrintNamespaceList(namespaces interface{}) error {
-        list, ok := namespaces.([]string)
+        list, ok := namespaces.([]model.NamespaceSummary)
         if !ok {
-                return fmt.Errorf("expected []string, got %T", namespaces)
+                return fmt.Errorf("expected []NamespaceSummary, got %T", namespaces)
         }
         if len(list) == 0 {
                 fmt.Fprintln(p.w, "No namespaces found.")
                 return nil
         }
-        t := newTable(p.w, []string{"NAMESPACE"})
+        t := newTable(p.w, []string{"NAMESPACE", "SYSTEMS", "NODES", "HEALTHY", "UNHEALTHY"})
         for _, ns := range list {
-                t.Append([]string{ns})
+                t.Append([]string{
+                        ns.Namespace,
+                        fmt.Sprintf("%d", ns.SystemCount),
+                        fmt.Sprintf("%d", ns.NodeCount),
+                        fmt.Sprintf("%d", ns.HealthyNodes),
+                        fmt.Sprintf("%d", ns.UnhealthyNodes),
+                })
         }
         t.Render()
         return nil

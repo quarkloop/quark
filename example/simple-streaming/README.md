@@ -21,7 +21,7 @@ make run-example                    # 15-second run (default)
 make run-example EXAMPLE_DURATION=30  # 30-second run
 ```
 
-### Manual workflow (like kubectl)
+### Manual workflow
 
 **Terminal 1 — start the server:**
 

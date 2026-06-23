@@ -1,11 +1,11 @@
 # Quark CLI — `quarkctl`
 
-A Go-based command-line interface for the Quark platform, modeled after `kubectl`. Talks to the Quark server's REST API only — shares no code with the server.
+A Go-based command-line interface for the Quark platform, Talks to the Quark server's REST API only — shares no code with the server.
 
 ## Design Principles
 
 1. **Conceptual alignment with the server** — every CLI command maps 1:1 to a REST endpoint.
-2. **kubectl-style UX** — noun-verb command structure (`quarkctl system deploy`, `quarkctl node pause cpu`).
+2. **noun-verb command structure** — noun-verb command structure (`quarkctl system deploy`, `quarkctl node pause cpu`).
 3. **`--json` flag on every command** — for AI agents and scripting.
 4. **Namespace is required** — every tenant-scoped command requires `--namespace` (or `QUARK_NAMESPACE` env var).
 5. **No business logic in the CLI** — the CLI is a thin HTTP client.

@@ -19,7 +19,7 @@ import java.util.List;
 /**
  * System operations, scoped to a namespace.
  *
- * <p>Kubernetes-style: namespace is in the path.
+ * <p>Namespace is a path parameter.
  * POST creates (deploy), PUT applies (declarative reconcile), DELETE removes.
  */
 @Path("/api/v1/namespaces/{namespace}/systems")

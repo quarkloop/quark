@@ -1,6 +1,6 @@
 # AGENTS.md — Guide for AI Agents Working on Quark
 
-> **If you read nothing else, read this:** This is a Java 21 + Quarkus 3.x server with a Go CLI. **The `.quark.ts` file IS the program.** Users write only TypeScript — they never touch Java code. The CLI sends the TypeScript to the server, which evaluates it via GraalJS, then executes it on an embedded NATS JetStream backbone. This is like Kubernetes: `kubectl apply -f deployment.yaml` → API server handles everything. The three layers (GraalJS, Engine, Providers) are STRICTLY SEPARATED. Read the [Architecture](#architecture) section before making any cross-module change.
+> **If you read nothing else, read this:** This is a Java 21 + Quarkus 3.x server with a Go CLI. **The `.quark.ts` file IS the program.** Users write only TypeScript — they never touch Java code. The CLI sends the TypeScript to the server, which evaluates it via GraalJS, then executes it on an embedded NATS JetStream backbone. The three layers (GraalJS, Engine, Providers) are STRICTLY SEPARATED. Read the [Architecture](#architecture) section before making any cross-module change.
 
 ---
 

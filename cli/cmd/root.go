@@ -27,7 +27,7 @@ var rootCmd = &cobra.Command{
 	Short: "Quark platform command-line interface",
 	Long: `quarkctl — the Quark platform CLI.
 
-A kubectl-style client for the Quark node platform. Every command maps
+A command-line client for the Quark node platform. Every command maps
 to a REST API endpoint under /api/v1/. Namespace is specified via -n
 or QUARK_NAMESPACE env var.
 

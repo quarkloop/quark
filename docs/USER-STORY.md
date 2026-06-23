@@ -197,10 +197,10 @@ Server stops all consumers, removes NATS stream, deletes persistent state. Clean
 |---------|-----------|-------|
 | The program | `deployment.yaml` | `.quark.ts` |
 | What the user writes | YAML only | TypeScript only |
-| What the user runs | `kubectl apply -f` | `quarkctl system deploy -f` |
-| What the user monitors | `kubectl get pods` | `quarkctl node list` |
+| What the user runs | `quarkctl apply -f` | `quarkctl system deploy -f` |
+| What the user monitors | `quarkctl get systems` | `quarkctl node list` |
 | Communication | Kubernetes Services + networking | NATS JetStream subjects |
 | Multi-tenancy | namespaces | namespaces |
-| AI agent integration | `kubectl ... -o json` | `quarkctl ... --json` |
+| AI agent integration | `quarkctl ... --json` | `quarkctl ... --json` |
 
 **The `.quark.ts` file IS the program.** The CLI is the interface. The server is the interpreter. NATS is the backbone. Users never write Java code.

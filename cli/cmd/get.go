@@ -1,13 +1,10 @@
 package cmd
 
 import (
-        "fmt"
-        "os"
-
         "github.com/spf13/cobra"
 )
 
-// getCmd is the main "get" command (like kubectl get).
+// getCmd is the main "get" command (for listing resources).
 // Subcommands: namespaces, systems, system, nodes, node, events, registry
 var getCmd = &cobra.Command{
         Use:   "get",
@@ -122,12 +119,7 @@ func runGetNamespaces(cmd *cobra.Command, args []string) error {
         if err != nil {
                 return newPrinter().PrintError(err)
         }
-        p := newPrinter()
-        if len(list) == 0 {
-                fmt.Fprintln(os.Stdout, "No namespaces found.")
-                return nil
-        }
-        return p.PrintNamespaceList(list)
+        return newPrinter().PrintNamespaceList(list)
 }
 
 func runGetSystems(cmd *cobra.Command, args []string) error {
