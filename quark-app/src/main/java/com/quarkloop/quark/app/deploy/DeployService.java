@@ -8,6 +8,8 @@ import com.quarkloop.quark.core.domain.system.SystemDefinition;
 import com.quarkloop.quark.core.engine.lifecycle.DeploymentException;
 import com.quarkloop.quark.core.engine.lifecycle.RuntimeSystem;
 import com.quarkloop.quark.core.engine.lifecycle.SystemDeployer;
+import com.quarkloop.quark.core.engine.metrics.NamespaceMetrics;
+import com.quarkloop.quark.core.engine.runtime.RuntimeContext;
 import com.quarkloop.quark.core.engine.store.SourceRepository;
 import com.quarkloop.quark.core.engine.store.SystemRecord;
 import com.quarkloop.quark.core.engine.store.SystemRepository;
@@ -62,18 +64,24 @@ public class DeployService {
     private final EventBus eventBus;
     private final SystemRepository systemRepository;
     private final SourceRepository sourceRepository;
+    private final NamespaceMetrics namespaceMetrics;
+    private final RuntimeContext runtimeContext;
 
     @Inject
     public DeployService(SystemParser parser,
                          SystemDeployer systemDeployer,
                          EventBus eventBus,
                          SystemRepository systemRepository,
-                         SourceRepository sourceRepository) {
+                         SourceRepository sourceRepository,
+                         NamespaceMetrics namespaceMetrics,
+                         RuntimeContext runtimeContext) {
         this.parser = parser;
         this.systemDeployer = systemDeployer;
         this.eventBus = eventBus;
         this.systemRepository = systemRepository;
         this.sourceRepository = sourceRepository;
+        this.namespaceMetrics = namespaceMetrics;
+        this.runtimeContext = runtimeContext;
     }
 
     /**
@@ -167,6 +175,12 @@ public class DeployService {
         } catch (Exception e) {
             log.warn("Failed to delete system record for {}/{} — undeploy continues",
                     namespace, systemName, e);
+        }
+        // If no systems remain in this namespace, remove the namespace's
+        // metrics counters so stale entries don't linger in the stats output.
+        if (runtimeContext.getSystemsByNamespace(namespace).isEmpty()) {
+            namespaceMetrics.remove(namespace);
+            log.debug("Removed metrics counters for namespace {} (no systems remaining)", namespace);
         }
         log.info("Undeployed system {}/{}", namespace, systemName);
     }

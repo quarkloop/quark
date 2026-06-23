@@ -42,7 +42,8 @@ public class ApplyService {
 
         if (namespaceOverride != null && !namespaceOverride.isBlank()
                 && !namespaceOverride.equals(desired.namespace().value())) {
-            desired = new SystemDefinition(desired.name(), Namespace.of(namespaceOverride), desired.nodes());
+            desired = new SystemDefinition(desired.name(), Namespace.of(namespaceOverride),
+                    desired.nodes(), desired.runtime());
         }
 
         String ns = desired.namespace().value();

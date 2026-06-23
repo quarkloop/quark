@@ -10,6 +10,7 @@ import com.quarkloop.quark.core.domain.system.NodeDefinition;
 import com.quarkloop.quark.core.domain.system.SystemDefinition;
 import com.quarkloop.quark.core.engine.bus.MessageBus;
 import com.quarkloop.quark.core.engine.bus.Subscription;
+import com.quarkloop.quark.core.engine.metrics.NamespaceMetrics;
 import com.quarkloop.quark.core.engine.runtime.RuntimeContext;
 import com.quarkloop.quark.core.registry.NodeDescriptor;
 import com.quarkloop.quark.core.registry.NodeImplementationFactory;
@@ -35,14 +36,17 @@ public class SystemDeployer {
     private final LifecycleManager lifecycleManager;
     private final MessageBus messageBus;
     private final RuntimeContext runtimeContext;
+    private final NamespaceMetrics namespaceMetrics;
 
     @Inject
     public SystemDeployer(NodeRegistry registry, LifecycleManager lifecycleManager,
-                           MessageBus messageBus, RuntimeContext runtimeContext) {
+                           MessageBus messageBus, RuntimeContext runtimeContext,
+                           NamespaceMetrics namespaceMetrics) {
         this.registry = registry;
         this.lifecycleManager = lifecycleManager;
         this.messageBus = messageBus;
         this.runtimeContext = runtimeContext;
+        this.namespaceMetrics = namespaceMetrics;
     }
 
     public RuntimeSystem deploy(SystemDefinition system) {
@@ -156,19 +160,41 @@ public class SystemDeployer {
     private void createSubscriptions(SystemDefinition system, NodeDefinition def,
                                       Object provider, QuarkPublisher publisher) {
         List<Subscription> subs = new ArrayList<>();
+        String namespace = system.namespace().value();
         for (String rel : def.listens()) {
-            String full = system.namespace().value() + "." + system.name() + "." + rel;
-            subs.add(messageBus.subscribe(full, msg -> dispatchToProvider(msg, provider, publisher)));
+            String full = namespace + "." + system.name() + "." + rel;
+            subs.add(messageBus.subscribe(full, msg -> dispatchToProvider(msg, provider, publisher, namespace)));
             log.debug("Node {} subscribed to {}", def.name(), full);
         }
-        runtimeContext.recordSubscriptions(system.namespace().value(), system.name(), def.name(), subs);
+        runtimeContext.recordSubscriptions(namespace, system.name(), def.name(), subs);
     }
 
-    private void dispatchToProvider(QuarkMessage msg, Object provider, QuarkPublisher publisher) {
-        if (provider instanceof FunctionProvider fp) fp.onMessage(msg, publisher);
-        else if (provider instanceof StoreProvider sp) sp.onMessage(msg, publisher);
-        else if (provider instanceof EndpointProvider ep) ep.onMessage(msg, publisher);
-        else if (provider instanceof PolicyProvider pp) pp.onMessage(msg, publisher);
+    /**
+     * Dispatch an incoming message to the appropriate provider method,
+     * measuring the CPU time consumed and recording per-namespace metrics.
+     *
+     * <p>CPU time is measured via {@link NamespaceMetrics#getCurrentThreadCpuTimeNanos()}
+     * before and after the handler call. The delta is attributed to the
+     * namespace. If the JVM does not support thread CPU time measurement,
+     * the delta is -1 and only the message count is recorded.
+     *
+     * <p>Errors thrown by the handler are recorded in the namespace's error
+     * counter and then re-thrown so the MessageBus can NAK the message.
+     */
+    private void dispatchToProvider(QuarkMessage msg, Object provider, QuarkPublisher publisher, String namespace) {
+        long cpuBefore = namespaceMetrics.getCurrentThreadCpuTimeNanos();
+        try {
+            if (provider instanceof FunctionProvider fp) fp.onMessage(msg, publisher);
+            else if (provider instanceof StoreProvider sp) sp.onMessage(msg, publisher);
+            else if (provider instanceof EndpointProvider ep) ep.onMessage(msg, publisher);
+            else if (provider instanceof PolicyProvider pp) pp.onMessage(msg, publisher);
+            long cpuAfter = namespaceMetrics.getCurrentThreadCpuTimeNanos();
+            long cpuDelta = cpuBefore >= 0 && cpuAfter >= 0 ? cpuAfter - cpuBefore : -1;
+            namespaceMetrics.recordMessageHandled(namespace, cpuDelta);
+        } catch (Exception e) {
+            namespaceMetrics.recordError(namespace);
+            throw e;
+        }
     }
 
     private Node createDomainNode(NodeDefinition def, NodeDescriptor descriptor) {

@@ -7,6 +7,7 @@ import com.quarkloop.quark.core.domain.spi.QuarkPublisher;
 import com.quarkloop.quark.core.engine.bus.MessageBus;
 import com.quarkloop.quark.core.engine.bus.MessageHandler;
 import com.quarkloop.quark.core.engine.bus.Subscription;
+import com.quarkloop.quark.core.engine.metrics.NamespaceMetrics;
 import io.nats.client.Connection;
 import io.nats.client.Dispatcher;
 import io.nats.client.Message;
@@ -31,10 +32,12 @@ public class NatsMessageBus implements MessageBus {
     private static final Logger log = LoggerFactory.getLogger(NatsMessageBus.class);
 
     private final NatsConnectionManager connectionManager;
+    private final NamespaceMetrics namespaceMetrics;
 
     @Inject
-    public NatsMessageBus(NatsConnectionManager connectionManager) {
+    public NatsMessageBus(NatsConnectionManager connectionManager, NamespaceMetrics namespaceMetrics) {
         this.connectionManager = connectionManager;
+        this.namespaceMetrics = namespaceMetrics;
     }
 
     @Override
@@ -65,7 +68,8 @@ public class NatsMessageBus implements MessageBus {
                                            String nodeName, Set<String> allowedEvents) {
         return new NatsQuarkPublisher(
                 connectionManager.getConnection(),
-                systemName, namespace, nodeName, allowedEvents);
+                systemName, namespace, nodeName, allowedEvents,
+                namespaceMetrics);
     }
 
     @Override
