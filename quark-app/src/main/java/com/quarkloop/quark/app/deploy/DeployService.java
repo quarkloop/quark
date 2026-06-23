@@ -15,6 +15,7 @@ import com.quarkloop.quark.core.event.EventBus;
 import com.quarkloop.quark.core.script.SystemParseResult;
 import com.quarkloop.quark.core.script.SystemParser;
 import io.quarkus.runtime.StartupEvent;
+import jakarta.annotation.Priority;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
@@ -188,8 +189,12 @@ public class DeployService {
      * source repository. DuckDB stores the original {@code .quark.ts} source
      * for every system record; re-deploying each restores the platform to
      * its pre-restart state.
+     *
+     * <p>Runs at {@link Priority#MIN_PRIORITY} + 10 so that the
+     * {@code RegistryInitializer} (priority 1) has already populated the
+     * node registry before recovery attempts to look up node URIs.
      */
-    void onStart(@Observes StartupEvent event) {
+    void onStart(@Observes @Priority(10) StartupEvent event) {
         List<String> recovered = recoverFromDisk();
         if (!recovered.isEmpty()) {
             log.info("Recovered {} system(s) from source repository: {}", recovered.size(), recovered);

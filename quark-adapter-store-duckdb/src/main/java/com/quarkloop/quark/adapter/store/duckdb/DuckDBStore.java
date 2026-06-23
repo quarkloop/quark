@@ -14,9 +14,12 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.sql.*;
 import java.time.Instant;
 import java.util.*;
@@ -40,10 +43,22 @@ public class DuckDBStore implements SystemRepository, NodeRepository, EventRepos
             Path dbDir = Paths.get(stateRootPath).toAbsolutePath().normalize();
             Files.createDirectories(dbDir);
             Path dbFile = dbDir.resolve("quark.db");
+            Path legacySystemsDir = dbDir.resolve("systems");
+
+            // Detect first-startup migration scenario: quark.db does NOT exist
+            // yet (first run with DuckDB) but a legacy filesystem `systems/`
+            // directory exists (from the old StateRoot-based persistence).
+            boolean needsMigration = !Files.exists(dbFile)
+                    && Files.isDirectory(legacySystemsDir);
+
             log.info("Opening DuckDB database at {}", dbFile);
             connection = DriverManager.getConnection("jdbc:duckdb:" + dbFile);
             createSchema();
             log.info("DuckDB schema initialized");
+
+            if (needsMigration) {
+                migrateLegacyFilesystemState(legacySystemsDir);
+            }
         } catch (Exception e) {
             throw new IllegalStateException("Failed to initialize DuckDB store", e);
         }
@@ -95,6 +110,207 @@ public class DuckDBStore implements SystemRepository, NodeRepository, EventRepos
                 CREATE TABLE IF NOT EXISTS duckdb_meta (key VARCHAR NOT NULL, value VARCHAR NOT NULL, PRIMARY KEY (key))""");
             stmt.execute("INSERT INTO duckdb_meta VALUES ('schema_version', '1') ON CONFLICT DO NOTHING");
         }
+    }
+
+    /**
+     * Migrate legacy filesystem-based state into DuckDB on first startup.
+     *
+     * <p>The legacy layout (from the now-deleted {@code quark-adapter-state}
+     * module) stored per-system state under:
+     * <pre>
+     *   $STATE_ROOT/systems/&lt;namespace&gt;/&lt;systemName&gt;/
+     *     source.ts       ← original .quark.ts source
+     *     events.jsonl    ← one NodeEvent per line (JSON)
+     *     state.json      ← system metadata (not migrated — DuckDB recomputes)
+     * </pre>
+     *
+     * <p>This method:
+     * <ol>
+     *   <li>Reads each {@code source.ts} and inserts a row into the
+     *       {@code systems} table (state=ACTIVE, health=HEALTHY).</li>
+     *   <li>Reads each {@code events.jsonl} line-by-line, parses the
+     *       {@link NodeEvent} JSON, and batch-inserts into the {@code events}
+     *       table.</li>
+     *   <li>Renames {@code systems/} to {@code systems.backup/} so the
+     *       migration is idempotent (won't re-run on the next startup).</li>
+     * </ol>
+     *
+     * <p>Failures on individual files are logged and skipped — a corrupted
+     * event line or unreadable source file does not abort the entire
+     * migration. The rename at the end always runs so that partial
+     * migrations are not retried on the next startup (the operator can
+     * inspect {@code systems.backup/} for any data that failed to migrate).
+     *
+     * @param systemsDir the legacy {@code $STATE_ROOT/systems/} directory
+     */
+    private void migrateLegacyFilesystemState(Path systemsDir) {
+        log.info("Detected legacy filesystem state at {} — migrating to DuckDB", systemsDir);
+        int systemsMigrated = 0;
+        int eventsMigrated = 0;
+        int errors = 0;
+
+        try (var nsStream = Files.list(systemsDir)) {
+            for (Path nsDir : nsStream.toList()) {
+                if (!Files.isDirectory(nsDir)) continue;
+                String namespace = nsDir.getFileName().toString();
+                try (var sysStream = Files.list(nsDir)) {
+                    for (Path sysDir : sysStream.toList()) {
+                        if (!Files.isDirectory(sysDir)) continue;
+                        String systemName = sysDir.getFileName().toString();
+                        try {
+                            systemsMigrated += migrateSystemSource(sysDir, namespace, systemName);
+                            eventsMigrated += migrateSystemEvents(sysDir, namespace, systemName);
+                        } catch (Exception e) {
+                            errors++;
+                            log.warn("Failed to migrate system {}/{} from {}",
+                                    namespace, systemName, sysDir, e);
+                        }
+                    }
+                } catch (IOException e) {
+                    log.warn("Error scanning namespace dir {}", nsDir, e);
+                }
+            }
+        } catch (IOException e) {
+            log.warn("Error scanning legacy systems dir {} for migration", systemsDir, e);
+        }
+
+        // Rename systems/ to systems.backup/ so the migration is idempotent.
+        // Use ATOMIC_MOVE if supported, otherwise fall back to a plain move.
+        Path backupDir = systemsDir.resolveSibling("systems.backup");
+        try {
+            Files.move(systemsDir, backupDir, StandardCopyOption.ATOMIC_MOVE);
+        } catch (UnsupportedOperationException | IOException e) {
+            try {
+                Files.move(systemsDir, backupDir);
+            } catch (IOException e2) {
+                log.warn("Failed to rename legacy {} to {} — migration will re-run on next startup. " +
+                        "Remove the directory manually to prevent re-migration.", systemsDir, backupDir, e2);
+            }
+        }
+
+        log.info("Legacy migration complete: {} system(s), {} event(s) migrated, {} error(s). " +
+                "Renamed {} to {}", systemsMigrated, eventsMigrated, errors, systemsDir, backupDir);
+    }
+
+    /**
+     * Migrate a single system's {@code source.ts} into the DuckDB
+     * {@code systems} table.
+     *
+     * @return 1 if the source was migrated, 0 if no source file existed
+     */
+    private int migrateSystemSource(Path sysDir, String namespace, String systemName) throws IOException {
+        Path sourceFile = sysDir.resolve("source.ts");
+        if (!Files.isRegularFile(sourceFile)) {
+            log.debug("No source.ts in {} — skipping source migration for {}/{}", sysDir, namespace, systemName);
+            return 0;
+        }
+        String source = Files.readString(sourceFile, StandardCharsets.UTF_8);
+        try (PreparedStatement ps = connection.prepareStatement(
+                "INSERT OR REPLACE INTO systems (namespace, name, source, state, health, version, created_at, updated_at) " +
+                        "VALUES (?,?,?,?,?,?,?,?)")) {
+            ps.setString(1, namespace);
+            ps.setString(2, systemName);
+            ps.setString(3, source);
+            ps.setString(4, "ACTIVE");
+            ps.setString(5, "HEALTHY");
+            ps.setLong(6, 1L);
+            Instant now = Instant.now();
+            ps.setTimestamp(7, Timestamp.from(now));
+            ps.setTimestamp(8, Timestamp.from(now));
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to insert system record for " + namespace + "/" + systemName, e);
+        }
+        log.debug("Migrated source for system {}/{}", namespace, systemName);
+        return 1;
+    }
+
+    /**
+     * Migrate a single system's {@code events.jsonl} into the DuckDB
+     * {@code events} table. Each line is a JSON-serialized {@link NodeEvent}.
+     *
+     * <p>Lines that fail to parse are logged and skipped — a single
+     * corrupted line does not abort migration of the remaining events.
+     *
+     * @return the number of events successfully migrated
+     */
+    private int migrateSystemEvents(Path sysDir, String namespace, String systemName) throws IOException {
+        Path eventsFile = sysDir.resolve("events.jsonl");
+        if (!Files.isRegularFile(eventsFile)) {
+            log.debug("No events.jsonl in {} — skipping event migration for {}/{}", sysDir, namespace, systemName);
+            return 0;
+        }
+
+        int migrated = 0;
+        int batchErrors = 0;
+        List<NodeEvent> batch = new ArrayList<>(500);
+
+        try (var lines = Files.lines(eventsFile, StandardCharsets.UTF_8)) {
+            for (String line : lines.toList()) {
+                if (line.isBlank()) continue;
+                try {
+                    NodeEvent event = mapper.readValue(line, NodeEvent.class);
+                    batch.add(event);
+                } catch (JsonProcessingException e) {
+                    batchErrors++;
+                    if (batchErrors <= 5) {
+                        log.warn("Skipping malformed event line in {}/{}: {}", namespace, systemName, e.getMessage());
+                    }
+                    continue;
+                }
+                if (batch.size() >= 500) {
+                    migrated += flushEventBatch(batch);
+                    batch.clear();
+                }
+            }
+        }
+        if (!batch.isEmpty()) {
+            migrated += flushEventBatch(batch);
+            batch.clear();
+        }
+
+        if (batchErrors > 0) {
+            log.warn("Skipped {} malformed event line(s) in {}/{}", batchErrors, namespace, systemName);
+        }
+        log.debug("Migrated {} events for system {}/{}", migrated, namespace, systemName);
+        return migrated;
+    }
+
+    /**
+     * Batch-insert a list of {@link NodeEvent}s into the {@code events} table.
+     *
+     * @return the number of events inserted
+     */
+    private int flushEventBatch(List<NodeEvent> batch) {
+        if (batch.isEmpty()) return 0;
+        int inserted = 0;
+        try (PreparedStatement ps = connection.prepareStatement(
+                "INSERT INTO events (id, kind, node_name, system_name, namespace, timestamp, payload) " +
+                        "VALUES (?,?,?,?,?,?,?)")) {
+            for (NodeEvent event : batch) {
+                setEventParams(ps, event);
+                ps.addBatch();
+                inserted++;
+            }
+            ps.executeBatch();
+        } catch (SQLException e) {
+            log.error("Failed to flush batch of {} events — falling back to individual inserts", batch.size(), e);
+            // Fallback: insert one-by-one so a single duplicate ID doesn't
+            // kill the entire batch.
+            inserted = 0;
+            for (NodeEvent event : batch) {
+                try (PreparedStatement ps = connection.prepareStatement(
+                        "INSERT INTO events (id, kind, node_name, system_name, namespace, timestamp, payload) " +
+                                "VALUES (?,?,?,?,?,?,?)")) {
+                    setEventParams(ps, event);
+                    ps.executeUpdate();
+                    inserted++;
+                } catch (SQLException ex) {
+                    // likely a duplicate PK — skip
+                }
+            }
+        }
+        return inserted;
     }
 
     // --- SystemRepository ---
