@@ -21,7 +21,6 @@ COPY quark-core-parser/pom.xml quark-core-parser/
 COPY quark-core-registry/pom.xml quark-core-registry/
 COPY quark-core-event/pom.xml quark-core-event/
 COPY quark-core-engine/pom.xml quark-core-engine/
-COPY quark-adapter-store-duckdb/pom.xml quark-adapter-store-duckdb/
 COPY quark-observability/pom.xml quark-observability/
 COPY quark-core-script/pom.xml quark-core-script/
 COPY quark-app/pom.xml quark-app/
@@ -46,7 +45,6 @@ COPY quark-core-parser/src quark-core-parser/src
 COPY quark-core-registry/src quark-core-registry/src
 COPY quark-core-event/src quark-core-event/src
 COPY quark-core-engine/src quark-core-engine/src
-COPY quark-adapter-store-duckdb/src quark-adapter-store-duckdb/src
 COPY quark-observability/src quark-observability/src
 COPY quark-core-script/src quark-core-script/src
 COPY quark-app/src quark-app/src

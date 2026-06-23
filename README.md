@@ -1,6 +1,6 @@
 # Quark Platform
 
-A universal runtime for programmable nodes, built on Quarkus 3.x / Java 21 with an embedded NATS JetStream backbone and GraalJS-powered TypeScript evaluation.
+A universal runtime for programmable nodes, built on Quarkus 3.x / Java 21 with NATS JetStream backbone, GraalJS-powered TypeScript evaluation, and a standalone Catalog service for persistence.
 
 Everything in Quark — sources, functions, stores, endpoints, policies — is a **Node** identified by a Docker-style URI (`category/implementation:version`). Users declare nodes and their communication patterns in `.quark.ts` files. The server evaluates these via GraalJS and executes them on NATS JetStream.
 
@@ -10,37 +10,26 @@ Everything in Quark — sources, functions, stores, endpoints, policies — is a
 
 ## Architecture
 
-### Control Plane / Data Plane Split
+### Three-Service Architecture
 
-The platform uses a **control-plane / data-plane architecture** where the control plane handles REST API and persistence, and data-plane processes execute systems in isolated JVMs:
+The platform consists of three services communicating via NATS:
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        Control Plane (JVM/Native)                    │
-│                                                                       │
-│  ┌──────────┐  ┌──────────┐  ┌──────────────┐  ┌────────────────┐  │
-│  │ REST API │  │ DuckDB   │  │ ProcessMgr   │  │ EventReceiver  │  │
-│  │ (port    │  │ Persist  │  │ (spawn/stop  │  │ (NATS subscribe│  │
-│  │  8080)   │  │          │  │  data planes)│  │  quark.data.>) │  │
-│  └──────────┘  └──────────┘  └──────────────┘  └────────────────┘  │
-│                                                                       │
-│  DeployService ──NATS──> DataPlaneCommandHandler                     │
-│  MetricsCollector <──NATS── DataPlaneMetricsForwarder               │
-└───────────────────────────┬──────────────────────────────────────────┘
-                            │ NATS (nats://localhost:4222)
-┌───────────────────────────┼──────────────────────────────────────────┐
-│                      Data Plane(s)                                     │
-│                                                                       │
-│  ┌────────────────────┐  ┌────────────────────┐                       │
-│  │ Shared Data Plane  │  │ Isolated Data Plane│                       │
-│  │ (runtimeId=shared) │  │ (runtimeId=ns-bob) │                       │
-│  │ Port 9100          │  │ Port 9101          │                       │
-│  │                    │  │                    │                       │
-│  │ All non-isolated   │  │ Dedicated to       │                       │
-│  │ namespaces         │  │ namespace "bob"    │                       │
-│  └────────────────────┘  └────────────────────┘                       │
-└───────────────────────────────────────────────────────────────────────┘
+┌──────────────────┐    NATS    ┌──────────────────┐    NATS    ┌────────────────┐
+│  Control Plane    │◄─────────►│  Catalog Service  │◄─────────►│  Data Plane(s)  │
+│  (Java/Native)    │           │  (Go + SQLite)    │           │  (Java/Native)  │
+│                   │           │                   │           │                 │
+│  - REST API       │ catalog.* │  - System Store   │ registry.*│  - Node Exec    │
+│  - ProcessMgr     │ subjects  │  - Node Store     │  subjects │  - Event Fwd    │
+│  - Deploy Orch    │           │  - Event Store    │           │  - Metrics Fwd  │
+│  - Query→NATS     │           │  - Node Registry  │           │                 │
+│  - Node Cache     │           │  - QNP Storage    │           │                 │
+└──────────────────┘           └──────────────────┘           └────────────────┘
 ```
+
+- **Control Plane** (Java/Native): REST API, process management, deploy orchestration. Sends all persistence requests to the Catalog via NATS.
+- **Catalog Service** (Go + SQLite): Standalone metadata store and node package registry. Pure Go, no JNI, no GraalVM issues. Stores systems, nodes, events, source, and node packages (`.so`/`.ts` files).
+- **Data Plane** (Java/Native): Executes node systems. Spawned by the control plane. Forwards events and metrics back via NATS.
 
 ### IPC Protocol (NATS)
 
@@ -63,11 +52,12 @@ All control-plane ↔ data-plane communication flows through NATS:
 
 | # | Process | How spawned | Port | Purpose |
 |---|---|---|---|---|
-| 1 | **Control plane** | Operator (`make run-server` or `make run-example`) | 8080 | REST API, DuckDB, ProcessManager, event/metrics receivers |
+| 1 | **Control plane** | Operator (`make run-server` or `make run-example`) | 8080 | REST API, ProcessManager, event/metrics receivers |
 | 2 | **Shared data plane** | Auto-spawned by ProcessManager | 9100+ | Executes all non-isolated namespace systems |
 | 3 | **Isolated data plane** | Auto-spawned when `.quark.ts` has `runtime: "isolated"` | 9101+ | Dedicated JVM per isolated namespace |
 | 4 | **NATS server** | Operator (`nats-server`) | 4222 | Message bus for all IPC |
-| 5 | **Go CLI** (`quarkctl`) | Operator (`./cli/quarkctl`) | — | Talks to control plane REST API |
+| 5 | **Catalog service** | Operator (`make build-catalog` + run) | — | Metadata store (SQLite) + node package registry |
+| 6 | **Go CLI** (`quarkctl`) | Operator (`./cli/quarkctl`) | — | Talks to control plane REST API |
 
 ### Runtime Isolation
 
@@ -151,7 +141,7 @@ quark/
 ├── quark-core-script/                   ← GraalJS + SimpleSystemParser (TS transpile, sandboxed eval)
 ├── quark-core-engine/                   ← Lifecycle management, metrics, data-plane IPC protocol
 ├── quark-engine/                        ← Engine layer: NATS wiring (publisher, subject routing)
-├── quark-adapter-store-duckdb/          ← DuckDB persistence (systems, nodes, events, registry, source)
+├── quark-catalog/                        ← Catalog service (Go + SQLite) — metadata store + node registry
 ├── quark-app/                           ← Application services (DeployService, QueryService, ProcessManager)
 ├── quark-api/                           ← JAX-RS REST endpoints + DTOs + exception mappers
 ├── quark-server/                        ← Quarkus runner (Main, health checks, native-image config)
@@ -194,12 +184,13 @@ For isolated namespaces, all metrics are exact at the process level because the 
 - **Java 21+** (JDK — must include `javac`). For native mode: Mandrel 23.1+ or GraalVM 21+
 - **Go 1.24+** (for the CLI)
 - The repo includes `mvnw` — no need to pre-install Maven
-- **NATS server** on `nats://localhost:4222` (external; the platform does not embed a NATS server)
+- **NATS server** on `nats://localhost:4222` (external)
+- The Catalog service is built from source (`make build-catalog`)
 
 ### Build everything (JVM mode)
 
 ```bash
-make build         # builds all Java modules + Go CLI binary
+make build         # builds Java modules + Go CLI + Catalog service
 ```
 
 ### Build native executable

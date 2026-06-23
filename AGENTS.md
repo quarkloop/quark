@@ -28,7 +28,7 @@ quark/
 ├── quark-core-script/                ← GraalJS layer: TS transpile, sandboxed eval, 
 ├── quark-core-engine/                ← Lifecycle management (state machine, runtime registry)
 ├── quark-engine/                     ← Engine layer: NATS wiring (SystemRunner, NatsQuarkPublisher, subject routing)
-├── quark-adapter-store-duckdb/       ← DuckDB persistence (systems, nodes, events, registry, source)
+├── quark-catalog/                        ← Catalog service (Go + SQLite) — metadata store + node registry
 ├── quark-app/                        ← Application services (DeployService, QueryService, LifecycleService, HealthService)
 ├── quark-api/                        ← JAX-RS REST endpoints + DTOs + exception mappers
 ├── quark-server/                     ← Quarkus runner (Main, health checks, OpenAPI, NATS)

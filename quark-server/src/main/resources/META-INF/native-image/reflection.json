@@ -1,26 +1,5 @@
 [
   {
-    "name": "org.duckdb.DuckDBDriver",
-    "allDeclaredConstructors": true,
-    "allDeclaredMethods": true,
-    "allPublicMethods": true
-  },
-  {
-    "name": "org.duckdb.DuckDBConnection",
-    "allDeclaredConstructors": true,
-    "allDeclaredMethods": true,
-    "allPublicMethods": true
-  },
-  {
-    "name": "org.duckdb.DuckDBNative",
-    "allDeclaredConstructors": true,
-    "allDeclaredMethods": true,
-    "allPublicMethods": true,
-    "methods": [
-      {"name": "duckdb_jdbc_startup", "parameterTypes": ["byte[]", "boolean", "java.util.Properties"]}
-    ]
-  },
-  {
     "name": "com.quarkloop.quark.core.domain.event.NodeEvent",
     "allDeclaredConstructors": true,
     "allDeclaredMethods": true,
