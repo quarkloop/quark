@@ -101,6 +101,33 @@ func (c *Client) delete(ctx context.Context, path string) error {
         return c.do(ctx, http.MethodDelete, path, nil, nil)
 }
 
+// RawGet performs a GET request and returns the raw HTTP response.
+func (c *Client) RawGet(ctx context.Context, path string) (*http.Response, error) {
+        req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
+        if err != nil {
+                return nil, fmt.Errorf("build request: %w", err)
+        }
+        return c.http.Do(req)
+}
+
+// RawPost performs a POST request with a JSON body and returns the raw HTTP response.
+func (c *Client) RawPost(ctx context.Context, path string, body interface{}) (*http.Response, error) {
+        var bodyReader io.Reader
+        if body != nil {
+                bs, err := json.Marshal(body)
+                if err != nil {
+                        return nil, fmt.Errorf("marshal request body: %w", err)
+                }
+                bodyReader = bytes.NewReader(bs)
+        }
+        req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bodyReader)
+        if err != nil {
+                return nil, fmt.Errorf("build request: %w", err)
+        }
+        req.Header.Set("Content-Type", "application/json")
+        return c.http.Do(req)
+}
+
 // buildQuery encodes non-empty key-value pairs into a URL query string starting with "?".
 // Returns empty string if no pairs are non-empty.
 func buildQuery(pairs ...string) string {
