@@ -82,16 +82,33 @@ for i in $(seq 1 10); do
     sleep 0.5
 done
 
+# ---- Prepare state directory -----------------------------------------------
+STATE_DIR="$(pwd)/quark-state"
+rm -rf "$STATE_DIR"
+mkdir -p "$STATE_DIR"
+
+# ---- Start Catalog service -------------------------------------------------
+echo "▶ Starting Catalog service (background)..."
+CATALOG_BIN="quark-catalog/quark-catalog"
+if [ ! -x "$CATALOG_BIN" ]; then
+    echo "❌ Catalog binary not found at $CATALOG_BIN — run 'make build-catalog' first." >&2
+    exit 1
+fi
+$CATALOG_BIN -nats nats://localhost:4222 -state "$STATE_DIR" > /tmp/quark-catalog.log 2>&1 &
+CATALOG_PID=$!
+echo "  Catalog PID: $CATALOG_PID"
+sleep 1
+echo "  ✓ Catalog ready"
+
 cleanup_nats() {
+    kill "$CATALOG_PID" 2>/dev/null || true
+    wait "$CATALOG_PID" 2>/dev/null || true
     kill "$NATS_PID" 2>/dev/null || true
     wait "$NATS_PID" 2>/dev/null || true
 }
 
 # ---- Start the server ------------------------------------------------------
 echo "▶ Starting Quark server ($BUILD_MODE mode, background)..."
-STATE_DIR="$(pwd)/quark-state"
-rm -rf "$STATE_DIR"
-mkdir -p "$STATE_DIR"
 
 # Use a dedicated port to avoid clashes with any running instance.
 export QUARK_STATE_ROOT="$STATE_DIR"

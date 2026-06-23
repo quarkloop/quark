@@ -37,3 +37,4 @@ tool-results/
 worklog.md
 *.zip
 .env
+quark-catalog/quark-catalog

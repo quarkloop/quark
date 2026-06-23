@@ -56,10 +56,6 @@
         </dependency>
         <dependency>
             <groupId>com.quarkloop.quark</groupId>
-            <artifactId>quark-adapter-store-duckdb</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.quarkloop.quark</groupId>
             <artifactId>quark-observability</artifactId>
         </dependency>
         <dependency>

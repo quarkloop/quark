@@ -50,6 +50,8 @@ GOFLAGS     ?= -trimpath -buildvcs=false
 # ----- Project paths -----
 CLI_DIR          := cli
 CLI_BIN          := $(CLI_DIR)/quarkctl
+CATALOG_DIR      := quark-catalog
+CATALOG_BIN      := $(CATALOG_DIR)/quark-catalog
 EXAMPLE_DURATION ?= 15
 STATE_DIR        := quark-state
 
@@ -136,7 +138,7 @@ clean-state: ## Remove persisted platform state
 
 .PHONY: build build-java build-go build-native
 
-build: build-java build-go ## Build everything (JVM jar + Go binary)
+build: build-java build-go build-catalog ## Build everything (JVM jar + Go CLI + Catalog)
 
 build-java: ## Build all Java modules (JVM mode, skip tests)
 	@printf "$(C_BLUE)$(MODE_LABEL) > Building Java modules (JVM mode)...$(C_RESET)\n"
@@ -147,6 +149,11 @@ build-go: ## Build the Go CLI binary
 	@printf "$(C_BLUE)> Building Go CLI binary...$(C_RESET)\n"
 	@cd $(CLI_DIR) && $(GO) build $(GOFLAGS) -o quarkctl .
 	@printf "$(C_GREEN)✓ Go build complete: $(CLI_BIN)$(C_RESET)\n"
+
+build-catalog: ## Build the Catalog service (Go + SQLite)
+	@printf "$(C_BLUE)> Building Catalog service...$(C_RESET)\n"
+	@cd $(CATALOG_DIR) && $(GO) build $(GOFLAGS) -o quark-catalog .
+	@printf "$(C_GREEN)✓ Catalog build complete: $(CATALOG_BIN)$(C_RESET)\n"
 
 # =============================================================================
 # Build — Native mode
