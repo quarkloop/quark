@@ -20,6 +20,13 @@
             <groupId>com.quarkloop.quark</groupId>
             <artifactId>quark-core-domain</artifactId>
         </dependency>
+        <!--
+            quark-core-script depends on GraalJS/Truffle for the
+            GraalJsSystemParser. In JVM mode, these JARs are on the
+            classpath and GraalJsSystemParser is used. In native mode,
+            we exclude them (via the native profile in the parent POM)
+            so the SimpleSystemParser (regex-based) is used instead.
+        -->
         <dependency>
             <groupId>com.quarkloop.quark</groupId>
             <artifactId>quark-core-script</artifactId>
@@ -130,27 +137,11 @@
         </dependency>
 
         <!--
-            GraalJS runtime jars that MUST be declared at the application
-            module level. Quarkus's build-time pruning only preserves
-            dependencies declared directly in the application module's
-            pom.xml. Library-module declarations (e.g. in quark-core-script)
-            are subject to pruning.
-
-            truffle-api.jar contains the ServiceLoader file that the GraalJS
-            Engine uses to discover its polyglot implementation. Without it:
-                NoClassDefFoundError: org/graalvm/polyglot/impl/AbstractPolyglotImpl
-
-            regex.jar is required by the JS language for regular expression
-            support.
+            GraalJS runtime jars are declared in quark-core-script and are
+            pulled in transitively. In JVM mode, they're on the classpath
+            and GraalJsSystemParser is used. In native mode, the native
+            profile below excludes them so SimpleSystemParser is used.
         -->
-        <dependency>
-            <groupId>org.graalvm.truffle</groupId>
-            <artifactId>truffle-api</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.graalvm.regex</groupId>
-            <artifactId>regex</artifactId>
-        </dependency>
 
         <!-- Test -->
         <dependency>
@@ -177,4 +168,47 @@
             </plugin>
         </plugins>
     </build>
+
+    <!-- ====================================================================== -->
+    <!-- Native profile                                                          -->
+    <!-- ====================================================================== -->
+    <!--
+        In native mode, override the quark-core-script dependency to exclude
+        GraalJS/Truffle JARs. GraalJS requires Truffle, which is incompatible
+        with GraalVM native-image's closed-world analysis. The
+        SimpleSystemParser (regex-based) is used instead.
+
+        The GraalJS JARs are still present in JVM mode (the default) — only
+        the native profile excludes them.
+    -->
+    <profiles>
+        <profile>
+            <id>native</id>
+            <dependencies>
+                <dependency>
+                    <groupId>com.quarkloop.quark</groupId>
+                    <artifactId>quark-core-script</artifactId>
+                    <version>${project.version}</version>
+                    <exclusions>
+                        <exclusion>
+                            <groupId>org.graalvm.polyglot</groupId>
+                            <artifactId>polyglot</artifactId>
+                        </exclusion>
+                        <exclusion>
+                            <groupId>org.graalvm.polyglot</groupId>
+                            <artifactId>js</artifactId>
+                        </exclusion>
+                        <exclusion>
+                            <groupId>org.graalvm.truffle</groupId>
+                            <artifactId>truffle-api</artifactId>
+                        </exclusion>
+                        <exclusion>
+                            <groupId>org.graalvm.regex</groupId>
+                            <artifactId>regex</artifactId>
+                        </exclusion>
+                    </exclusions>
+                </dependency>
+            </dependencies>
+        </profile>
+    </profiles>
 </project>

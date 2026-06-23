@@ -30,13 +30,30 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
 # ---- Locate artifacts ------------------------------------------------------
-SERVER_JAR="quark-server/target/quark-server-0.1.0-SNAPSHOT-runner.jar"
+BUILD_MODE="${BUILD_MODE:-jvm}"
 CLI_BIN="cli/quarkctl"
 
-if [ ! -f "$SERVER_JAR" ]; then
-    echo "❌ Server jar not found at $SERVER_JAR — run 'make build' first." >&2
-    exit 1
+if [ "$BUILD_MODE" = "native" ]; then
+    SERVER_BIN="quark-server/target/quark-server-0.1.0-SNAPSHOT-runner"
+    if [ ! -x "$SERVER_BIN" ]; then
+        echo "❌ Native binary not found at $SERVER_BIN — run 'make build-native' first." >&2
+        exit 1
+    fi
+    RUN_CMD=("$SERVER_BIN")
+else
+    SERVER_BIN="quark-server/target/quark-server-0.1.0-SNAPSHOT-runner.jar"
+    if [ ! -f "$SERVER_BIN" ]; then
+        echo "❌ Server jar not found at $SERVER_BIN — run 'make build' first." >&2
+        exit 1
+    fi
+    # Use JAVA_HOME if set, otherwise fall back to PATH
+    if [ -n "$JAVA_HOME" ] && [ -x "$JAVA_HOME/bin/java" ]; then
+        RUN_CMD=("$JAVA_HOME/bin/java" -jar "$SERVER_BIN")
+    else
+        RUN_CMD=("java" -jar "$SERVER_BIN")
+    fi
 fi
+
 if [ ! -x "$CLI_BIN" ]; then
     echo "❌ CLI binary not found at $CLI_BIN — run 'make build' first." >&2
     exit 1
@@ -71,14 +88,15 @@ cleanup_nats() {
 }
 
 # ---- Start the server ------------------------------------------------------
-echo "▶ Starting Quark server (background)..."
+echo "▶ Starting Quark server ($BUILD_MODE mode, background)..."
 STATE_DIR="$(pwd)/quark-state"
 rm -rf "$STATE_DIR"
 mkdir -p "$STATE_DIR"
 
 # Use a dedicated port to avoid clashes with any running instance.
 export QUARK_STATE_ROOT="$STATE_DIR"
-java -jar "$SERVER_JAR" \
+export BUILD_MODE
+"${RUN_CMD[@]}" \
     -Dquarkus.http.port=8080 \
     > /tmp/quark-server.log 2>&1 &
 SERVER_PID=$!

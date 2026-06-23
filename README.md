@@ -8,6 +8,130 @@ Everything in Quark — sources, functions, stores, endpoints, policies — is a
 
 ---
 
+## Architecture
+
+### Control Plane / Data Plane Split
+
+The platform uses a **control-plane / data-plane architecture** where the control plane handles REST API and persistence, and data-plane processes execute systems in isolated JVMs:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        Control Plane (JVM/Native)                    │
+│                                                                       │
+│  ┌──────────┐  ┌──────────┐  ┌──────────────┐  ┌────────────────┐  │
+│  │ REST API │  │ DuckDB   │  │ ProcessMgr   │  │ EventReceiver  │  │
+│  │ (port    │  │ Persist  │  │ (spawn/stop  │  │ (NATS subscribe│  │
+│  │  8080)   │  │          │  │  data planes)│  │  quark.data.>) │  │
+│  └──────────┘  └──────────┘  └──────────────┘  └────────────────┘  │
+│                                                                       │
+│  DeployService ──NATS──> DataPlaneCommandHandler                     │
+│  MetricsCollector <──NATS── DataPlaneMetricsForwarder               │
+└───────────────────────────┬──────────────────────────────────────────┘
+                            │ NATS (nats://localhost:4222)
+┌───────────────────────────┼──────────────────────────────────────────┐
+│                      Data Plane(s)                                     │
+│                                                                       │
+│  ┌────────────────────┐  ┌────────────────────┐                       │
+│  │ Shared Data Plane  │  │ Isolated Data Plane│                       │
+│  │ (runtimeId=shared) │  │ (runtimeId=ns-bob) │                       │
+│  │ Port 9100          │  │ Port 9101          │                       │
+│  │                    │  │                    │                       │
+│  │ All non-isolated   │  │ Dedicated to       │                       │
+│  │ namespaces         │  │ namespace "bob"    │                       │
+│  └────────────────────┘  └────────────────────┘                       │
+└───────────────────────────────────────────────────────────────────────┘
+```
+
+### IPC Protocol (NATS)
+
+All control-plane ↔ data-plane communication flows through NATS:
+
+| Direction | Subject | Purpose |
+|---|---|---|
+| Control → Data | `quark.control.<runtimeId>.deploy` | Deploy command (carries .quark.ts source) |
+| Control → Data | `quark.control.<runtimeId>.undeploy` | Undeploy command |
+| Data → Control | `quark.data.status.<runtimeId>` | Deploy/undeploy result (includes node info) |
+| Data → Control | `quark.data.event.<runtimeId>` | Forwarded lifecycle events (NODE_CREATED, etc.) |
+| Data → Control | `quark.data.heartbeat.<runtimeId>` | Per-namespace metrics (CPU%, throughput, errors) |
+
+- `runtimeId` = `"shared"` for non-isolated namespaces, `"ns-<namespace>"` for isolated
+- Serialization: JSON via Jackson
+- Deploy/undeploy use NATS request-reply (synchronous, 3s timeout, 5 retries)
+- Events/metrics use NATS pub/sub (asynchronous, fire-and-forget)
+
+### Process Types
+
+| # | Process | How spawned | Port | Purpose |
+|---|---|---|---|---|
+| 1 | **Control plane** | Operator (`make run-server` or `make run-example`) | 8080 | REST API, DuckDB, ProcessManager, event/metrics receivers |
+| 2 | **Shared data plane** | Auto-spawned by ProcessManager | 9100+ | Executes all non-isolated namespace systems |
+| 3 | **Isolated data plane** | Auto-spawned when `.quark.ts` has `runtime: "isolated"` | 9101+ | Dedicated JVM per isolated namespace |
+| 4 | **NATS server** | Operator (`nats-server`) | 4222 | Message bus for all IPC |
+| 5 | **Go CLI** (`quarkctl`) | Operator (`./cli/quarkctl`) | — | Talks to control plane REST API |
+
+### Runtime Isolation
+
+The `runtime` field in `.quark.ts` controls process isolation:
+
+```typescript
+export default {
+    name: "monitor",
+    namespace: "alice",
+    runtime: "isolated",  // or "shared" (default)
+    nodes: { ... }
+};
+```
+
+- **`shared`** (default): The system runs in the shared data-plane process alongside other non-isolated namespaces.
+- **`isolated`**: The system runs in a dedicated data-plane process (`runtimeId=ns-<namespace>`). The process is stopped when the namespace's last system is undeployed.
+
+---
+
+## Build Modes
+
+The platform supports **two build modes**: JVM (default) and Native Image.
+
+### JVM Mode (default)
+
+Standard `java -jar` execution. Full GraalJS support for `.quark.ts` evaluation.
+
+```bash
+make build                              # Build JVM jar + Go CLI
+make run-example                        # Run example with JVM server
+make run-server                         # Start server (Ctrl+C to stop)
+```
+
+### Native Image Mode
+
+GraalVM/Mandrel native executable. Starts in milliseconds, uses less memory.
+
+```bash
+make build-native                       # Build native executable + Go CLI
+BUILD_MODE=native make run-example      # Run example with native server
+```
+
+**Prerequisites for native mode:**
+- Mandrel 23.1.x or GraalVM 21+ with `native-image` on `$PATH`
+- Set `JAVA_HOME` to the Mandrel/GraalVM installation
+
+**Native mode limitations:**
+- **GraalJS is not available** — GraalJS requires Truffle, which is incompatible with native-image's closed-world analysis. The `SimpleSystemParser` (regex-based) is used instead. It supports the standard `.quark.ts` syntax but not arbitrary JavaScript expressions.
+- **DuckDB persistence requires JVM mode** — DuckDB's JNI library loading is incompatible with native-image. Use JVM mode for production deployments that require DuckDB persistence.
+
+### Build Mode Selection
+
+All Makefile targets accept `BUILD_MODE=jvm|native`:
+
+```bash
+make build BUILD_MODE=native            # Build in native mode
+make run-example BUILD_MODE=native      # Run example in native mode
+make test BUILD_MODE=native             # Test in native mode (JVM tests only)
+```
+
+The `ProcessManager` automatically detects which binary is available (native or JAR) and spawns data-plane processes accordingly. Native binaries are preferred when both exist.
+
+---
+
 ## Repository Layout
 
 ```
@@ -15,30 +139,23 @@ quark/
 ├── AGENTS.md                            ← Guide for AI agents (READ FIRST if you're an AI)
 ├── README.md                            ← This file
 ├── Makefile                             ← All build/test/run commands (run `make help`)
-├── pom.xml                              ← Parent POM (BOM management, plugin config)
+├── pom.xml                              ← Parent POM (BOM management, plugin config, native profile)
 ├── mvnw / mvnw.cmd                      ← Maven wrapper (no need to pre-install Maven)
 ├── Dockerfile                           ← Clean-container build verification
 ├── docs/                                ← Specification documents
-│   ├── abstraction.md                   ← The Node concept (vision)
-│   ├── DESIGN.md                        ← Design principles (v2: NATS + GraalJS)
-│   ├── DECLARATION.md                   ← The .quark.ts format (syntax reference)
-│   ├── node.md                      ← The Node spec (full reference)
-│   ├── CLI.md                           ← CLI / server conceptual alignment
-│   └── USER-STORY.md                    ← How a typical user interacts with the system
 │
 ├── quark-core-domain/                   ← Pure domain model (records, sealed interfaces)
 ├── quark-core-registry/                 ← SPI registry for node implementations
 ├── quark-core-event/                    ← Event bus + per-tenant JSONL event store
-├── quark-core-script/                   ← GraalJS layer: TS transpile, sandboxed eval, 
-├── quark-core-engine/                   ← Lifecycle management (state machine, runtime registry)
-├── quark-engine/                        ← Engine layer: NATS wiring (SystemRunner, publisher, subject routing)
+├── quark-core-script/                   ← GraalJS + SimpleSystemParser (TS transpile, sandboxed eval)
+├── quark-core-engine/                   ← Lifecycle management, metrics, data-plane IPC protocol
+├── quark-engine/                        ← Engine layer: NATS wiring (publisher, subject routing)
 ├── quark-adapter-store-duckdb/          ← DuckDB persistence (systems, nodes, events, registry, source)
-├── quark-app/                           ← Application services (orchestration: DeployService, QueryService, LifecycleService, HealthService)
+├── quark-app/                           ← Application services (DeployService, QueryService, ProcessManager)
 ├── quark-api/                           ← JAX-RS REST endpoints + DTOs + exception mappers
-├── quark-server/                        ← Quarkus runner (Main, health checks, OpenAPI, NATS)
+├── quark-server/                        ← Quarkus runner (Main, health checks, native-image config)
 │
 ├── providers/                           ← Node implementations — SEPARATE from framework
-│   ├── pom.xml                          ← Parent for all provider-* modules
 │   ├── provider-stubs/                  ← Noop/memory/webhook stubs (for testing)
 │   ├── provider-timer/                  ← source/timer:v1 (1-second tick source)
 │   ├── provider-cpu-profiler/           ← function/cpu-profiler:v1 (CPU usage reader)
@@ -49,69 +166,68 @@ quark/
 │
 ├── example/                             ← Runnable examples
 │   └── simple-streaming/                ← Multi-tenant streaming monitor example
-│       ├── README.md                    ← How to run (TS → CLI → Server)
-│       ├── system.quark.ts              ← The "program" — this is ALL the user writes
-│       └── json/                        ← Output directory (server writes here)
 │
 └── cli/                                 ← Go-based CLI (with --json flag)
-    ├── go.mod                           ← (Go 1.24+)
-    ├── main.go
-    ├── cmd/                             ← Cobra commands (system, node, registry, event, health)
-    └── internal/                        ← HTTP client + model + output printers
-```
-
-> **Note**: An npm package for `quark.d.ts` TypeScript type definitions is planned. For now, run `quarkctl init` in your project directory to generate a local `quark.d.ts` file for IDE autocomplete.
-
----
-
-## Three-Layer Architecture
-
-```
-┌─────────────────────────────────────────────────────┐
-│                   GraalJS Layer                      │
-│  Input:  .quark.ts file (TypeScript source)          │
-│  Output: SystemConfig (plain data structure)         │
-│  - Transpiles TS → JS, evaluates in sandbox          │
-│  - No NATS, no providers, no execution               │
-└───────────────────────┬─────────────────────────────┘
-                        │ SystemConfig
-                        ▼
-┌─────────────────────────────────────────────────────┐
-│                    Engine Layer                      │
-│  Input:  SystemConfig + Provider instances           │
-│  Output: Running system (NATS consumers live)        │
-│  - Embedded NATS server with JetStream               │
-│  - Creates consumers, ACLs, retry/fallback           │
-│  - Lifecycle management, state persistence, REST API │
-└───────────────────────┬─────────────────────────────┘
-                        │ QuarkMessage + QuarkPublisher
-                        ▼
-┌─────────────────────────────────────────────────────┐
-│                   Provider Layer                     │
-│  Input:  QuarkMessage (incoming NATS message)        │
-│  Output: QuarkPublisher.publish() (outgoing)         │
-│  - Self-contained Java modules                       │
-│  - Knows nothing about NATS or other nodes           │
-└─────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Multi-Tenancy
+## Per-Namespace CPU Attribution
 
-NATS subjects encode the namespace: `monitor.alice.*` vs `monitor.bob.*`. Isolation is enforced at:
-1. **Subject namespacing** — Alice's nodes can only publish/subscribe to `monitor.alice.*`
-2. **NATS ACLs** — Publish permissions restrict each node to its own subjects
-3. **Engine validation** — `listens` and `events` validated to reference same-system subjects
+For shared namespaces running in the same data-plane JVM, CPU time is attributed per-namespace by measuring `ThreadMXBean.getCurrentThreadCpuTime()` inside the message handler path. The data plane forwards metrics snapshots to the control plane every 2 seconds via NATS heartbeat.
+
+```
+CLI: quarkctl get stats
+NAMESPACE     SYS NODES    CPU%     MSG/S     ERR/S   HEAP   NONH       OK       BAD
+alice           1     6    0.6%      8.0     0.00    26MB     64MB        6        0
+```
+
+For isolated namespaces, all metrics are exact at the process level because the entire JVM serves a single namespace.
 
 ---
 
-## REST API
+## How to Build & Run
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/registry` | List registered implementations |
-| GET | `/health` | Platform health |
+### Prerequisites
+
+- **Java 21+** (JDK — must include `javac`). For native mode: Mandrel 23.1+ or GraalVM 21+
+- **Go 1.24+** (for the CLI)
+- The repo includes `mvnw` — no need to pre-install Maven
+- **NATS server** on `nats://localhost:4222` (external; the platform does not embed a NATS server)
+
+### Build everything (JVM mode)
+
+```bash
+make build         # builds all Java modules + Go CLI binary
+```
+
+### Build native executable
+
+```bash
+make build-native  # builds native executable + Go CLI binary
+```
+
+### Run the tests
+
+```bash
+make test          # runs Java + Go tests (JVM mode)
+```
+
+### Run the example
+
+```bash
+make run-example                       # JVM mode, 15-second run (default)
+make run-example EXAMPLE_DURATION=30   # JVM mode, 30-second run
+BUILD_MODE=native make run-example     # Native mode
+```
+
+### Run the server
+
+```bash
+make run-server                       # JVM mode (port 8080)
+make run-server-native                # Native mode (port 8080)
+make server-dev                       # Quarkus dev mode (hot reload)
+```
 
 ---
 
@@ -130,46 +246,32 @@ quarkctl get nodes -n alice -s monitor
 # Watch events
 quarkctl watch events -n alice -s monitor
 
+# Get real-time stats (CPU%, throughput, errors per namespace)
+quarkctl get stats
+quarkctl get stats --watch
+
 # Get JSON output (for AI agents)
 quarkctl get system monitor -n alice --json
 ```
 
 ---
 
-## How to Build & Run
+## REST API
 
-### Prerequisites
-
-- **Java 21+** (JDK — must include `javac`)
-- **Go 1.24+** (for the CLI)
-- The repo includes `mvnw` — no need to pre-install Maven
-- **NATS server** on `nats://localhost:4222` (external; the platform
-  does not embed a NATS server in this release)
-
-### Build everything
-
-```bash
-make build         # builds all Java modules + Go CLI binary
-```
-
-### Run the tests
-
-```bash
-make test          # runs Java + Go tests
-```
-
-### Run the server
-
-```bash
-make server-dev    # starts Quarkus on http://localhost:8080
-```
-
-### Run the example
-
-```bash
-make run-example                       # 15-second run (default)
-make run-example EXAMPLE_DURATION=30   # 30-second run
-```
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/namespaces` | List all active namespaces |
+| GET | `/api/v1/namespaces/{ns}` | Get namespace details + metrics |
+| POST | `/api/v1/namespaces/{ns}/systems` | Deploy a system |
+| PUT | `/api/v1/namespaces/{ns}/systems/{name}` | Apply (declarative reconcile) |
+| DELETE | `/api/v1/namespaces/{ns}/systems/{name}` | Undeploy a system |
+| GET | `/api/v1/namespaces/{ns}/systems/{name}/source` | Get the original .quark.ts source |
+| GET | `/api/v1/namespaces/{ns}/systems/{name}/nodes` | List nodes in a system |
+| GET | `/api/v1/namespaces/{ns}/systems/{name}/nodes/{node}` | Get node details |
+| GET | `/api/v1/namespaces/{ns}/events` | Query events |
+| GET | `/registry` | List registered node implementations |
+| GET | `/health/live` | Liveness check |
+| GET | `/health/ready` | Readiness check (NATS, DuckDB, registry) |
 
 ---
 

@@ -73,19 +73,42 @@ RUN go mod download
 COPY cli/ .
 RUN go vet ./... && go test ./... && go build -trimpath -buildvcs=false -o /quarkctl .
 
-# ----- Stage 3: Verify image (small, just the artifacts) -----
-FROM eclipse-temurin:21-jre AS verify
+# ----- Stage 3: Runtime image (JVM mode) -----
+FROM eclipse-temurin:21-jre AS runtime-jvm
 
-COPY --from=java-builder /build/quark-server/target/quarkus-app /app/quarkus-app
+COPY --from=java-builder /build/quark-server/target/quark-server-0.1.0-SNAPSHOT-runner.jar /app/quark-server.jar
+COPY --from=java-builder /build/quark-server/target/lib /app/lib
 COPY --from=go-builder /quarkctl /app/quarkctl
-COPY example/simple-streaming/system.quark.yaml /app/example/system.quark.yaml
 
-# Smoke test: both artifacts exist and are runnable
+# Smoke test
 RUN /app/quarkctl --help | head -1
 RUN java -version 2>&1 | head -1
 
 WORKDIR /app
 EXPOSE 8080 8081
 
-# Default: run the Quarkus server
-CMD ["java", "-jar", "quarkus-app/quarkus-run.jar"]
+# Default: run the JVM server
+CMD ["java", "-jar", "quark-server.jar"]
+
+# ----- Stage 4: Runtime image (native mode) -----
+# To build: docker build --target runtime-native -t quark-native .
+FROM debian:bookworm-slim AS runtime-native
+
+# Install required shared libraries for native image
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libstdc++6 \
+    zlib1g \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=java-builder /build/quark-server/target/quark-server-0.1.0-SNAPSHOT-runner /app/quark-server
+COPY --from=go-builder /quarkctl /app/quarkctl
+
+# Smoke test
+RUN /app/quarkctl --help | head -1
+RUN /app/quark-server --version 2>&1 | head -1 || true
+
+WORKDIR /app
+EXPOSE 8080 8081
+
+# Default: run the native server
+CMD ["./quark-server"]

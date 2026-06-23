@@ -28,7 +28,7 @@
 
         <!-- Dependencies -->
         <snakeyaml-engine.version>2.9</snakeyaml-engine.version>
-        <graaljs.version>23.0.2</graaljs.version>
+        <graaljs.version>23.1.11</graaljs.version>
         <nats.version>2.20.2</nats.version>
         <duckdb.version>1.1.0</duckdb.version>
 
@@ -169,27 +169,31 @@
             </dependency>
 
             <!-- GraalJS (JavaScript engine for .quark.ts evaluation) -->
+            <!--
+                GraalVM 24.1+ uses the org.graalvm.polyglot group for all
+                polyglot-related artifacts. The old org.graalvm.sdk:graal-sdk
+                (23.0.x) bundled both the runtime API and the SVM build-time
+                annotations in a single JAR, causing Quarkus native-image to
+                EXCLUDE it from the image classpath (SVM annotations conflict
+                with the native-image builder's own classes).
+
+                Using the split artifacts (24.1+):
+                  - polyglot: org.graalvm.polyglot.Context, Engine, Value (NO SVM)
+                  - js: the JavaScript language runtime
+                  - truffle-api: Truffle framework (polyglot impl discovery)
+                  - regex: regex support for JS
+            -->
             <dependency>
-                <groupId>org.graalvm.js</groupId>
+                <groupId>org.graalvm.polyglot</groupId>
+                <artifactId>polyglot</artifactId>
+                <version>${graaljs.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.graalvm.polyglot</groupId>
                 <artifactId>js</artifactId>
                 <version>${graaljs.version}</version>
+                <type>pom</type>
             </dependency>
-            <dependency>
-                <groupId>org.graalvm.sdk</groupId>
-                <artifactId>graal-sdk</artifactId>
-                <version>${graaljs.version}</version>
-            </dependency>
-            <!--
-                truffle-api and regex are REQUIRED at runtime by the GraalJS
-                Engine, but Quarkus's build-time dependency pruning strips
-                them because no application code directly references
-                com.oracle.truffle.* or org.graalvm.regex.* classes.
-                Without these jars, Engine.newBuilder().build() fails with:
-                    NoClassDefFoundError: org/graalvm/polyglot/impl/AbstractPolyglotImpl
-                because the META-INF/services/org.graalvm.polyglot.impl.AbstractPolyglotImpl
-                service file (which points to com.oracle.truffle.polyglot.PolyglotImpl)
-                lives inside truffle-api.jar.
-            -->
             <dependency>
                 <groupId>org.graalvm.truffle</groupId>
                 <artifactId>truffle-api</artifactId>
@@ -338,4 +342,46 @@
             </plugin>
         </plugins>
     </build>
+
+    <!-- ====================================================================== -->
+    <!-- Profiles                                                               -->
+    <!-- ====================================================================== -->
+
+    <!--
+        Native Image profile.
+
+        Activated with: mvn -Pnative install  (or:  make build-native)
+
+        This profile enables Quarkus's GraalVM native-image build mode.
+        The resulting binary is a standalone native executable (no JVM required
+        at runtime). It starts in milliseconds and uses far less memory than
+        the JVM jar.
+
+        Prerequisites:
+          - GRAALVM_HOME must point to a GraalVM JDK 21+ installation
+            (or native-image must be on $PATH).
+          - The native-image component must be installed
+            (gu install native-image  on GraalVM CE).
+
+        Build output:
+          quark-server/target/quark-server-0.1.0-SNAPSHOT-runner
+          (a native executable, not a .jar)
+
+        The profile is deliberately NOT active by default. The default build
+        (mvn install) produces JVM-mode jars. Developers opt into native mode
+        explicitly when they need it.
+
+        Quarkus automatically detects the quarkus.package.type=native system
+        property (set by this profile) and invokes the native-image builder
+        during the quarkus-maven-plugin's "build" goal.
+    -->
+    <profiles>
+        <profile>
+            <id>native</id>
+            <properties>
+                <quarkus.package.type>native</quarkus.package.type>
+                <skipTests>true</skipTests>
+            </properties>
+        </profile>
+    </profiles>
 </project>

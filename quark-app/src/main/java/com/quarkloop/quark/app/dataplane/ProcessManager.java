@@ -123,10 +123,10 @@ public class ProcessManager {
             processes.remove(runtimeId);
         }
 
-        String serverJar = findServerJar();
+        String binary = findBinary();
         int port = nextPort++;
         DataPlaneProcess proc = new DataPlaneProcess(
-                runtimeId, serverJar, stateRootPath, natsUrl, port);
+                runtimeId, binary, stateRootPath, natsUrl, port);
         proc.start();
 
         // Wait for the process to be ready (up to 30s)
@@ -169,29 +169,54 @@ public class ProcessManager {
     }
 
     /**
-     * Locate the quark-server runner JAR.
+     * Locate the quark-server binary (native executable or JAR).
      *
-     * <p>Looks for:
+     * <p>Search order (first match wins):
      * <ol>
-     *   <li>The JAR at the standard Maven target path relative to the CWD.</li>
-     *   <li>The JAR in the classpath (via the system classloader).</li>
+     *   <li><b>Native binary</b> at {@code quark-server/target/quark-server}
+     *       (produced by {@code mvn -Pnative install}). Preferred because it
+     *       starts faster and uses less memory.</li>
+     *   <li><b>Native binary</b> relative to the state root's parent (common
+     *       in deployment layouts).</li>
+     *   <li><b>JVM JAR</b> at {@code quark-server/target/quark-server-0.1.0-SNAPSHOT-runner.jar}
+     *       (produced by {@code mvn install}).</li>
+     *   <li><b>JVM JAR</b> relative to the state root's parent.</li>
+     *   <li><b>JVM JAR</b> from the {@code java.class.path} system property
+     *       (when running from an IDE or a fat classpath).</li>
      * </ol>
+     *
+     * @return the absolute path to the binary (native or JAR)
+     * @throws IOException if no binary is found
      */
-    private String findServerJar() throws IOException {
-        // Standard Maven target path
-        Path mavenPath = Paths.get("quark-server", "target",
-                "quark-server-0.1.0-SNAPSHOT-runner.jar");
-        if (Files.isRegularFile(mavenPath)) {
-            return mavenPath.toAbsolutePath().toString();
+    private String findBinary() throws IOException {
+        // 1. Native binary at standard Maven target path
+        Path nativeMaven = Paths.get("quark-server", "target", "quark-server-0.1.0-SNAPSHOT-runner");
+        if (Files.isExecutable(nativeMaven)) {
+            return nativeMaven.toAbsolutePath().toString();
         }
-        // Try relative to the state root's parent (common in deployment)
-        Path statePath = Paths.get(stateRootPath).toAbsolutePath().resolve("..")
+        // 2. Native binary relative to state root's parent
+        Path nativeState = Paths.get(stateRootPath).toAbsolutePath().resolve("..")
+                .resolve("quark-server").resolve("target")
+                .resolve("quark-server-0.1.0-SNAPSHOT-runner").normalize();
+        if (Files.isExecutable(nativeState)) {
+            return nativeState.toString();
+        }
+
+        // 3. JVM JAR at standard Maven target path
+        Path jarMaven = Paths.get("quark-server", "target",
+                "quark-server-0.1.0-SNAPSHOT-runner.jar");
+        if (Files.isRegularFile(jarMaven)) {
+            return jarMaven.toAbsolutePath().toString();
+        }
+        // 4. JVM JAR relative to state root's parent
+        Path jarState = Paths.get(stateRootPath).toAbsolutePath().resolve("..")
                 .resolve("quark-server").resolve("target")
                 .resolve("quark-server-0.1.0-SNAPSHOT-runner.jar").normalize();
-        if (Files.isRegularFile(statePath)) {
-            return statePath.toString();
+        if (Files.isRegularFile(jarState)) {
+            return jarState.toString();
         }
-        // Try the java.class.path system property
+
+        // 5. JVM JAR from java.class.path (IDE / fat classpath)
         String classPath = System.getProperty("java.class.path");
         if (classPath != null) {
             for (String entry : classPath.split(java.io.File.pathSeparator)) {
@@ -200,7 +225,9 @@ public class ProcessManager {
                 }
             }
         }
-        throw new IOException("Cannot find quark-server runner JAR. " +
-                "Searched: " + mavenPath + ", " + statePath);
+
+        throw new IOException("Cannot find quark-server binary (native or JAR). " +
+                "Searched: " + nativeMaven + ", " + nativeState + ", " +
+                jarMaven + ", " + jarState);
     }
 }

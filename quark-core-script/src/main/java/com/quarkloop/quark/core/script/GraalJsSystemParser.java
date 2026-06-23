@@ -30,6 +30,10 @@ import java.util.Map;
  * configuration). The parser extracts this object via GraalJS's polyglot
  * API and converts it to a Java {@link SystemDefinition}.
  *
+ * <p>This parser is the default in JVM mode. In native-image mode, the
+ * {@link SimpleSystemParser} is used instead because GraalJS/Truffle is
+ * not compatible with GraalVM native-image's closed-world analysis.
+ *
  * <p>The sandbox:
  * <ul>
  *   <li>No host access (can't call Java methods)</li>
@@ -52,8 +56,15 @@ public class GraalJsSystemParser implements SystemParser {
      * {@code NoClassDefFoundError: org/graalvm/polyglot/impl/AbstractPolyglotImpl}
      * when {@link Engine#newBuilder()} tries to load the polyglot implementation
      * via ServiceLoader.
+     *
+     * <p>This method is called lazily from {@link #getEngine()} (at runtime,
+     * on first parse) rather than from a static initializer. This is critical
+     * for GraalVM native-image compatibility: a static initializer would
+     * trigger class loading of Truffle/GraalJS classes at build time, which
+     * fails because the polyglot implementation JAR is not on the
+     * native-image builder's classpath.
      */
-    static {
+    private static void ensureGraalReferences() {
         //noinspection ResultOfMethodCallIgnored
         GraalRuntimeReferences.TRUFFLE_LANGUAGE.getName();
         //noinspection ResultOfMethodCallIgnored
@@ -94,6 +105,8 @@ public class GraalJsSystemParser implements SystemParser {
         }
         synchronized (this) {
             if (engine == null) {
+                // Force GraalJS jar references (lazy, not static — for native-image)
+                ensureGraalReferences();
                 Thread current = Thread.currentThread();
                 ClassLoader original = current.getContextClassLoader();
                 // Use this class's classloader (Quarkus app classloader) which
