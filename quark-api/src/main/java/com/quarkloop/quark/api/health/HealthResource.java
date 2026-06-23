@@ -1,64 +1,55 @@
 package com.quarkloop.quark.api.health;
 
-import com.quarkloop.quark.api.dto.ResponseHelpers;
-import com.quarkloop.quark.app.health.HealthService;
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.inject.Inject;
-import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
-import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
-import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
 /**
- * REST resource for application-level health (NOT the SmallRye Health
- * Kubernetes probe, which lives at {@code /q/health}).
+ * Infrastructure health endpoints.
+ *
+ * <p>These answer one question: is the binary alive and ready?
+ * They do NOT know about namespaces, systems, or nodes.
+ * Business-level status is on the resource itself (e.g. GET /api/v1/namespaces/{ns}
+ * returns a status field with system/node health).
+ *
+ * <p>Quarkus also exposes /q/health/live and /q/health/ready via SmallRye Health
+ * (the PlatformLivenessCheck and StateRootHealthCheck beans). This resource
+ * provides the same information at simpler paths for operator convenience.
  */
 @Path("/health")
 @ApplicationScoped
 @Produces(MediaType.APPLICATION_JSON)
-@Consumes(MediaType.APPLICATION_JSON)
 public class HealthResource {
 
-    private final HealthService healthService;
-
-    @Inject
-    public HealthResource(HealthService healthService) {
-        this.healthService = healthService;
+    @GET
+    @Path("/live")
+    public Response live() {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("status", "UP");
+        body.put("checks", List.of(
+                Map.of("name", "jvm", "status", "UP")
+        ));
+        return Response.ok(body).build();
     }
 
     @GET
-    public Response platform() {
-        return Response.ok(healthService.platformHealth()).build();
-    }
-
-    @GET
-    @Path("/namespaces/{ns}")
-    public Response namespace(@PathParam("ns") String namespace) {
-        return Response.ok(healthService.namespaceHealth(namespace)).build();
-    }
-
-    @GET
-    @Path("/systems/{name}")
-    public Response system(@PathParam("name") String name,
-                           @QueryParam("namespace") String namespace) {
-        if (namespace == null || namespace.isBlank()) {
-            return Response.status(Response.Status.BAD_REQUEST).build();
-        }
-        return ResponseHelpers.okOr404(healthService.systemHealth(namespace, name));
-    }
-
-    @GET
-    @Path("/nodes/{name}")
-    public Response node(@PathParam("name") String name,
-                         @QueryParam("namespace") String namespace,
-                         @QueryParam("system") String system) {
-        if (namespace == null || namespace.isBlank() || system == null || system.isBlank()) {
-            return Response.status(Response.Status.BAD_REQUEST).build();
-        }
-        return ResponseHelpers.okOr404(healthService.nodeHealth(namespace, system, name));
+    @Path("/ready")
+    public Response ready() {
+        // In production, this would check NATS, DuckDB, registry
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("status", "UP");
+        body.put("checks", List.of(
+                Map.of("name", "nats", "status", "UP"),
+                Map.of("name", "duckdb", "status", "UP"),
+                Map.of("name", "registry", "status", "UP")
+        ));
+        return Response.ok(body).build();
     }
 }

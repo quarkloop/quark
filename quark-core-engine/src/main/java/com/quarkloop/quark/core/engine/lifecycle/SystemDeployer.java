@@ -157,7 +157,7 @@ public class SystemDeployer {
                                       Object provider, QuarkPublisher publisher) {
         List<Subscription> subs = new ArrayList<>();
         for (String rel : def.listens()) {
-            String full = system.name() + "." + system.namespace().value() + "." + rel;
+            String full = system.namespace().value() + "." + system.name() + "." + rel;
             subs.add(messageBus.subscribe(full, msg -> dispatchToProvider(msg, provider, publisher)));
             log.debug("Node {} subscribed to {}", def.name(), full);
         }

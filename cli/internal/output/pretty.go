@@ -175,6 +175,23 @@ func (p *PrettyPrinter) PrintNodeDetail(node interface{}) error {
         return nil
 }
 
+func (p *PrettyPrinter) PrintNamespaceList(namespaces interface{}) error {
+        list, ok := namespaces.([]string)
+        if !ok {
+                return fmt.Errorf("expected []string, got %T", namespaces)
+        }
+        if len(list) == 0 {
+                fmt.Fprintln(p.w, "No namespaces found.")
+                return nil
+        }
+        t := newTable(p.w, []string{"NAMESPACE"})
+        for _, ns := range list {
+                t.Append([]string{ns})
+        }
+        t.Render()
+        return nil
+}
+
 func (p *PrettyPrinter) PrintRegistryList(entries interface{}) error {
         list, ok := entries.([]model.RegistryEntry)
         if !ok {

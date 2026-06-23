@@ -92,8 +92,9 @@ public class NatsMessageBus implements MessageBus {
     private static QuarkMessage toQuarkMessage(Message natsMsg) {
         String subject = natsMsg.getSubject();
         String[] parts = subject.split("\\.");
-        String systemName = parts.length > 0 ? parts[0] : "";
-        String namespace = parts.length > 1 ? parts[1] : "";
+        // Subject format: {namespace}.{system}.{node}.{event}
+        String namespace = parts.length > 0 ? parts[0] : "";
+        String systemName = parts.length > 1 ? parts[1] : "";
         String nodeName = parts.length > 2 ? parts[2] : "";
         return new NatsQuarkMessage(natsMsg, systemName, namespace, nodeName);
     }

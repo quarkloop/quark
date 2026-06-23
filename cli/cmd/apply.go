@@ -6,15 +6,22 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var applyFile string
+
 var applyCmd = &cobra.Command{
 	Use:   "apply",
-	Short: "Declaratively apply a .quark.ts system definition",
-	Long:  `Apply a .quark.ts file to the server. Creates or reconciles the system to match the desired state.`,
-	Args:  cobra.NoArgs,
+	Short: "Apply a configuration to a resource by filename or stdin",
+	Long: `Apply a .quark.ts file to the server. Creates or reconciles the system.
+
+Examples:
+  # Apply a file
+  quarkctl apply -f system.quark.ts -n alice
+
+  # Apply from stdin
+  cat system.quark.ts | quarkctl apply -f - -n alice`,
+	Args: cobra.NoArgs,
 	RunE:  runApply,
 }
-
-var applyFile string
 
 func init() {
 	rootCmd.AddCommand(applyCmd)

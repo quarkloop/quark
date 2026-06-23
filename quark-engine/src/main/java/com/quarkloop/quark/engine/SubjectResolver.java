@@ -5,18 +5,19 @@ import com.quarkloop.quark.core.domain.identity.Namespace;
 /**
  * Resolves relative subject references to full NATS subjects.
  *
- * <p>Relative subjects in .quark.ts files are short references like
- * {@code "timer.tick"} or {@code "fallback.cpu"}. The engine resolves them
- * to full NATS subjects by prefixing with the system name and namespace:
- * {@code <system>.<namespace>.<relative-subject>}.
+ * <p>Subject format: {@code <namespace>.<system>.<node>.<event>}
  *
- * <p>Example:
- * <pre>
- *   systemName = "monitor"
- *   namespace  = "alice"
- *   relative   = "timer.tick"
- *   full       = "monitor.alice.timer.tick"
- * </pre>
+ * <p>This follows the container hierarchy: namespace contains systems,
+ * systems contain nodes, nodes produce events. The subject reads
+ * left-to-right from most-general (namespace) to most-specific (event).
+ *
+ * <p>This enables efficient wildcard subscriptions:
+ * <ul>
+ *   <li>{@code alice.>} — all events in namespace alice (tenant isolation)</li>
+ *   <li>{@code alice.monitor.>} — all events from system "monitor" in alice</li>
+ *   <li>{@code alice.monitor.timer.>} — all events from the timer node</li>
+ *   <li>{@code alice.monitor.timer.tick} — one specific event</li>
+ * </ul>
  */
 public final class SubjectResolver {
 
@@ -28,10 +29,10 @@ public final class SubjectResolver {
      * @param systemName the system name (e.g., "monitor")
      * @param namespace  the namespace (e.g., "alice")
      * @param relative   the relative subject (e.g., "timer.tick")
-     * @return the full subject (e.g., "monitor.alice.timer.tick")
+     * @return the full subject (e.g., "alice.monitor.timer.tick")
      */
     public static String resolve(String systemName, Namespace namespace, String relative) {
-        return systemName + "." + namespace.value() + "." + relative;
+        return namespace.value() + "." + systemName + "." + relative;
     }
 
     /**
@@ -41,10 +42,10 @@ public final class SubjectResolver {
      * @param namespace  the namespace
      * @param nodeName   the node name
      * @param event      the event type
-     * @return the full subject (e.g., "monitor.alice.cpu.data")
+     * @return the full subject (e.g., "alice.monitor.cpu.data")
      */
     public static String eventSubject(String systemName, String namespace, String nodeName, String event) {
-        return systemName + "." + namespace + "." + nodeName + "." + event;
+        return namespace + "." + systemName + "." + nodeName + "." + event;
     }
 
     /**
@@ -53,10 +54,10 @@ public final class SubjectResolver {
      * @param systemName the system name
      * @param namespace  the namespace
      * @param nodeName   the node name
-     * @return the fallback subject (e.g., "monitor.alice.fallback.cpu")
+     * @return the fallback subject (e.g., "alice.monitor.fallback.cpu")
      */
     public static String fallbackSubject(String systemName, Namespace namespace, String nodeName) {
-        return systemName + "." + namespace.value() + ".fallback." + nodeName;
+        return namespace.value() + "." + systemName + ".fallback." + nodeName;
     }
 
     /**
@@ -64,9 +65,9 @@ public final class SubjectResolver {
      *
      * @param systemName the system name
      * @param namespace  the namespace
-     * @return the wildcard subject (e.g., "monitor.alice.>")
+     * @return the wildcard subject (e.g., "alice.monitor.>")
      */
     public static String systemWildcard(String systemName, Namespace namespace) {
-        return systemName + "." + namespace.value() + ".>";
+        return namespace.value() + "." + systemName + ".>";
     }
 }

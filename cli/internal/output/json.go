@@ -28,6 +28,7 @@ func (p *JSONPrinter) PrintSystemDetail(system interface{}) error { return p.pri
 func (p *JSONPrinter) PrintNodeList(nodes interface{}) error  { return p.print(nodes) }
 func (p *JSONPrinter) PrintNodeDetail(node interface{}) error { return p.print(node) }
 func (p *JSONPrinter) PrintRegistryList(entries interface{}) error    { return p.print(entries) }
+func (p *JSONPrinter) PrintNamespaceList(namespaces interface{}) error { return p.print(namespaces) }
 func (p *JSONPrinter) PrintRegistryEntry(entry interface{}) error     { return p.print(entry) }
 func (p *JSONPrinter) PrintEventList(events interface{}) error        { return p.print(events) }
 func (p *JSONPrinter) PrintHealthSummary(health interface{}) error    { return p.print(health) }

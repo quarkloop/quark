@@ -1,123 +1,178 @@
 package client
 
 import (
-        "context"
-        "fmt"
-        "net/http"
+	"context"
+	"fmt"
+	"net/http"
 
-        "github.com/quarkloop/quark/cli/internal/model"
+	"github.com/quarkloop/quark/cli/internal/model"
 )
 
-// DeploySystem sends a .quark.ts source string to the server for deployment.
-// On success returns the deploy response; on parse/validation failure
-// returns a *DeployFailureError with the list of validation errors.
+// ListNamespaces returns all active namespaces.
+func (c *Client) ListNamespaces(ctx context.Context) ([]string, error) {
+	var out []string
+	if err := c.get(ctx, "/api/v1/namespaces", &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// DeploySystem deploys a system via POST /api/v1/namespaces/{ns}/systems.
 func (c *Client) DeploySystem(ctx context.Context, source, namespace string) (*model.DeploySystemResponse, error) {
-        req := model.DeploySystemRequest{Source: source, Namespace: namespace}
-        var resp model.DeploySystemResponse
-        if err := c.post(ctx, "/systems/deploy", req, &resp); err != nil {
-                // On 400, the server returns a deploy-failure body, not an error response.
-                // Try to parse it as a failure.
-                if apiErr, ok := err.(*APIError); ok && apiErr.StatusCode == 400 {
-                        var failure model.DeploySystemFailure
-                        if jsonErr := unmarshalBody(apiErr, &failure); jsonErr == nil && len(failure.Errors) > 0 {
-                                return nil, &DeployFailureError{Failure: failure}
-                        }
-                }
-                return nil, err
-        }
-        return &resp, nil
+	req := model.DeploySystemRequest{Source: source, Namespace: namespace}
+	var resp model.DeploySystemResponse
+	path := fmt.Sprintf("/api/v1/namespaces/%s/systems", namespace)
+	if err := c.post(ctx, path, req, &resp); err != nil {
+		if apiErr, ok := err.(*APIError); ok && apiErr.StatusCode == 400 {
+			var failure model.DeploySystemFailure
+			if jsonErr := unmarshalBody(apiErr, &failure); jsonErr == nil && len(failure.Errors) > 0 {
+				return nil, &DeployFailureError{Failure: failure}
+			}
+		}
+		return nil, err
+	}
+	return &resp, nil
 }
 
-// ListSystems returns all deployed systems in the given namespace.
-// If namespace is empty, returns systems across ALL namespaces (admin).
+// ListSystems returns all systems in a namespace.
 func (c *Client) ListSystems(ctx context.Context, namespace string) ([]model.SystemSummary, error) {
-        var out []model.SystemSummary
-        if err := c.get(ctx, "/systems"+buildQuery("namespace", namespace), &out); err != nil {
-                return nil, err
-        }
-        return out, nil
+	var out []model.SystemSummary
+	path := fmt.Sprintf("/api/v1/namespaces/%s/systems", namespace)
+	if err := c.get(ctx, path, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
-// GetSystem returns the detailed state of a single system.
+// GetSystem returns details of a single system.
 func (c *Client) GetSystem(ctx context.Context, name, namespace string) (*model.SystemDetail, error) {
-        if namespace == "" {
-                return nil, fmt.Errorf("namespace is required")
-        }
-        var out model.SystemDetail
-        path := fmt.Sprintf("/systems/%s%s", name, buildQuery("namespace", namespace))
-        if err := c.get(ctx, path, &out); err != nil {
-                return nil, err
-        }
-        return &out, nil
+	var out model.SystemDetail
+	path := fmt.Sprintf("/api/v1/namespaces/%s/systems/%s", namespace, name)
+	if err := c.get(ctx, path, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
-// GetSystemSource returns the original .quark.ts source of a system.
-// The returned string is the raw TypeScript text.
+// GetSystemSource returns the raw .quark.ts source.
 func (c *Client) GetSystemSource(ctx context.Context, name, namespace string) (string, error) {
-        if namespace == "" {
-                return "", fmt.Errorf("namespace is required")
-        }
-        // This endpoint returns text/plain, not JSON. Use a raw HTTP call.
-        req, err := newGetRequest(ctx, c.baseURL+fmt.Sprintf("/systems/%s/source", name)+buildQuery("namespace", namespace))
-        if err != nil {
-                return "", err
-        }
-        resp, err := c.http.Do(req)
-        if err != nil {
-                return "", err
-        }
-        defer resp.Body.Close()
-        body, _ := ioReadAll(resp.Body)
-        if resp.StatusCode >= 400 {
-                return "", &APIError{StatusCode: resp.StatusCode, Response: ErrorResponse{
-                        Code: "HTTP_ERROR", Message: fmt.Sprintf("server returned %d", resp.StatusCode),
-                }}
-        }
-        return string(body), nil
+	req, err := newGetRequest(ctx, c.baseURL+fmt.Sprintf("/api/v1/namespaces/%s/systems/%s/source", namespace, name))
+	if err != nil {
+		return "", err
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, _ := ioReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		return "", &APIError{StatusCode: resp.StatusCode, Response: ErrorResponse{
+			Code: "HTTP_ERROR", Message: fmt.Sprintf("server returned %d", resp.StatusCode),
+		}}
+	}
+	return string(body), nil
 }
 
-// DeleteSystem undeploys a system. Idempotent.
+// DeleteSystem undeploys a system.
 func (c *Client) DeleteSystem(ctx context.Context, name, namespace string) error {
-        if namespace == "" {
-                return fmt.Errorf("namespace is required")
-        }
-        path := fmt.Sprintf("/systems/%s%s", name, buildQuery("namespace", namespace))
-        return c.delete(ctx, path)
+	path := fmt.Sprintf("/api/v1/namespaces/%s/systems/%s", namespace, name)
+	return c.delete(ctx, path)
 }
 
-// ApplySystem sends a declarative apply request (PUT /systems/{name}).
+// ApplySystem sends a declarative apply request.
 func (c *Client) ApplySystem(ctx context.Context, name, source, namespace string) (*model.ApplyResult, error) {
-        req := model.DeploySystemRequest{Source: source, Namespace: namespace}
-        var resp model.ApplyResult
-        path := fmt.Sprintf("/systems/%s%s", name, buildQuery("namespace", namespace))
-        if err := c.do(ctx, http.MethodPut, path, req, &resp); err != nil {
-                return nil, err
-        }
-        return &resp, nil
+	req := model.DeploySystemRequest{Source: source, Namespace: namespace}
+	var resp model.ApplyResult
+	path := fmt.Sprintf("/api/v1/namespaces/%s/systems/%s", namespace, name)
+	if err := c.do(ctx, http.MethodPut, path, req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
 }
 
-// DeployFailureError is returned by DeploySystem when the server rejects
-// the source with validation errors (HTTP 400).
+// ListNodes returns all nodes in a system (or all nodes in a namespace if system is empty).
+func (c *Client) ListNodes(ctx context.Context, namespace, system string) ([]model.NodeSummary, error) {
+	var out []model.NodeSummary
+	path := fmt.Sprintf("/api/v1/namespaces/%s/systems/%s/nodes", namespace, system)
+	if err := c.get(ctx, path, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// GetNode returns details of a single node.
+func (c *Client) GetNode(ctx context.Context, name, namespace, system string) (*model.NodeDetail, error) {
+	var out model.NodeDetail
+	path := fmt.Sprintf("/api/v1/namespaces/%s/systems/%s/nodes/%s", namespace, system, name)
+	if err := c.get(ctx, path, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// NodeLifecycle performs a lifecycle operation on a node.
+func (c *Client) NodeLifecycle(ctx context.Context, action, name, namespace, system string) error {
+	path := fmt.Sprintf("/api/v1/namespaces/%s/systems/%s/nodes/%s/%s", namespace, system, name, action)
+	return c.post(ctx, path, nil, nil)
+}
+
+// ListEvents queries events in a namespace.
+func (c *Client) ListEvents(ctx context.Context, namespace, system, node, kinds, since, until string, limit int, all bool) ([]model.Event, error) {
+	limitStr := ""
+	if limit > 0 {
+		limitStr = fmt.Sprintf("%d", limit)
+	}
+	allStr := ""
+	if all {
+		allStr = "true"
+	}
+	path := fmt.Sprintf("/api/v1/namespaces/%s/events", namespace) + buildQuery(
+		"system", system, "node", node, "kinds", kinds,
+		"since", since, "until", until, "limit", limitStr, "all", allStr)
+	var out []model.Event
+	if err := c.get(ctx, path, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// ListRegistry returns all registered node implementations.
+func (c *Client) ListRegistry(ctx context.Context, category, query string) ([]model.RegistryEntry, error) {
+	var out []model.RegistryEntry
+	path := "/api/v1/registry" + buildQuery("category", category, "q", query)
+	if err := c.get(ctx, path, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// GetRegistryEntry looks up a specific implementation by URI.
+func (c *Client) GetRegistryEntry(ctx context.Context, uri string) (*model.RegistryEntry, error) {
+	var out model.RegistryEntry
+	path := fmt.Sprintf("/api/v1/registry/%s", uri)
+	if err := c.get(ctx, path, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// DeployFailureError is returned by DeploySystem when the server rejects the source.
 type DeployFailureError struct {
-        Failure model.DeploySystemFailure
+	Failure model.DeploySystemFailure
 }
 
 func (e *DeployFailureError) Error() string {
-        return e.Failure.Message
+	return e.Failure.Message
 }
 
-// unmarshalBody attempts to extract the raw body from an *APIError and
-// unmarshal it into out. This is used for endpoints that return non-error
-// bodies on 4xx (like deploy failures).
 func unmarshalBody(apiErr *APIError, out interface{}) error {
-        if len(apiErr.Body) > 0 {
-                // Fast path: we have the raw bytes from the server — unmarshal directly.
-                return jsonUnmarshal(apiErr.Body, out)
-        }
-        // Fallback: marshal the ErrorResponse back to JSON, then unmarshal into out.
-        bs, err := jsonMarshal(apiErr.Response)
-        if err != nil {
-                return err
-        }
-        return jsonUnmarshal(bs, out)
+	if len(apiErr.Body) > 0 {
+		return jsonUnmarshal(apiErr.Body, out)
+	}
+	bs, err := jsonMarshal(apiErr.Response)
+	if err != nil {
+		return err
+	}
+	return jsonUnmarshal(bs, out)
 }

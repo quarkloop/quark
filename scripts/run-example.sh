@@ -104,7 +104,7 @@ for i in $(seq 1 30); do
     sleep 1
 done
 
-if ! curl -sf http://localhost:8080/health >/dev/null 2>&1; then
+if ! curl -sf http://localhost:8080/health/live >/dev/null 2>&1; then
     echo "❌ Server did not become ready in 30s. Server log:" >&2
     cat /tmp/quark-server.log >&2
     exit 1
@@ -112,7 +112,7 @@ fi
 
 # ---- Deploy the example ----------------------------------------------------
 echo "▶ Deploying example under namespace 'alice'..."
-./$CLI_BIN system deploy -f example/simple-streaming/system.quark.ts -n alice
+./$CLI_BIN apply -f example/simple-streaming/system.quark.ts -n alice
 
 # ---- Observe ---------------------------------------------------------------
 echo ""
@@ -121,16 +121,20 @@ sleep "$DURATION"
 
 # ---- Print results ---------------------------------------------------------
 echo ""
+echo "──────────────────────────── NAMESPACES ────────────────────────────"
+./$CLI_BIN get namespaces
+
+echo ""
 echo "──────────────────────────── SYSTEMS ────────────────────────────"
-./$CLI_BIN system list -n alice
+./$CLI_BIN get systems -n alice
 
 echo ""
 echo "──────────────────────────── NODES ──────────────────────────────"
-./$CLI_BIN node list -n alice -s monitor
+./$CLI_BIN get nodes -n alice -s monitor
 
 echo ""
 echo "──────────────────────────── EVENTS (last 10) ───────────────────"
-./$CLI_BIN event list -n alice -s monitor --limit 10
+./$CLI_BIN get events -n alice -s monitor --limit 10
 
 echo ""
 echo "──────────────────────────── JSONL OUTPUT ───────────────────────"
@@ -146,7 +150,7 @@ fi
 # ---- Undeploy --------------------------------------------------------------
 echo ""
 echo "⏹ Undeploying..."
-./$CLI_BIN system delete monitor -n alice
+./$CLI_BIN delete system monitor -n alice
 
 echo ""
 echo "✓ Done."
