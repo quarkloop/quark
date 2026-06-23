@@ -17,12 +17,12 @@ import java.time.Instant;
 @Path("/api/v1/namespaces/{namespace}/events")
 @ApplicationScoped
 @Produces(MediaType.APPLICATION_JSON)
-public class EventResource {
+public class EventEndpoint {
 
     private final EventService eventService;
 
     @Inject
-    public EventResource(EventService eventService) {
+    public EventEndpoint(EventService eventService) {
         this.eventService = eventService;
     }
 

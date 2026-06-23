@@ -14,8 +14,8 @@ var watchSystemFlag string
 
 var watchCmd = &cobra.Command{
         Use:   "watch",
-        Short: "Watch for changes to a resource",
-        Long: `Watch for changes to a resource.
+        Short: "Watch for changes to a node",
+        Long: `Watch for changes to a node.
 
 Examples:
   # Watch events in a namespace

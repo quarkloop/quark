@@ -16,12 +16,12 @@ import jakarta.ws.rs.core.Response;
 @Path("/api/v1/registry")
 @ApplicationScoped
 @Produces(MediaType.APPLICATION_JSON)
-public class RegistryResource {
+public class RegistryEndpoint {
 
     private final RegistryService registryService;
 
     @Inject
-    public RegistryResource(RegistryService registryService) {
+    public RegistryEndpoint(RegistryService registryService) {
         this.registryService = registryService;
     }
 

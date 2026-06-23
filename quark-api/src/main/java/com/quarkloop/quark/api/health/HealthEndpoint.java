@@ -16,17 +16,17 @@ import java.util.Map;
  *
  * <p>These answer one question: is the binary alive and ready?
  * They do NOT know about namespaces, systems, or nodes.
- * Business-level status is on the resource itself (e.g. GET /api/v1/namespaces/{ns}
+ * Business-level status is on the node itself (e.g. GET /api/v1/namespaces/{ns}
  * returns a status field with system/node health).
  *
  * <p>Quarkus also exposes /q/health/live and /q/health/ready via SmallRye Health
- * (the PlatformLivenessCheck and StateRootHealthCheck beans). This resource
+ * (the PlatformLivenessCheck and StateRootHealthCheck beans). This node
  * provides the same information at simpler paths for operator convenience.
  */
 @Path("/health")
 @ApplicationScoped
 @Produces(MediaType.APPLICATION_JSON)
-public class HealthResource {
+public class HealthEndpoint {
 
     @GET
     @Path("/live")

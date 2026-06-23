@@ -10,7 +10,7 @@ var applyFile string
 
 var applyCmd = &cobra.Command{
 	Use:   "apply",
-	Short: "Apply a configuration to a resource by filename or stdin",
+	Short: "Apply a configuration to a node by filename or stdin",
 	Long: `Apply a .quark.ts file to the server. Creates or reconciles the system.
 
 Examples:

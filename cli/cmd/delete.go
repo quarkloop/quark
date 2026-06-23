@@ -10,8 +10,8 @@ var deleteSystemFlag string
 
 var deleteCmd = &cobra.Command{
 	Use:   "delete",
-	Short: "Delete resources by names",
-	Long: `Delete resources.
+	Short: "Delete nodes by names",
+	Long: `Delete nodes.
 
 Examples:
   # Delete a system

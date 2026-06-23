@@ -20,13 +20,13 @@ import java.util.NoSuchElementException;
 @ApplicationScoped
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
-public class NodeResource {
+public class NodeEndpoint {
 
     private final QueryService queryService;
     private final LifecycleService lifecycleService;
 
     @Inject
-    public NodeResource(QueryService queryService, LifecycleService lifecycleService) {
+    public NodeEndpoint(QueryService queryService, LifecycleService lifecycleService) {
         this.queryService = queryService;
         this.lifecycleService = lifecycleService;
     }

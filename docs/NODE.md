@@ -370,27 +370,8 @@ $QUARK_STATE_ROOT/
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/systems/deploy` | Deploy a system from .quark.ts |
-| GET | `/systems?namespace=` | List systems in a namespace |
-| GET | `/systems/{name}?namespace=` | System details with node states |
-| GET | `/systems/{name}/source?namespace=` | Get original .quark.ts source |
-| DELETE | `/systems/{name}?namespace=` | Undeploy a system |
-| GET | `/nodes?namespace=&system=` | List nodes |
-| GET | `/nodes/{name}?namespace=&system=` | Node details |
-| POST | `/nodes/{name}/pause?namespace=&system=` | Pause a node |
-| POST | `/nodes/{name}/resume?namespace=&system=` | Resume a node |
-| POST | `/nodes/{name}/drain?namespace=&system=` | Drain a node |
-| POST | `/nodes/{name}/archive?namespace=&system=` | Archive a node |
-| POST | `/nodes/{name}/recover?namespace=&system=` | Recover a node |
-| POST | `/nodes/{name}/delete?namespace=&system=` | Delete a node |
 | GET | `/registry` | List registered implementations |
-| GET | `/registry/{uri}` | Look up implementation by URI |
-| GET | `/events?namespace=` | Query events |
-| GET | `/events/count?namespace=` | Count events |
 | GET | `/health` | Platform health |
-| GET | `/health/namespaces/{ns}` | Per-namespace health |
-| GET | `/health/systems/{name}?namespace=` | Per-system health |
-| GET | `/health/nodes/{name}?namespace=&system=` | Per-node health |
 
 ---
 
@@ -398,23 +379,23 @@ $QUARK_STATE_ROOT/
 
 ```bash
 # Deploy a .quark.ts file
-quarkctl system deploy -f monitor.quark.ts -n alice
+quarkctl apply -f monitor.quark.ts -n alice
 
 # List systems
-quarkctl system list -n alice
+quarkctl get systems -n alice
 
 # Get system details
-quarkctl system get monitor -n alice
+quarkctl get system monitor -n alice
 
 # List nodes
-quarkctl node list -n alice -s monitor
+quarkctl get nodes -n alice -s monitor
 
 # Pause a node
 quarkctl node pause cpu -n alice -s monitor
 
 # Watch events
-quarkctl event watch -n alice -s monitor
+quarkctl watch events -n alice -s monitor
 
 # Get JSON output
-quarkctl system get monitor -n alice --json
+quarkctl get system monitor -n alice --json
 ```

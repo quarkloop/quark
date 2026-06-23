@@ -95,7 +95,7 @@ NATS subjects encode the namespace: `monitor.alice.*` vs `monitor.bob.*`. Isolat
 
 ## Common pitfalls
 
-0. **Never create standalone runners or require users to write Java code.** The `.quark.ts` file IS the program. Users deploy via CLI (`quarkctl system deploy -f file.quark.ts`). The server is the interpreter.
+0. **Never create standalone runners or require users to write Java code.** The `.quark.ts` file IS the program. Users deploy via CLI (`quarkctl apply -f file.quark.ts -n alice`). The server is the interpreter.
 
 1. **Never add cross-namespace methods.** All lookups require a `Namespace` parameter.
 

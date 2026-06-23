@@ -21,12 +21,12 @@ import java.util.stream.Collectors;
 @Path("/api/v1/namespaces")
 @ApplicationScoped
 @Produces(MediaType.APPLICATION_JSON)
-public class NamespaceResource {
+public class NamespaceEndpoint {
 
     private final RuntimeContext runtimeContext;
 
     @Inject
-    public NamespaceResource(RuntimeContext runtimeContext) {
+    public NamespaceEndpoint(RuntimeContext runtimeContext) {
         this.runtimeContext = runtimeContext;
     }
 

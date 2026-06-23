@@ -26,7 +26,7 @@ import java.util.List;
 @ApplicationScoped
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
-public class SystemResource {
+public class SystemEndpoint {
 
     private final DeployService deployService;
     private final ApplyService applyService;
@@ -34,7 +34,7 @@ public class SystemResource {
     private final SourceService sourceService;
 
     @Inject
-    public SystemResource(DeployService deployService, ApplyService applyService,
+    public SystemEndpoint(DeployService deployService, ApplyService applyService,
                           QueryService queryService, SourceService sourceService) {
         this.deployService = deployService;
         this.applyService = applyService;

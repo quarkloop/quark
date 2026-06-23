@@ -10,8 +10,8 @@ var describeSystemFlag string
 
 var describeCmd = &cobra.Command{
         Use:   "describe",
-        Short: "Show details of a specific resource or group of resources",
-        Long: `Show details of a specific resource.
+        Short: "Show details of a specific node or group of nodes",
+        Long: `Show details of a specific node.
 
 Examples:
   # Describe a system

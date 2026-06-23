@@ -88,7 +88,7 @@ The TypeScript file IS the program. Alice never touches Java code.
 ## 3. Alice deploys
 
 ```bash
-quarkctl system deploy -f access-log-processor.quark.ts -n alice-team
+quarkctl apply -f access-log-processor.quark.ts -n alice-team
 ```
 
 Output:
@@ -115,10 +115,10 @@ Behind the scenes:
 ## 4. Alice monitors
 
 ```bash
-quarkctl system list -n alice-team
-quarkctl node list -n alice-team -s access-log-processor
-quarkctl event watch -n alice-team -s access-log-processor
-quarkctl health node classify-severity -n alice-team -s access-log-processor
+quarkctl get systems -n alice-team
+quarkctl get nodes -n alice-team -s access-log-processor
+quarkctl watch events -n alice-team -s access-log-processor
+quarkctl describe node classify-severity -n alice-team -s access-log-processor
 ```
 
 ---
@@ -140,7 +140,7 @@ quarkctl node resume enrich-geo -n alice-team -s access-log-processor
 ## 6. Bob's team deploys the same thing — completely isolated
 
 ```bash
-quarkctl system deploy -f access-log-processor.quark.ts -n bob-team
+quarkctl apply -f access-log-processor.quark.ts -n bob-team
 ```
 
 Bob gets his own NATS subjects: `access-log-processor.bob-team.*`. Alice and Bob are fully isolated — different JetStream streams, different consumers, different subjects.
@@ -152,7 +152,7 @@ Bob gets his own NATS subjects: `access-log-processor.bob-team.*`. Alice and Bob
 Alice edits her TypeScript file to add a policy node and redeploys:
 
 ```bash
-quarkctl system deploy -f access-log-processor.quark.ts -n alice-team
+quarkctl apply -f access-log-processor.quark.ts -n alice-team
 ```
 
 The server undeploys the old system and deploys the new one. NATS stream is recreated.
@@ -162,7 +162,7 @@ The server undeploys the old system and deploys the new one. NATS stream is recr
 ## 8. An AI agent monitors for Alice
 
 ```bash
-quarkctl health system access-log-processor -n alice-team --json
+quarkctl get system access-log-processor -n alice-team --json
 ```
 
 ```json
@@ -184,7 +184,7 @@ quarkctl health system access-log-processor -n alice-team --json
 ## 9. Alice undeploys
 
 ```bash
-quarkctl system delete access-log-processor -n alice-team
+quarkctl delete system access-log-processor -n alice-team
 ```
 
 Server stops all consumers, removes NATS stream, deletes persistent state. Clean.
@@ -197,8 +197,8 @@ Server stops all consumers, removes NATS stream, deletes persistent state. Clean
 |---------|-----------|-------|
 | The program | `deployment.yaml` | `.quark.ts` |
 | What the user writes | YAML only | TypeScript only |
-| What the user runs | `quarkctl apply -f` | `quarkctl system deploy -f` |
-| What the user monitors | `quarkctl get systems` | `quarkctl node list` |
+| What the user runs | `quarkctl apply -f` | `quarkctl apply -f` |
+| What the user monitors | `quarkctl get systems` | `quarkctl get nodes` |
 | Communication | Kubernetes Services + networking | NATS JetStream subjects |
 | Multi-tenancy | namespaces | namespaces |
 | AI agent integration | `quarkctl ... --json` | `quarkctl ... --json` |

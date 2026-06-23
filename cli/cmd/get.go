@@ -4,12 +4,12 @@ import (
         "github.com/spf13/cobra"
 )
 
-// getCmd is the main "get" command (for listing resources).
+// getCmd is the main "get" command (for listing nodes).
 // Subcommands: namespaces, systems, system, nodes, node, events, registry
 var getCmd = &cobra.Command{
         Use:   "get",
-        Short: "Display one or many resources",
-        Long: `Display one or many resources.
+        Short: "Display one or many nodes",
+        Long: `Display one or many nodes.
 
 Examples:
   # List all namespaces
