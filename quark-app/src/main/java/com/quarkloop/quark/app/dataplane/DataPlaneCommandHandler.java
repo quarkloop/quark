@@ -1,0 +1,174 @@
+package com.quarkloop.quark.app.dataplane;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.quarkloop.quark.core.engine.dataplane.DataPlaneIpc;
+import com.quarkloop.quark.core.engine.lifecycle.SystemDeployer;
+import com.quarkloop.quark.app.deploy.DeployService;
+import com.quarkloop.quark.engine.NatsConnectionManager;
+import io.nats.client.Connection;
+import io.nats.client.Dispatcher;
+import io.nats.client.Message;
+import io.quarkus.runtime.StartupEvent;
+import jakarta.annotation.Priority;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.event.Observes;
+import jakarta.inject.Inject;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
+
+/**
+ * Data-plane command handler — runs inside each data-plane process.
+ *
+ * <p>Listens on NATS subjects for deploy/undeploy commands from the control
+ * plane and executes them locally via {@link DeployService} /
+ * {@link SystemDeployer}.
+ *
+ * <p>Subjects (scoped by runtimeId):
+ * <ul>
+ *   <li>{@code quark.control.<runtimeId>.deploy} — payload: JSON DeployCommand</li>
+ *   <li>{@code quark.control.<runtimeId>.undeploy} — payload: JSON UndeployCommand</li>
+ * </ul>
+ *
+ * <p>Responses are published on {@code quark.data.<runtimeId>.status}:
+ * <pre>
+ *   {"success":true,"systemName":"monitor","namespace":"alice"}
+ *   {"success":false,"error":"Parse failed: ...","systemName":"monitor","namespace":"alice"}
+ * </pre>
+ *
+ * <p>This bean is only active when {@code quark.mode=data}. In control-plane
+ * mode ({@code quark.mode=standalone} or default), it does nothing.
+ */
+@ApplicationScoped
+public class DataPlaneCommandHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(DataPlaneCommandHandler.class);
+
+    private final ObjectMapper mapper = new ObjectMapper();
+    { mapper.registerModule(new JavaTimeModule()); }
+
+    @ConfigProperty(name = "quark.mode", defaultValue = "standalone")
+    String mode;
+
+    @ConfigProperty(name = "quark.dataplane.runtimeId", defaultValue = "none")
+    String runtimeId;
+
+    private final DeployService deployService;
+    private final NatsConnectionManager natsConnectionManager;
+
+    @Inject
+    public DataPlaneCommandHandler(DeployService deployService,
+                                    NatsConnectionManager natsConnectionManager) {
+        this.deployService = deployService;
+        this.natsConnectionManager = natsConnectionManager;
+    }
+
+    /**
+     * On startup, if running in data-plane mode, subscribe to the
+     * deploy/undeploy subjects for this process's runtimeId.
+     *
+     * <p>Runs at priority 20 (after the control plane's ProcessManager at
+     * priority 2, and after DeployService recovery at priority 10) so that
+     * recovery completes before the data-plane starts accepting commands.
+     */
+    void onStart(@Observes @Priority(20) StartupEvent event) {
+        if (!"data".equals(mode)) {
+            log.debug("DataPlaneCommandHandler inactive (mode={}, not data)", mode);
+            return;
+        }
+        if (runtimeId == null || runtimeId.isBlank()) {
+            log.error("Data-plane mode active but quark.dataplane.runtimeId is not set");
+            return;
+        }
+
+        log.info("Data-plane command handler starting (runtimeId={})", runtimeId);
+
+        String deploySubject = DataPlaneIpc.deploySubject(runtimeId);
+        String undeploySubject = DataPlaneIpc.undeploySubject(runtimeId);
+
+        Connection conn = natsConnectionManager.getConnection();
+        Dispatcher dispatcher = conn.createDispatcher(this::handleMessage);
+        dispatcher.subscribe(deploySubject);
+        dispatcher.subscribe(undeploySubject);
+        log.info("Subscribed to {} and {}", deploySubject, undeploySubject);
+    }
+
+    /**
+     * NATS message handler — routes to deploy or undeploy based on the subject.
+     */
+    private void handleMessage(Message natsMsg) {
+        String subject = natsMsg.getSubject();
+        String body = new String(natsMsg.getData(), StandardCharsets.UTF_8);
+        String replyTo = natsMsg.getReplyTo();
+
+        try {
+            if (subject.endsWith(".deploy")) {
+                handleDeploy(body, replyTo);
+            } else if (subject.endsWith(".undeploy")) {
+                handleUndeploy(body, replyTo);
+            } else {
+                log.warn("Unknown command subject: {}", subject);
+            }
+        } catch (Exception e) {
+            log.error("Error handling command on {}", subject, e);
+            publishStatus(replyTo, false, null, null, e.getMessage());
+        }
+    }
+
+    /**
+     * Handle a deploy command.
+     * Payload: {"namespace":"alice","systemName":"monitor","source":"export default {...}"}
+     */
+    private void handleDeploy(String body, String replyTo) throws Exception {
+        DeployService.DeployCommand cmd = mapper.readValue(body, DeployService.DeployCommand.class);
+        log.info("Received deploy command for {}/{}", cmd.namespace(), cmd.systemName());
+        try {
+            deployService.deploy(cmd.source(), cmd.namespace());
+            publishStatus(replyTo, true, cmd.systemName(), cmd.namespace(), null);
+            log.info("Deploy succeeded for {}/{}", cmd.namespace(), cmd.systemName());
+        } catch (Exception e) {
+            publishStatus(replyTo, false, cmd.systemName(), cmd.namespace(), e.getMessage());
+            log.error("Deploy failed for {}/{}", cmd.namespace(), cmd.systemName(), e);
+        }
+    }
+
+    /**
+     * Handle an undeploy command.
+     * Payload: {"namespace":"alice","systemName":"monitor"}
+     */
+    private void handleUndeploy(String body, String replyTo) throws Exception {
+        DeployService.UndeployCommand cmd = mapper.readValue(body, DeployService.UndeployCommand.class);
+        log.info("Received undeploy command for {}/{}", cmd.namespace(), cmd.systemName());
+        try {
+            deployService.undeploy(cmd.namespace(), cmd.systemName());
+            publishStatus(replyTo, true, cmd.systemName(), cmd.namespace(), null);
+            log.info("Undeploy succeeded for {}/{}", cmd.namespace(), cmd.systemName());
+        } catch (Exception e) {
+            publishStatus(replyTo, false, cmd.systemName(), cmd.namespace(), e.getMessage());
+            log.error("Undeploy failed for {}/{}", cmd.namespace(), cmd.systemName(), e);
+        }
+    }
+
+    /**
+     * Publish a status response on the reply-to subject (or the default
+     * status subject if no reply-to was provided).
+     */
+    private void publishStatus(String replyTo, boolean success,
+                                String systemName, String namespace, String error) {
+        try {
+            DeployService.StatusResponse resp = new DeployService.StatusResponse(
+                    success, systemName, namespace, error);
+            byte[] data = mapper.writeValueAsBytes(resp);
+            String subject = replyTo != null && !replyTo.isBlank()
+                    ? replyTo
+                    : DataPlaneIpc.statusSubject(runtimeId);
+            natsConnectionManager.getConnection().publish(subject, data);
+        } catch (Exception e) {
+            log.error("Failed to publish status response", e);
+        }
+    }
+}

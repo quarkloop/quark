@@ -35,10 +35,24 @@ public class DuckDBStore implements SystemRepository, NodeRepository, EventRepos
     @ConfigProperty(name = "quark.state.root", defaultValue = "./quark-state")
     String stateRootPath;
 
+    @ConfigProperty(name = "quark.mode", defaultValue = "standalone")
+    String mode;
+
+    @ConfigProperty(name = "quark.dataplane.runtimeId", defaultValue = "none")
+    String runtimeId;
+
     private Connection connection;
 
     @PostConstruct
     void init() {
+        // In data-plane mode, DuckDB is not needed — the control plane
+        // handles all persistence. Skip initialization to avoid opening
+        // a second connection to the same quark.db file (which would
+        // conflict with the control plane's DuckDB connection).
+        if ("data".equals(mode)) {
+            log.info("DuckDBStore skipped in data-plane mode (runtimeId={})", runtimeId);
+            return;
+        }
         try {
             Path dbDir = Paths.get(stateRootPath).toAbsolutePath().normalize();
             Files.createDirectories(dbDir);
@@ -70,6 +84,15 @@ public class DuckDBStore implements SystemRepository, NodeRepository, EventRepos
             try { connection.close(); log.info("DuckDB connection closed"); }
             catch (SQLException e) { log.warn("Failed to close DuckDB connection", e); }
         }
+    }
+
+    /**
+     * Check whether this store is active (has a DuckDB connection).
+     * In data-plane mode, the store is inactive — all methods return
+     * empty/no-op results.
+     */
+    private boolean isActive() {
+        return connection != null;
     }
 
     private void createSchema() throws SQLException {
@@ -315,6 +338,7 @@ public class DuckDBStore implements SystemRepository, NodeRepository, EventRepos
 
     // --- SystemRepository ---
     @Override public void save(SystemRecord system) {
+        if (!isActive()) return;
         try (PreparedStatement ps = connection.prepareStatement(
                 "INSERT OR REPLACE INTO systems (namespace, name, source, state, health, version, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)")) {
             ps.setString(1, system.namespace()); ps.setString(2, system.name()); ps.setString(3, system.source());
@@ -325,6 +349,7 @@ public class DuckDBStore implements SystemRepository, NodeRepository, EventRepos
     }
 
     @Override public Optional<SystemRecord> findByNamespaceAndName(String namespace, String name) {
+        if (!isActive()) return Optional.empty();
         try (PreparedStatement ps = connection.prepareStatement("SELECT * FROM systems WHERE namespace=? AND name=?")) {
             ps.setString(1, namespace); ps.setString(2, name);
             try (ResultSet rs = ps.executeQuery()) { if (rs.next()) return Optional.of(mapSystem(rs)); }
@@ -333,6 +358,7 @@ public class DuckDBStore implements SystemRepository, NodeRepository, EventRepos
     }
 
     @Override public List<SystemRecord> findByNamespace(String namespace) {
+        if (!isActive()) return List.of();
         List<SystemRecord> out = new ArrayList<>();
         try (PreparedStatement ps = connection.prepareStatement("SELECT * FROM systems WHERE namespace=? ORDER BY name")) {
             ps.setString(1, namespace);
@@ -342,6 +368,7 @@ public class DuckDBStore implements SystemRepository, NodeRepository, EventRepos
     }
 
     @Override public List<SystemRecord> findAllSystems() {
+        if (!isActive()) return List.of();
         List<SystemRecord> out = new ArrayList<>();
         try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT * FROM systems ORDER BY namespace, name")) {
             while (rs.next()) out.add(mapSystem(rs));
@@ -428,12 +455,14 @@ public class DuckDBStore implements SystemRepository, NodeRepository, EventRepos
 
     // --- EventRepository (extends EventStore) ---
     @Override public void append(NodeEvent event) {
+        if (!isActive()) return; // no-op in data-plane mode
         try (PreparedStatement ps = connection.prepareStatement("INSERT INTO events (id, kind, node_name, system_name, namespace, timestamp, payload) VALUES (?,?,?,?,?,?,?)")) {
             setEventParams(ps, event); ps.executeUpdate();
         } catch (SQLException e) { log.error("Failed to append event {}", event.id(), e); }
     }
 
     @Override public void appendAll(List<NodeEvent> events) {
+        if (!isActive()) return; // no-op in data-plane mode
         if (events.isEmpty()) return;
         try (PreparedStatement ps = connection.prepareStatement("INSERT INTO events (id, kind, node_name, system_name, namespace, timestamp, payload) VALUES (?,?,?,?,?,?,?)")) {
             for (NodeEvent event : events) { setEventParams(ps, event); ps.addBatch(); }

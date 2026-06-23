@@ -16,20 +16,28 @@ import jakarta.inject.Inject;
 /**
  * Quarkus application entry point.
  *
- * <p>Quarkus auto-discovers this via the {@code quarkus-maven-plugin} (it scans
- * for classes implementing {@link QuarkusApplication}). We use it for clean
- * startup/shutdown hooks:
- *
+ * <p>Supports two modes controlled by the {@code quark.mode} config property:
  * <ul>
- *   <li><b>Startup</b>: log the active state root, port, and version so
- *       operators can verify the configuration at a glance.</li>
- *   <li><b>Shutdown</b>: gracefully shut down the {@link SystemDeployer}'s
- *       virtual-thread executor so in-flight system executions don't get
- *       killed mid-chain.</li>
+ *   <li><b>standalone</b> (default) — the control plane. Runs the REST API,
+ *       DuckDB persistence, and the {@link ProcessManager} that spawns
+ *       data-plane processes for system execution.</li>
+ *   <li><b>data</b> — a data-plane process. Connects to NATS, subscribes to
+ *       deploy/undeploy command subjects (scoped by {@code runtimeId}), and
+ *       executes systems locally via {@link SystemDeployer}. The REST API
+ *       is disabled (no Swagger, no OpenAPI) — the HTTP server is used only
+ *       for health checks on a high port.</li>
  * </ul>
  *
- * <p>Run with: {@code java -jar quark-server/target/quarkus-app/quarkus-run.jar}
- * (in production) or {@code ./mvnw quarkus:dev} (in dev with hot reload).
+ * <p>Run as control plane:
+ * <pre>
+ *   java -jar quark-server/target/quark-server-0.1.0-SNAPSHOT-runner.jar
+ * </pre>
+ *
+ * <p>Run as data-plane process (spawned automatically by ProcessManager):
+ * <pre>
+ *   java -Dquark.mode=data -Dquark.dataplane.runtimeId=shared \
+ *        -jar quark-server/target/quark-server-0.1.0-SNAPSHOT-runner.jar
+ * </pre>
  */
 @ApplicationScoped
 public class QuarkServer implements QuarkusApplication {
@@ -45,26 +53,46 @@ public class QuarkServer implements QuarkusApplication {
     @ConfigProperty(name = "quark.version", defaultValue = "0.1.0-SNAPSHOT")
     String version;
 
+    @ConfigProperty(name = "quark.mode", defaultValue = "standalone")
+    String mode;
+
+    @ConfigProperty(name = "quark.dataplane.runtimeId", defaultValue = "")
+    String runtimeId;
+
     @Inject
     SystemDeployer systemDeployer;
 
     void onStart(@Observes StartupEvent event) {
-        log.infof("=== Quark Platform v%s starting ===", version);
-        log.infof("HTTP port: %d", httpPort);
-        log.infof("State root: %s", stateRoot);
-        log.infof("Swagger UI: http://localhost:%d/swagger-ui", httpPort);
-        log.infof("OpenAPI:     http://localhost:%d/openapi", httpPort);
-        log.infof("REST API:    http://localhost:%d/systems", httpPort);
+        if ("data".equals(mode)) {
+            log.infof("=== Quark Data-Plane v%s starting (runtimeId=%s) ===", version, runtimeId);
+            log.infof("HTTP port: %d (health-only)", httpPort);
+            log.infof("State root: %s", stateRoot);
+        } else {
+            log.infof("=== Quark Platform v%s starting (control plane) ===", version);
+            log.infof("HTTP port: %d", httpPort);
+            log.infof("State root: %s", stateRoot);
+            log.infof("Swagger UI: http://localhost:%d/swagger-ui", httpPort);
+            log.infof("OpenAPI:     http://localhost:%d/openapi", httpPort);
+            log.infof("REST API:    http://localhost:%d/systems", httpPort);
+        }
     }
 
     void onStop(@Observes ShutdownEvent event) {
-        log.info("=== Quark Platform shutting down ===");
+        if ("data".equals(mode)) {
+            log.infof("=== Quark Data-Plane %s shutting down ===", runtimeId);
+        } else {
+            log.info("=== Quark Platform shutting down ===");
+        }
         try {
             systemDeployer.undeployAll();
         } catch (Exception e) {
             log.warn("Error during SystemDeployer shutdown", e);
         }
-        log.info("=== Quark Platform stopped ===");
+        if ("data".equals(mode)) {
+            log.infof("=== Quark Data-Plane %s stopped ===", runtimeId);
+        } else {
+            log.info("=== Quark Platform stopped ===");
+        }
     }
 
     @Override

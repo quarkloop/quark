@@ -8,6 +8,10 @@ import com.quarkloop.quark.core.domain.system.NodeDefinition;
 import com.quarkloop.quark.core.engine.lifecycle.RuntimeNode;
 import com.quarkloop.quark.core.engine.lifecycle.RuntimeSystem;
 import com.quarkloop.quark.core.engine.runtime.RuntimeContext;
+import com.quarkloop.quark.core.engine.store.SystemRecord;
+import com.quarkloop.quark.core.engine.store.SystemRepository;
+import com.quarkloop.quark.core.engine.store.NodeRepository;
+import com.quarkloop.quark.core.engine.store.NodeRecord;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
@@ -19,52 +23,112 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Read-only queries over the runtime registry.
+ * Read-only queries over the runtime registry and persistent store.
+ *
+ * <p>In control-plane mode, system/node listings are read from the DuckDB
+ * persistent store (the control plane's RuntimeContext is empty because
+ * systems execute in data-plane processes). In data-plane mode, listings
+ * are read from the in-memory RuntimeContext (the actual runtime).
  *
  * <p>All methods are scoped to a single namespace — cross-namespace
- * enumeration is intentionally NOT supported here. The REST layer must
- * supply the namespace on every call.
+ * enumeration is intentionally NOT supported here.
  */
 @ApplicationScoped
 public class QueryService {
 
     private final RuntimeContext runtimeContext;
+    private final SystemRepository systemRepository;
+    private final NodeRepository nodeRepository;
 
     @Inject
-    public QueryService(RuntimeContext runtimeContext) {
+    public QueryService(RuntimeContext runtimeContext,
+                        SystemRepository systemRepository,
+                        NodeRepository nodeRepository) {
         this.runtimeContext = runtimeContext;
+        this.systemRepository = systemRepository;
+        this.nodeRepository = nodeRepository;
     }
 
     public List<SystemSummary> listSystems(String namespace) {
-        Namespace ns = Namespace.of(namespace);
+        // Try the in-memory runtime first (data-plane mode). If empty,
+        // fall back to the persistent store (control-plane mode).
+        List<RuntimeSystem> runtime = runtimeContext.getSystemsByNamespace(Namespace.of(namespace));
+        if (!runtime.isEmpty()) {
+            List<SystemSummary> out = new ArrayList<>();
+            for (RuntimeSystem rs : runtime) {
+                out.add(toSummary(rs));
+            }
+            out.sort(Comparator.comparing(SystemSummary::name));
+            return out;
+        }
+        // Control-plane mode: read from DuckDB
         List<SystemSummary> out = new ArrayList<>();
-        for (RuntimeSystem rs : runtimeContext.getSystemsByNamespace(ns)) {
-            out.add(toSummary(rs));
+        for (SystemRecord sr : systemRepository.findByNamespace(namespace)) {
+            int nodeCount = nodeRepository.findBySystem(namespace, sr.name()).size();
+            out.add(new SystemSummary(
+                    sr.name(), sr.namespace(), nodeCount,
+                    sr.state(), sr.health(), nodeCount, 0, 0, nodeCount));
         }
         out.sort(Comparator.comparing(SystemSummary::name));
         return out;
     }
 
     public Optional<SystemDetail> getSystem(String namespace, String systemName) {
-        return runtimeContext.getSystem(Namespace.of(namespace), systemName)
-                .map(this::toDetail);
+        // Try in-memory first (data-plane mode)
+        Optional<RuntimeSystem> runtime = runtimeContext.getSystem(Namespace.of(namespace), systemName);
+        if (runtime.isPresent()) {
+            return runtime.map(this::toDetail);
+        }
+        // Control-plane mode: read from DuckDB
+        return systemRepository.findByNamespaceAndName(namespace, systemName)
+                .map(sr -> {
+                    List<NodeSummary> nodes = listNodes(namespace, systemName);
+                    return new SystemDetail(
+                            sr.name(), sr.namespace(), sr.state(), sr.health(),
+                            sr.version(), sr.createdAt().toString(), sr.updatedAt().toString(),
+                            nodes);
+                });
     }
 
     public List<NodeSummary> listNodes(String namespace, String systemName) {
-        return runtimeContext.getSystem(Namespace.of(namespace), systemName)
-                .map(rs -> rs.nodes().stream()
-                        .map(rn -> toNodeSummary(rs, rn))
-                        .sorted(Comparator.comparing(NodeSummary::name))
-                        .toList())
-                .orElse(List.of());
+        // Try in-memory first (data-plane mode)
+        Optional<RuntimeSystem> runtime = runtimeContext.getSystem(Namespace.of(namespace), systemName);
+        if (runtime.isPresent()) {
+            return runtime.get().nodes().stream()
+                    .map(rn -> toNodeSummary(runtime.get(), rn))
+                    .sorted(Comparator.comparing(NodeSummary::name))
+                    .toList();
+        }
+        // Control-plane mode: read from DuckDB
+        List<NodeSummary> out = new ArrayList<>();
+        for (NodeRecord nr : nodeRepository.findBySystem(namespace, systemName)) {
+            out.add(new NodeSummary(
+                    nr.name(), systemName, namespace, nr.uri(), nr.category(),
+                    nr.state(), nr.health(), nr.version()));
+        }
+        out.sort(Comparator.comparing(NodeSummary::name));
+        return out;
     }
 
     public List<NodeSummary> listAllNodes(String namespace) {
-        List<NodeSummary> out = new ArrayList<>();
-        for (RuntimeSystem rs : runtimeContext.getSystemsByNamespace(Namespace.of(namespace))) {
-            for (RuntimeNode rn : rs.nodes()) {
-                out.add(toNodeSummary(rs, rn));
+        // Try in-memory first (data-plane mode)
+        List<RuntimeSystem> runtime = runtimeContext.getSystemsByNamespace(Namespace.of(namespace));
+        if (!runtime.isEmpty()) {
+            List<NodeSummary> out = new ArrayList<>();
+            for (RuntimeSystem rs : runtime) {
+                for (RuntimeNode rn : rs.nodes()) {
+                    out.add(toNodeSummary(rs, rn));
+                }
             }
+            out.sort(Comparator.comparing(NodeSummary::name));
+            return out;
+        }
+        // Control-plane mode: read from DuckDB
+        List<NodeSummary> out = new ArrayList<>();
+        for (NodeRecord nr : nodeRepository.findNodesByNamespace(namespace)) {
+            out.add(new NodeSummary(
+                    nr.name(), nr.systemName(), namespace, nr.uri(), nr.category(),
+                    nr.state(), nr.health(), nr.version()));
         }
         out.sort(Comparator.comparing(NodeSummary::name));
         return out;

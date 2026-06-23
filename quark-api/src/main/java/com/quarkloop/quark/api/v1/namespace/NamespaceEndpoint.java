@@ -2,6 +2,8 @@ package com.quarkloop.quark.api.v1.namespace;
 
 import com.quarkloop.quark.app.metrics.NamespaceMetricsCollector;
 import com.quarkloop.quark.core.engine.runtime.RuntimeContext;
+import com.quarkloop.quark.core.engine.store.SystemRecord;
+import com.quarkloop.quark.core.engine.store.SystemRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
@@ -13,7 +15,6 @@ import jakarta.ws.rs.core.Response;
 
 import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryMXBean;
-import java.lang.management.OperatingSystemMXBean;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,51 +46,104 @@ public class NamespaceEndpoint {
 
     private final RuntimeContext runtimeContext;
     private final NamespaceMetricsCollector metricsCollector;
+    private final SystemRepository systemRepository;
 
     @Inject
     public NamespaceEndpoint(RuntimeContext runtimeContext,
-                             NamespaceMetricsCollector metricsCollector) {
+                             NamespaceMetricsCollector metricsCollector,
+                             SystemRepository systemRepository) {
         this.runtimeContext = runtimeContext;
         this.metricsCollector = metricsCollector;
+        this.systemRepository = systemRepository;
     }
 
     @GET
     public Response list() {
-        List<Map<String, Object>> namespaces = runtimeContext.getAllSystems().stream()
-                .map(rs -> rs.namespace().value())
-                .distinct()
-                .sorted()
+        // In control-plane mode, RuntimeContext is empty — read from DuckDB.
+        // In data-plane mode, RuntimeContext has the live systems.
+        java.util.Set<String> namespaces = new java.util.TreeSet<>();
+        for (var rs : runtimeContext.getAllSystems()) {
+            namespaces.add(rs.namespace().value());
+        }
+        // Also include namespaces from DuckDB (control-plane mode)
+        for (SystemRecord sr : systemRepository.findAllSystems()) {
+            namespaces.add(sr.namespace());
+        }
+
+        List<Map<String, Object>> out = namespaces.stream()
                 .map(ns -> {
-                    var systems = runtimeContext.getSystemsByNamespace(ns);
-                    int totalNodes = systems.stream().mapToInt(s -> s.nodes().size()).sum();
-                    long healthy = systems.stream().flatMap(s -> s.nodes().stream())
-                            .filter(n -> n.health().name().equals("HEALTHY")).count();
-                    long unhealthy = systems.stream().flatMap(s -> s.nodes().stream())
-                            .filter(n -> n.health().name().equals("UNHEALTHY")).count();
+                    var runtimeSystems = runtimeContext.getSystemsByNamespace(ns);
+                    int systemCount, totalNodes;
+                    long healthy, unhealthy;
+                    if (!runtimeSystems.isEmpty()) {
+                        systemCount = runtimeSystems.size();
+                        totalNodes = runtimeSystems.stream().mapToInt(s -> s.nodes().size()).sum();
+                        healthy = runtimeSystems.stream().flatMap(s -> s.nodes().stream())
+                                .filter(n -> n.health().name().equals("HEALTHY")).count();
+                        unhealthy = runtimeSystems.stream().flatMap(s -> s.nodes().stream())
+                                .filter(n -> n.health().name().equals("UNHEALTHY")).count();
+                    } else {
+                        List<SystemRecord> sysRecs = systemRepository.findByNamespace(ns);
+                        systemCount = sysRecs.size();
+                        totalNodes = sysRecs.size(); // approximate
+                        healthy = sysRecs.stream().filter(s -> "HEALTHY".equals(s.health())).count();
+                        unhealthy = sysRecs.stream().filter(s -> "UNHEALTHY".equals(s.health())).count();
+                    }
                     Map<String, Object> entry = new LinkedHashMap<>();
                     entry.put("namespace", ns);
-                    entry.put("systemCount", systems.size());
+                    entry.put("systemCount", systemCount);
                     entry.put("nodeCount", totalNodes);
                     entry.put("healthyNodes", healthy);
                     entry.put("unhealthyNodes", unhealthy);
                     return entry;
                 })
                 .collect(Collectors.toList());
-        return Response.ok(namespaces).build();
+        return Response.ok(out).build();
     }
 
     @GET
     @Path("/{ns}")
     public Response get(@PathParam("ns") String namespace) {
         var systems = runtimeContext.getSystemsByNamespace(namespace);
-        if (systems.isEmpty()) {
-            return Response.status(Response.Status.NOT_FOUND).build();
+        int totalNodes;
+        long healthy, unhealthy;
+        List<SystemRecord> sysRecs;
+        List<Map<String, Object>> systemList;
+
+        if (!systems.isEmpty()) {
+            // Data-plane mode: read from RuntimeContext
+            totalNodes = systems.stream().mapToInt(s -> s.nodes().size()).sum();
+            healthy = systems.stream().flatMap(s -> s.nodes().stream())
+                    .filter(n -> n.health().name().equals("HEALTHY")).count();
+            unhealthy = systems.stream().flatMap(s -> s.nodes().stream())
+                    .filter(n -> n.health().name().equals("UNHEALTHY")).count();
+            sysRecs = List.of();
+            systemList = systems.stream().map(s -> {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("name", s.name());
+                m.put("nodeCount", s.nodes().size());
+                m.put("state", s.nodes().stream().anyMatch(n -> n.state().name().equals("ERROR")) ? "ERROR" : "ACTIVE");
+                m.put("health", s.overallHealth().name());
+                return m;
+            }).toList();
+        } else {
+            // Control-plane mode: read from DuckDB
+            sysRecs = systemRepository.findByNamespace(namespace);
+            if (sysRecs.isEmpty()) {
+                return Response.status(Response.Status.NOT_FOUND).build();
+            }
+            totalNodes = sysRecs.size(); // approximate (actual node count is in the data plane)
+            healthy = sysRecs.stream().filter(s -> "HEALTHY".equals(s.health())).count();
+            unhealthy = sysRecs.stream().filter(s -> "UNHEALTHY".equals(s.health())).count();
+            systemList = sysRecs.stream().map(s -> {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("name", s.name());
+                m.put("nodeCount", 0);
+                m.put("state", s.state());
+                m.put("health", s.health());
+                return m;
+            }).toList();
         }
-        int totalNodes = systems.stream().mapToInt(s -> s.nodes().size()).sum();
-        long healthy = systems.stream().flatMap(s -> s.nodes().stream())
-                .filter(n -> n.health().name().equals("HEALTHY")).count();
-        long unhealthy = systems.stream().flatMap(s -> s.nodes().stream())
-                .filter(n -> n.health().name().equals("UNHEALTHY")).count();
 
         // JVM-wide memory — shared across all namespaces in this JVM.
         // For shared namespaces, this is the JVM-level memory. For isolated
@@ -139,17 +193,12 @@ public class NamespaceEndpoint {
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("namespace", namespace);
-        body.put("systemCount", systems.size());
+        body.put("systemCount", !systems.isEmpty() ? systems.size() : sysRecs.size());
         body.put("nodeCount", totalNodes);
         body.put("healthyNodes", healthy);
         body.put("unhealthyNodes", unhealthy);
         body.put("metrics", metricsBody);
-        body.put("systems", systems.stream().map(s -> Map.of(
-                "name", s.name(),
-                "nodeCount", s.nodes().size(),
-                "state", s.nodes().stream().anyMatch(n -> n.state().name().equals("ERROR")) ? "ERROR" : "ACTIVE",
-                "health", s.overallHealth().name()
-        )).toList());
+        body.put("systems", systemList);
         return Response.ok(body).build();
     }
 }
