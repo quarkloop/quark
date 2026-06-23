@@ -5,14 +5,22 @@ package com.quarkloop.quark.core.engine.dataplane;
  *
  * <p>The control plane sends commands to data-plane processes on
  * namespace-scoped subjects. Data-plane processes respond with status
- * and send periodic heartbeats.
+ * and send periodic heartbeats and event forwards.
  *
- * <p>Subject layout:
+ * <p>Subject layout (NATS wildcards: {@code *} matches one token,
+ * {@code >} matches one or more tokens at the END):
  * <pre>
  *   quark.control.&lt;runtimeId&gt;.deploy      — control → data: deploy a system
  *   quark.control.&lt;runtimeId&gt;.undeploy    — control → data: undeploy a system
- *   quark.data.&lt;runtimeId&gt;.status         — data → control: deploy/undeploy result
- *   quark.data.&lt;runtimeId&gt;.heartbeat      — data → control: periodic health + metrics
+ *   quark.data.status.&lt;runtimeId&gt;         — data → control: deploy/undeploy result
+ *   quark.data.heartbeat.&lt;runtimeId&gt;      — data → control: periodic metrics
+ *   quark.data.event.&lt;runtimeId&gt;          — data → control: lifecycle event forward
+ * </pre>
+ *
+ * <p>Wildcards for control-plane subscription:
+ * <pre>
+ *   quark.data.event.>       — receive events from ALL data planes
+ *   quark.data.heartbeat.>   — receive heartbeats from ALL data planes
  * </pre>
  *
  * <p>{@code runtimeId} identifies which data-plane process should handle the
@@ -34,7 +42,7 @@ public final class DataPlaneIpc {
     /** Subject prefix for control → data commands. */
     public static final String CONTROL_PREFIX = "quark.control.";
 
-    /** Subject prefix for data → control responses. */
+    /** Subject prefix for data → control responses/events/heartbeats. */
     public static final String DATA_PREFIX = "quark.data.";
 
     /**
@@ -69,14 +77,33 @@ public final class DataPlaneIpc {
      * Payload: JSON {@code {"success":true,"error":"...","systemName":"monitor","namespace":"alice"}}
      */
     public static String statusSubject(String runtimeId) {
-        return DATA_PREFIX + runtimeId + ".status";
+        return DATA_PREFIX + "status." + runtimeId;
     }
 
     /**
-     * Data → control: periodic heartbeat.
-     * Payload: JSON {@code {"runtimeId":"shared","pid":12345,"systems":3,"nodes":18,"cpuPercent":12.5,...}}
+     * Data → control: periodic heartbeat with metrics.
+     * Payload: JSON map of namespace → Snapshot
      */
     public static String heartbeatSubject(String runtimeId) {
-        return DATA_PREFIX + runtimeId + ".heartbeat";
+        return DATA_PREFIX + "heartbeat." + runtimeId;
     }
+
+    /**
+     * Data → control: lifecycle event forwarding.
+     * Payload: JSON-serialized {@link com.quarkloop.quark.core.domain.event.NodeEvent}.
+     */
+    public static String eventSubject(String runtimeId) {
+        return DATA_PREFIX + "event." + runtimeId;
+    }
+
+    /**
+     * Wildcard subject for subscribing to events from ALL data-plane processes.
+     * NATS {@code >} matches one or more tokens at the END of the subject.
+     */
+    public static final String EVENT_WILDCARD = DATA_PREFIX + "event.>";
+
+    /**
+     * Wildcard subject for subscribing to heartbeats from ALL data-plane processes.
+     */
+    public static final String HEARTBEAT_WILDCARD = DATA_PREFIX + "heartbeat.>";
 }

@@ -2,7 +2,10 @@ package com.quarkloop.quark.app.dataplane;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.quarkloop.quark.core.domain.system.NodeDefinition;
 import com.quarkloop.quark.core.engine.dataplane.DataPlaneIpc;
+import com.quarkloop.quark.core.engine.lifecycle.RuntimeNode;
+import com.quarkloop.quark.core.engine.lifecycle.RuntimeSystem;
 import com.quarkloop.quark.core.engine.lifecycle.SystemDeployer;
 import com.quarkloop.quark.app.deploy.DeployService;
 import com.quarkloop.quark.engine.NatsConnectionManager;
@@ -19,6 +22,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -122,16 +127,38 @@ public class DataPlaneCommandHandler {
     /**
      * Handle a deploy command.
      * Payload: {"namespace":"alice","systemName":"monitor","source":"export default {...}"}
+     *
+     * <p>After deploying, extracts node info from the {@link RuntimeSystem}
+     * and includes it in the {@link DeployService.StatusResponse} so the
+     * control plane can persist {@link com.quarkloop.quark.core.engine.store.NodeRecord}s
+     * to DuckDB (the data plane cannot write to DuckDB directly due to
+     * cross-process write conflict).
      */
     private void handleDeploy(String body, String replyTo) throws Exception {
         DeployService.DeployCommand cmd = mapper.readValue(body, DeployService.DeployCommand.class);
         log.info("Received deploy command for {}/{}", cmd.namespace(), cmd.systemName());
         try {
-            deployService.deploy(cmd.source(), cmd.namespace());
-            publishStatus(replyTo, true, cmd.systemName(), cmd.namespace(), null);
-            log.info("Deploy succeeded for {}/{}", cmd.namespace(), cmd.systemName());
+            RuntimeSystem runtime = deployService.deploy(cmd.source(), cmd.namespace());
+            // Extract node info for the control plane to persist
+            List<DeployService.NodeInfo> nodeInfos = new ArrayList<>();
+            for (RuntimeNode rn : runtime.nodes()) {
+                NodeDefinition def = runtime.definition().nodes().get(rn.definition().name());
+                List<String> listens = def != null ? def.listens() : List.of();
+                List<String> events = def != null ? def.events() : List.of();
+                nodeInfos.add(new DeployService.NodeInfo(
+                        rn.definition().name(),
+                        rn.definition().uri().toString(),
+                        rn.definition().category().label(),
+                        rn.state().name(),
+                        rn.health().name(),
+                        listens,
+                        events
+                ));
+            }
+            publishDeployStatus(replyTo, true, cmd.systemName(), cmd.namespace(), null, nodeInfos);
+            log.info("Deploy succeeded for {}/{} ({} nodes reported)", cmd.namespace(), cmd.systemName(), nodeInfos.size());
         } catch (Exception e) {
-            publishStatus(replyTo, false, cmd.systemName(), cmd.namespace(), e.getMessage());
+            publishDeployStatus(replyTo, false, cmd.systemName(), cmd.namespace(), e.getMessage(), List.of());
             log.error("Deploy failed for {}/{}", cmd.namespace(), cmd.systemName(), e);
         }
     }
@@ -159,9 +186,18 @@ public class DataPlaneCommandHandler {
      */
     private void publishStatus(String replyTo, boolean success,
                                 String systemName, String namespace, String error) {
+        publishDeployStatus(replyTo, success, systemName, namespace, error, List.of());
+    }
+
+    /**
+     * Publish a deploy status response including node info.
+     */
+    private void publishDeployStatus(String replyTo, boolean success,
+                                      String systemName, String namespace,
+                                      String error, List<DeployService.NodeInfo> nodes) {
         try {
             DeployService.StatusResponse resp = new DeployService.StatusResponse(
-                    success, systemName, namespace, error);
+                    success, systemName, namespace, error, nodes);
             byte[] data = mapper.writeValueAsBytes(resp);
             String subject = replyTo != null && !replyTo.isBlank()
                     ? replyTo

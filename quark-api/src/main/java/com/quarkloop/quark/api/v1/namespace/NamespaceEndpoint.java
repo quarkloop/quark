@@ -2,6 +2,7 @@ package com.quarkloop.quark.api.v1.namespace;
 
 import com.quarkloop.quark.app.metrics.NamespaceMetricsCollector;
 import com.quarkloop.quark.core.engine.runtime.RuntimeContext;
+import com.quarkloop.quark.core.engine.store.NodeRepository;
 import com.quarkloop.quark.core.engine.store.SystemRecord;
 import com.quarkloop.quark.core.engine.store.SystemRepository;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -47,14 +48,17 @@ public class NamespaceEndpoint {
     private final RuntimeContext runtimeContext;
     private final NamespaceMetricsCollector metricsCollector;
     private final SystemRepository systemRepository;
+    private final NodeRepository nodeRepository;
 
     @Inject
     public NamespaceEndpoint(RuntimeContext runtimeContext,
                              NamespaceMetricsCollector metricsCollector,
-                             SystemRepository systemRepository) {
+                             SystemRepository systemRepository,
+                             NodeRepository nodeRepository) {
         this.runtimeContext = runtimeContext;
         this.metricsCollector = metricsCollector;
         this.systemRepository = systemRepository;
+        this.nodeRepository = nodeRepository;
     }
 
     @GET
@@ -85,9 +89,12 @@ public class NamespaceEndpoint {
                     } else {
                         List<SystemRecord> sysRecs = systemRepository.findByNamespace(ns);
                         systemCount = sysRecs.size();
-                        totalNodes = sysRecs.size(); // approximate
-                        healthy = sysRecs.stream().filter(s -> "HEALTHY".equals(s.health())).count();
-                        unhealthy = sysRecs.stream().filter(s -> "UNHEALTHY".equals(s.health())).count();
+                        // Count actual nodes from the nodes table
+                        totalNodes = nodeRepository.findNodesByNamespace(ns).size();
+                        healthy = nodeRepository.findNodesByNamespace(ns).stream()
+                                .filter(n -> "HEALTHY".equals(n.health())).count();
+                        unhealthy = nodeRepository.findNodesByNamespace(ns).stream()
+                                .filter(n -> "UNHEALTHY".equals(n.health())).count();
                     }
                     Map<String, Object> entry = new LinkedHashMap<>();
                     entry.put("namespace", ns);
@@ -132,13 +139,16 @@ public class NamespaceEndpoint {
             if (sysRecs.isEmpty()) {
                 return Response.status(Response.Status.NOT_FOUND).build();
             }
-            totalNodes = sysRecs.size(); // approximate (actual node count is in the data plane)
-            healthy = sysRecs.stream().filter(s -> "HEALTHY".equals(s.health())).count();
-            unhealthy = sysRecs.stream().filter(s -> "UNHEALTHY".equals(s.health())).count();
+            // Count actual nodes from the nodes table
+            var allNodes = nodeRepository.findNodesByNamespace(namespace);
+            totalNodes = allNodes.size();
+            healthy = allNodes.stream().filter(n -> "HEALTHY".equals(n.health())).count();
+            unhealthy = allNodes.stream().filter(n -> "UNHEALTHY".equals(n.health())).count();
             systemList = sysRecs.stream().map(s -> {
+                int sysNodes = nodeRepository.findBySystem(namespace, s.name()).size();
                 Map<String, Object> m = new LinkedHashMap<>();
                 m.put("name", s.name());
-                m.put("nodeCount", 0);
+                m.put("nodeCount", sysNodes);
                 m.put("state", s.state());
                 m.put("health", s.health());
                 return m;

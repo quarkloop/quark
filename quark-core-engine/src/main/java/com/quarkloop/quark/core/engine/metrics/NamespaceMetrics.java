@@ -97,6 +97,28 @@ public class NamespaceMetrics {
     }
 
     /**
+     * Replace the counters for a namespace with the values from a remote
+     * (data-plane) snapshot. Used by the control plane's
+     * {@code NamespaceMetricsCollector} when it receives a heartbeat from
+     * a data-plane process — the data plane is the authoritative source
+     * for metrics of namespaces running in it.
+     *
+     * <p>This method directly sets the counter values to match the remote
+     * snapshot, overwriting any local values. The next {@link #snapshot()}
+     * call will reflect the updated values.
+     *
+     * @param namespace the namespace to update
+     * @param snapshot  the remote snapshot to apply
+     */
+    public void replaceSnapshot(String namespace, Snapshot snapshot) {
+        Counters c = getOrCreate(namespace);
+        c.messagesPublished.set(snapshot.messagesPublished());
+        c.messagesReceived.set(snapshot.messagesReceived());
+        c.errors.set(snapshot.errors());
+        c.cpuTimeNanos.set(snapshot.cpuTimeNanos());
+    }
+
+    /**
      * Take a point-in-time snapshot of all namespace counters.
      *
      * <p>The returned map is a copy; mutations to it do not affect the live

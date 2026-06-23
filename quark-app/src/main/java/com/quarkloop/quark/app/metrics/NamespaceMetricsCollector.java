@@ -1,11 +1,19 @@
 package com.quarkloop.quark.app.metrics;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.quarkloop.quark.core.engine.dataplane.DataPlaneIpc;
 import com.quarkloop.quark.core.engine.metrics.NamespaceMetrics;
+import com.quarkloop.quark.engine.NatsConnectionManager;
+import io.nats.client.Connection;
+import io.nats.client.Dispatcher;
+import io.nats.client.Message;
 import io.quarkus.runtime.StartupEvent;
 import jakarta.annotation.Priority;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,32 +28,30 @@ import java.util.concurrent.atomic.AtomicReference;
  * Periodically snapshots {@link NamespaceMetrics} and computes per-namespace
  * rates (messages/sec, errors/sec, CPU %) over a sliding window.
  *
- * <p>The collector stores the last two snapshots and computes the delta
- * between them. The interval is 2 seconds (matching the CLI's
- * {@code stats --watch} refresh rate). On each tick, the current
- * {@link NamespaceMetrics#snapshot()} is captured and the rates are
- * recomputed.
+ * <p>In control-plane mode, the actual message handling happens in data-plane
+ * processes — the control plane's local {@link NamespaceMetrics} is empty.
+ * To get real metrics, this collector subscribes to NATS heartbeat subjects
+ * ({@code quark.data.>.heartbeat}) and receives snapshots from data-plane
+ * processes. These remote snapshots are merged into the local NamespaceMetrics
+ * so that {@link #getRates()} returns accurate per-namespace values.
  *
- * <p>The computed rates are exposed to the REST API via {@link #getRates()},
- * which returns a map of namespace → {@link NamespaceRate}. The REST layer
- * (NamespaceEndpoint) uses this to populate the {@code metrics} field in the
- * namespace detail response.
+ * <p>In data-plane mode, this collector runs locally (the data plane's own
+ * metrics are collected and forwarded by {@code DataPlaneMetricsForwarder}).
  *
- * <p>For isolated namespaces (running in a dedicated data-plane JVM — see
- * Task 1), the CPU % reflects the entire process's CPU usage attributed to
- * that single namespace. For shared namespaces, the CPU % reflects only the
- * CPU time consumed by message handlers for that namespace (measured via
- * {@link java.lang.management.ThreadMXBean#getCurrentThreadCpuTime()} inside
- * the handler path).
+ * <p>The computed rates are exposed to the REST API via {@link #getRates()}.
  */
 @ApplicationScoped
 public class NamespaceMetricsCollector {
 
     private static final Logger log = LoggerFactory.getLogger(NamespaceMetricsCollector.class);
 
-    private final NamespaceMetrics metrics;
+    private final ObjectMapper mapper = new ObjectMapper();
+    { mapper.registerModule(new JavaTimeModule()); }
 
-    /** The most recent raw snapshot. */
+    private final NamespaceMetrics metrics;
+    private final NatsConnectionManager natsConnectionManager;
+
+    /** The most recent raw snapshot (local + remote merged). */
     private final AtomicReference<Map<String, NamespaceMetrics.Snapshot>> latestSnapshot =
             new AtomicReference<>(Collections.emptyMap());
 
@@ -56,44 +62,74 @@ public class NamespaceMetricsCollector {
     /** The computed rates, updated on each tick. */
     private final ConcurrentMap<String, NamespaceRate> rates = new ConcurrentHashMap<>();
 
-    /** The interval between snapshots, in milliseconds. */
+    /** Remote snapshots received from data planes (namespace → snapshot). */
+    private final ConcurrentMap<String, NamespaceMetrics.Snapshot> remoteSnapshots =
+            new ConcurrentHashMap<>();
+
     private static final long INTERVAL_MS = 2000;
-
-    /** The timestamp (millis since epoch) of the last snapshot. */
     private volatile long lastSnapshotTime = 0;
-
-    /** The available processors — used to convert CPU nanos to a percentage. */
     private final int availableProcessors;
 
+    @ConfigProperty(name = "quark.mode", defaultValue = "standalone")
+    String mode;
+
     @Inject
-    public NamespaceMetricsCollector(NamespaceMetrics metrics) {
+    public NamespaceMetricsCollector(NamespaceMetrics metrics,
+                                      NatsConnectionManager natsConnectionManager) {
         this.metrics = metrics;
+        this.natsConnectionManager = natsConnectionManager;
         this.availableProcessors = Runtime.getRuntime().availableProcessors();
     }
 
-    /**
-     * Initialize the metrics collector on startup. Enables CPU time
-     * measurement and takes the first snapshot.
-     *
-     * <p>Runs at priority 5 (after the registry initializer at priority 1,
-     * but before DeployService recovery at priority 10) so that the first
-     * snapshot captures a clean baseline before any systems are recovered.
-     */
     void onStart(@Observes @Priority(5) StartupEvent event) {
         metrics.init();
         takeSnapshot();
+
+        // In control-plane mode, subscribe to data-plane heartbeats
+        if ("standalone".equals(mode)) {
+            try {
+                Connection conn = natsConnectionManager.getConnection();
+                Dispatcher dispatcher = conn.createDispatcher(this::handleHeartbeat);
+                dispatcher.subscribe(DataPlaneIpc.HEARTBEAT_WILDCARD);
+                log.info("Subscribed to data-plane heartbeats on {}", DataPlaneIpc.HEARTBEAT_WILDCARD);
+            } catch (Exception e) {
+                log.warn("Failed to subscribe to data-plane heartbeats", e);
+            }
+        }
+
         Thread collector = Thread.ofPlatform()
                 .name("quark-metrics-collector")
                 .daemon(true)
                 .start(this::collectionLoop);
-        log.info("NamespaceMetricsCollector started (interval={}ms, cpus={})",
-                INTERVAL_MS, availableProcessors);
+        log.info("NamespaceMetricsCollector started (mode={}, interval={}ms, cpus={})",
+                mode, INTERVAL_MS, availableProcessors);
     }
 
     /**
-     * The collection loop. Runs forever on a daemon thread, sleeping for
-     * {@link #INTERVAL_MS} between snapshots.
+     * Handle a heartbeat message from a data-plane process.
+     * The payload is a JSON map of namespace → Snapshot.
      */
+    @SuppressWarnings("unchecked")
+    private void handleHeartbeat(Message natsMsg) {
+        try {
+            String json = new String(natsMsg.getData(), java.nio.charset.StandardCharsets.UTF_8);
+            Map<String, NamespaceMetrics.Snapshot> remote =
+                    mapper.readValue(json, mapper.getTypeFactory().constructMapType(
+                            Map.class, String.class, NamespaceMetrics.Snapshot.class));
+            // Merge remote snapshots into our local NamespaceMetrics
+            for (var entry : remote.entrySet()) {
+                String ns = entry.getKey();
+                NamespaceMetrics.Snapshot snap = entry.getValue();
+                // Replace local counters with the data plane's values
+                // (the data plane is the authoritative source for these namespaces)
+                metrics.replaceSnapshot(ns, snap);
+                remoteSnapshots.put(ns, snap);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to process heartbeat from {}", natsMsg.getSubject(), e);
+        }
+    }
+
     private void collectionLoop() {
         while (!Thread.currentThread().isInterrupted()) {
             try {
@@ -108,12 +144,6 @@ public class NamespaceMetricsCollector {
         }
     }
 
-    /**
-     * Take a snapshot of the current metrics and compute rates.
-     *
-     * <p>Synchronized to ensure the previous/latest snapshots are updated
-     * atomically.
-     */
     private synchronized void takeSnapshot() {
         Map<String, NamespaceMetrics.Snapshot> current = metrics.snapshot();
         long now = System.currentTimeMillis();
@@ -138,10 +168,6 @@ public class NamespaceMetricsCollector {
             double errorRate = elapsedSec > 0 ? (cur.errors() - prevErrors) / elapsedSec : 0;
 
             long cpuDeltaNanos = cur.cpuTimeNanos() - prevCpu;
-            // CPU % = (cpuTime in the window) / (wall time in the window)
-            // This gives the fraction of a single CPU core used by this namespace.
-            // Multiply by 100 for a percentage. Values >100% mean the namespace
-            // is using more than one core (multi-threaded handlers).
             double windowNanos = elapsedMs * 1_000_000.0;
             double cpuPercent = windowNanos > 0
                     ? (cpuDeltaNanos / windowNanos) * 100.0
@@ -159,7 +185,6 @@ public class NamespaceMetricsCollector {
             ));
         }
 
-        // Remove rates for namespaces that no longer exist
         rates.keySet().removeIf(ns -> !current.containsKey(ns));
         rates.putAll(newRates);
 
@@ -168,34 +193,14 @@ public class NamespaceMetricsCollector {
         lastSnapshotTime = now;
     }
 
-    /**
-     * Get the current per-namespace rates. Returns an unmodifiable copy of
-     * the internal map.
-     */
     public Map<String, NamespaceRate> getRates() {
         return Collections.unmodifiableMap(new LinkedHashMap<>(rates));
     }
 
-    /**
-     * Get the rate for a single namespace, or null if the namespace has no
-     * metrics (no systems deployed).
-     */
     public NamespaceRate getRate(String namespace) {
         return rates.get(namespace);
     }
 
-    /**
-     * Per-namespace rate snapshot.
-     *
-     * @param messagesPublished cumulative count of messages published by nodes in this namespace
-     * @param messagesReceived  cumulative count of messages dispatched to node handlers in this namespace
-     * @param errors            cumulative count of handler errors in this namespace
-     * @param cpuTimeNanos      cumulative CPU time (nanoseconds) consumed by message handlers in this namespace
-     * @param publishRate       messages published per second (over the last interval)
-     * @param receiveRate       messages received per second (over the last interval)
-     * @param errorRate         errors per second (over the last interval)
-     * @param cpuPercent        CPU usage as a percentage of a single core (0.0–100.0+)
-     */
     public record NamespaceRate(
             long messagesPublished,
             long messagesReceived,

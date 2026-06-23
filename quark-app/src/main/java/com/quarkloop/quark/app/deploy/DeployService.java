@@ -14,6 +14,8 @@ import com.quarkloop.quark.core.engine.lifecycle.RuntimeSystem;
 import com.quarkloop.quark.core.engine.lifecycle.SystemDeployer;
 import com.quarkloop.quark.core.engine.metrics.NamespaceMetrics;
 import com.quarkloop.quark.core.engine.runtime.RuntimeContext;
+import com.quarkloop.quark.core.engine.store.NodeRecord;
+import com.quarkloop.quark.core.engine.store.NodeRepository;
 import com.quarkloop.quark.core.engine.store.SourceRepository;
 import com.quarkloop.quark.core.engine.store.SystemRecord;
 import com.quarkloop.quark.core.engine.store.SystemRepository;
@@ -74,6 +76,7 @@ public class DeployService {
     private final SystemDeployer systemDeployer;
     private final EventBus eventBus;
     private final SystemRepository systemRepository;
+    private final NodeRepository nodeRepository;
     private final SourceRepository sourceRepository;
     private final NamespaceMetrics namespaceMetrics;
     private final RuntimeContext runtimeContext;
@@ -88,6 +91,7 @@ public class DeployService {
                          SystemDeployer systemDeployer,
                          EventBus eventBus,
                          SystemRepository systemRepository,
+                         NodeRepository nodeRepository,
                          SourceRepository sourceRepository,
                          NamespaceMetrics namespaceMetrics,
                          RuntimeContext runtimeContext,
@@ -97,6 +101,7 @@ public class DeployService {
         this.systemDeployer = systemDeployer;
         this.eventBus = eventBus;
         this.systemRepository = systemRepository;
+        this.nodeRepository = nodeRepository;
         this.sourceRepository = sourceRepository;
         this.namespaceMetrics = namespaceMetrics;
         this.runtimeContext = runtimeContext;
@@ -211,6 +216,31 @@ public class DeployService {
                 throw new DeploymentException("Data-plane deploy failed for "
                         + ns + "/" + name + ": " + resp.error());
             }
+
+            // Persist NodeRecords to DuckDB from the data plane's response.
+            // The data plane cannot write to DuckDB (cross-process write
+            // conflict), so it reports node info back and the control plane
+            // persists it.
+            if (resp.nodes() != null && !resp.nodes().isEmpty()) {
+                try {
+                    int saved = 0;
+                    for (NodeInfo ni : resp.nodes()) {
+                        NodeRecord record = new NodeRecord(
+                                ns, name, ni.name(), ni.uri(), ni.category(),
+                                ni.state(), ni.health(), 1L, null,
+                                ni.listens(), ni.events(),
+                                Map.of(), Map.of(), Map.of(),
+                                null, null, null,
+                                null, null);
+                        nodeRepository.save(record);
+                        saved++;
+                    }
+                    log.debug("Persisted {} node records for {}/{} to DuckDB", saved, ns, name);
+                } catch (Exception e) {
+                    log.warn("Failed to persist node records for {}/{}", ns, name, e);
+                }
+            }
+
             log.info("Deployed system {}/{} via data-plane {} ({} nodes)",
                     ns, name, runtimeId, systemDef.nodes().size());
         } catch (DeploymentException e) {
@@ -219,21 +249,10 @@ public class DeployService {
             throw new DeploymentException("Failed to send deploy command to data plane: " + e.getMessage(), e);
         }
 
-        // Emit NODE_CREATED events (control plane emits the lifecycle events;
-        // the data plane does the actual node execution)
-        for (NodeDefinition nodeDef : systemDef.nodes().values()) {
-            NodeEvent created = NodeEvent.of(
-                    NodeEventKind.NODE_CREATED,
-                    nodeDef.name(),
-                    systemDef.name(),
-                    systemDef.namespace().value(),
-                    Map.of("uri", nodeDef.uri().toString(),
-                            "listens", nodeDef.listens(),
-                            "events", nodeDef.events(),
-                            "runtime", runtimeId)
-            );
-            eventBus.publish(created);
-        }
+        // Note: NODE_CREATED events are emitted by the data plane (in
+        // deployLocally) and forwarded to the control plane via NATS
+        // (DataPlaneEventForwarder → ControlPlaneEventReceiver). The control
+        // plane does NOT emit duplicate events here.
 
         // Return a stub RuntimeSystem (the real runtime lives in the data plane)
         return new RuntimeSystem(systemDef, systemDef.namespace());
@@ -321,11 +340,13 @@ public class DeployService {
                     namespace, systemName, e);
         }
 
-        // Delete the system record from DuckDB
+        // Delete the system record and node records from DuckDB
         try {
+            nodeRepository.deleteBySystem(namespace, systemName);
             systemRepository.delete(namespace, systemName);
+            log.debug("Deleted system + node records for {}/{} from DuckDB", namespace, systemName);
         } catch (Exception e) {
-            log.warn("Failed to delete system record for {}/{}", namespace, systemName, e);
+            log.warn("Failed to delete records for {}/{}", namespace, systemName, e);
         }
 
         // If this was an isolated namespace and no systems remain, stop
@@ -431,5 +452,28 @@ public class DeployService {
 
     public record DeployCommand(String namespace, String systemName, String source) {}
     public record UndeployCommand(String namespace, String systemName) {}
-    public record StatusResponse(boolean success, String systemName, String namespace, String error) {}
+
+    /**
+     * Status response from the data plane after a deploy/undeploy command.
+     * Includes node info so the control plane can persist NodeRecords to DuckDB
+     * (the data plane cannot write to DuckDB because DuckDB doesn't support
+     * cross-process write access).
+     */
+    public record StatusResponse(boolean success, String systemName, String namespace,
+                                  String error, List<NodeInfo> nodes) {
+        /** Convenience constructor for undeploy (no nodes to report). */
+        public StatusResponse(boolean success, String systemName, String namespace, String error) {
+            this(success, systemName, namespace, error, List.of());
+        }
+    }
+
+    /**
+     * Node info reported by the data plane after deploy. Contains enough
+     * data for the control plane to persist a NodeRecord.
+     */
+    public record NodeInfo(
+            String name, String uri, String category,
+            String state, String health,
+            List<String> listens, List<String> events
+    ) {}
 }
