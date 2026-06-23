@@ -52,7 +52,6 @@
         <module>quark-core-script</module>
         <module>quark-core-engine</module>
         <module>quark-engine</module>
-        <module>quark-adapter-state</module>
         <module>quark-adapter-store-duckdb</module>
         <module>quark-observability</module>
         <module>quark-app</module>
@@ -102,11 +101,6 @@
             <dependency>
                 <groupId>com.quarkloop.quark</groupId>
                 <artifactId>quark-core-engine</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.quarkloop.quark</groupId>
-                <artifactId>quark-adapter-state</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -309,8 +303,8 @@
                 <!-- Jandex: generates META-INF/jandex.idx in every module so
                      Quarkus can discover @ApplicationScoped beans in dependency
                      JARs. Without this, only the application module (quark-server)
-                     is indexed, and beans in quark-core-engine, quark-adapter-state,
-                     etc. are invisible to CDI. -->
+                     is indexed, and beans in quark-core-engine,
+                     quark-adapter-store-duckdb, etc. are invisible to CDI. -->
                 <plugin>
                     <groupId>io.smallrye</groupId>
                     <artifactId>jandex-maven-plugin</artifactId>

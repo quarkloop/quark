@@ -1,8 +1,7 @@
 package com.quarkloop.quark.server;
 
-import com.quarkloop.quark.adapter.state.StateRoot;
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.inject.Inject;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.eclipse.microprofile.health.HealthCheck;
 import org.eclipse.microprofile.health.HealthCheckResponse;
 import org.eclipse.microprofile.health.HealthCheckResponseBuilder;
@@ -10,28 +9,30 @@ import org.eclipse.microprofile.health.Readiness;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 
 /**
  * Readiness check that verifies the platform state root is writable.
  *
- * <p>If the state root is not accessible (permission denied, disk full,
- * path is a file not a directory, etc.) the platform cannot persist
- * system declarations or events, so it's not ready to serve requests.
+ * <p>The state root is the directory under which DuckDB stores {@code quark.db}.
+ * If the state root is not accessible (permission denied, disk full, path is a
+ * file not a directory, etc.) the platform cannot persist system declarations
+ * or events, so it's not ready to serve requests.
+ *
+ * <p>The legacy {@code com.quarkloop.quark.adapter.state.StateRoot} CDI bean has
+ * been removed; this check now reads {@code quark.state.root} directly via
+ * MicroProfile Config.
  */
 @Readiness
 @ApplicationScoped
 public class StateRootHealthCheck implements HealthCheck {
 
-    private final StateRoot stateRoot;
-
-    @Inject
-    public StateRootHealthCheck(StateRoot stateRoot) {
-        this.stateRoot = stateRoot;
-    }
+    @ConfigProperty(name = "quark.state.root", defaultValue = "./quark-state")
+    String stateRootPath;
 
     @Override
     public HealthCheckResponse call() {
-        Path root = stateRoot.path();
+        Path root = Paths.get(stateRootPath).toAbsolutePath().normalize();
         boolean ok = false;
         String reason = null;
         try {

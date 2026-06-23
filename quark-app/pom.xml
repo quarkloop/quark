@@ -40,10 +40,6 @@
             <artifactId>quark-core-event</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.quarkloop.quark</groupId>
-            <artifactId>quark-adapter-state</artifactId>
-        </dependency>
-        <dependency>
             <groupId>jakarta.enterprise</groupId>
             <artifactId>jakarta.enterprise.cdi-api</artifactId>
         </dependency>

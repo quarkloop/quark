@@ -1,6 +1,5 @@
 package com.quarkloop.quark.app.deploy;
 
-import com.quarkloop.quark.adapter.state.StateRoot;
 import com.quarkloop.quark.core.domain.event.NodeEvent;
 import com.quarkloop.quark.core.domain.event.NodeEventKind;
 import com.quarkloop.quark.core.domain.identity.Namespace;
@@ -9,6 +8,9 @@ import com.quarkloop.quark.core.domain.system.SystemDefinition;
 import com.quarkloop.quark.core.engine.lifecycle.DeploymentException;
 import com.quarkloop.quark.core.engine.lifecycle.RuntimeSystem;
 import com.quarkloop.quark.core.engine.lifecycle.SystemDeployer;
+import com.quarkloop.quark.core.engine.store.SourceRepository;
+import com.quarkloop.quark.core.engine.store.SystemRecord;
+import com.quarkloop.quark.core.engine.store.SystemRepository;
 import com.quarkloop.quark.core.event.EventBus;
 import com.quarkloop.quark.core.script.SystemParseResult;
 import com.quarkloop.quark.core.script.SystemParser;
@@ -19,10 +21,6 @@ import jakarta.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -30,18 +28,23 @@ import java.util.Map;
 /**
  * Application-layer orchestration for system deployment.
  *
- * <p>Chains together the three concerns that must run on every deploy:
+ * <p>Chains together the concerns that must run on every deploy:
  * <ol>
  *   <li><b>Parse</b> — {@link SystemParser} evaluates the {@code .quark.ts}
  *       source and produces a {@link SystemDefinition}.</li>
- *   <li><b>Execute</b> — {@link SystemRunner} wires NATS subscriptions,
+ *   <li><b>Execute</b> — {@link SystemDeployer} wires NATS subscriptions,
  *       publishers, and starts Source/Endpoint providers.</li>
- *   <li><b>Track</b> — {@link SystemDeployer} records the runtime in the
- *       {@code SystemRuntimeRegistry} for lifecycle/health queries.</li>
- *   <li><b>Persist</b> — {@link StateRoot} writes the original source to
- *       {@code $STATE_ROOT/systems/<ns>/<sys>/source.ts} so the system
- *       can be recovered on server restart.</li>
+ *   <li><b>Persist</b> — {@link SystemRepository} stores a {@link SystemRecord}
+ *       (containing the original source) in DuckDB so the system can be
+ *       recovered on server restart. The {@link SourceRepository} SPI is
+ *       also invoked for implementations that decouple source storage from
+ *       system records.</li>
+ *   <li><b>Emit</b> — fires {@code NODE_CREATED} events for each node.</li>
  * </ol>
+ *
+ * <p>Persistence is delegated to DuckDB (via {@link SystemRepository} and
+ * {@link SourceRepository}). The legacy filesystem-based {@code StateRoot}
+ * adapter has been removed; all source-of-truth state lives in DuckDB.
  *
  * <p>The CLI's deploy request body carries the source AND a namespace
  * argument. If the {@code .ts} file's own {@code namespace} field differs,
@@ -56,17 +59,20 @@ public class DeployService {
     private final SystemParser parser;
     private final SystemDeployer systemDeployer;
     private final EventBus eventBus;
-    private final StateRoot stateRoot;
+    private final SystemRepository systemRepository;
+    private final SourceRepository sourceRepository;
 
     @Inject
     public DeployService(SystemParser parser,
                          SystemDeployer systemDeployer,
                          EventBus eventBus,
-                         StateRoot stateRoot) {
+                         SystemRepository systemRepository,
+                         SourceRepository sourceRepository) {
         this.parser = parser;
         this.systemDeployer = systemDeployer;
         this.eventBus = eventBus;
-        this.stateRoot = stateRoot;
+        this.systemRepository = systemRepository;
+        this.sourceRepository = sourceRepository;
     }
 
     /**
@@ -88,7 +94,7 @@ public class DeployService {
         SystemParseResult.Success success = (SystemParseResult.Success) parseResult;
         SystemDefinition systemDef = success.system();
 
-        // 2. Apply namespace override
+        // 2. Apply namespace override (preserving the runtime field)
         if (namespaceOverride != null && !namespaceOverride.isBlank()
                 && !namespaceOverride.equals(systemDef.namespace().value())) {
             log.info("Overriding namespace: source='{}' -> request='{}'",
@@ -96,19 +102,37 @@ public class DeployService {
             systemDef = new SystemDefinition(
                     systemDef.name(),
                     Namespace.of(namespaceOverride),
-                    systemDef.nodes()
+                    systemDef.nodes(),
+                    systemDef.runtime()
             );
         }
 
         // 3. Deploy (single call — SystemDeployer handles bus wiring + lifecycle)
         RuntimeSystem runtime = systemDeployer.deploy(systemDef);
 
-        // 4. Persist the original source so we can recover on restart
+        // 4. Persist the system record (with source) to DuckDB so we can
+        //    recover on restart. SystemRecord stores the original .quark.ts
+        //    source in the `source` column of the `systems` table.
+        String ns = systemDef.namespace().value();
+        String name = systemDef.name();
         try {
-            persistSource(systemDef, source);
-        } catch (IOException e) {
-            log.warn("Failed to persist source for system {}/{} — deploy will continue",
-                    systemDef.namespace().value(), systemDef.name(), e);
+            systemRepository.save(SystemRecord.creating(ns, name, source));
+            systemRepository.updateState(ns, name, "ACTIVE", "HEALTHY", 1);
+            log.debug("Persisted system record {}/{} to DuckDB", ns, name);
+        } catch (Exception e) {
+            log.warn("Failed to persist system record for {}/{} — deploy will continue",
+                    ns, name, e);
+        }
+
+        // 5. Also invoke SourceRepository.saveSource() for SPI compliance.
+        //    In DuckDBStore this is a no-op (source is stored via the systems
+        //    table above), but future repository implementations may decouple
+        //    source storage from system records.
+        try {
+            sourceRepository.saveSource(ns, name, source);
+        } catch (Exception e) {
+            log.warn("Failed to save source via SourceRepository for {}/{} — deploy will continue",
+                    ns, name, e);
         }
 
         // 6. Emit NODE_CREATED events
@@ -125,18 +149,24 @@ public class DeployService {
             eventBus.publish(created);
         }
 
-        log.info("Deployed system {}/{} ({} nodes)",
-                systemDef.namespace().value(), systemDef.name(), systemDef.nodes().size());
+        log.info("Deployed system {}/{} ({} nodes)", ns, name, systemDef.nodes().size());
         return runtime;
     }
 
     /**
      * Undeploy a single system: stop sources/endpoints, close NATS
-     * dispatchers, remove from runtime registry, and emit a final
-     * NODE_STATE_CHANGED -> ARCHIVED event per node.
+     * dispatchers, remove from runtime registry, delete the persisted system
+     * record, and emit a final NODE_STATE_CHANGED -> ARCHIVED event per node.
      */
     public void undeploy(String namespace, String systemName) {
         systemDeployer.undeploy(namespace, systemName);
+        try {
+            systemRepository.delete(namespace, systemName);
+            log.debug("Deleted system record {}/{} from DuckDB", namespace, systemName);
+        } catch (Exception e) {
+            log.warn("Failed to delete system record for {}/{} — undeploy continues",
+                    namespace, systemName, e);
+        }
         log.info("Undeployed system {}/{}", namespace, systemName);
     }
 
@@ -153,61 +183,49 @@ public class DeployService {
         return ((SystemParseResult.Success) result).system();
     }
 
-    private void persistSource(SystemDefinition systemDef, String source) throws IOException {
-        Path sourceFile = stateRoot.systemSourceFile(
-                systemDef.namespace().value(), systemDef.name());
-        Files.createDirectories(sourceFile.getParent());
-        Files.writeString(sourceFile, source, StandardCharsets.UTF_8);
-        log.debug("Persisted source to {}", sourceFile);
-    }
-
     /**
-     * On server startup, recover any previously-deployed systems from disk.
-     * Looks for {@code $STATE_ROOT/systems/<ns>/<sys>/source.ts} files and
-     * re-deploys them so the platform resumes its pre-restart state.
+     * On server startup, recover any previously-deployed systems from the
+     * source repository. DuckDB stores the original {@code .quark.ts} source
+     * for every system record; re-deploying each restores the platform to
+     * its pre-restart state.
      */
     void onStart(@Observes StartupEvent event) {
         List<String> recovered = recoverFromDisk();
         if (!recovered.isEmpty()) {
-            log.info("Recovered {} system(s) from disk: {}", recovered.size(), recovered);
+            log.info("Recovered {} system(s) from source repository: {}", recovered.size(), recovered);
         }
     }
 
     /**
-     * Recover previously-deployed systems on server startup. Scans the
-     * state root for {@code source.ts} files and re-deploys them.
+     * Recover previously-deployed systems on server startup. Lists every
+     * (namespace, name) entry in the source repository, reads back the
+     * original source, and re-deploys it.
+     *
+     * <p>Recovery is best-effort: a failure on one system is logged and
+     * skipped so that one bad system cannot block recovery of the others.
      */
     public List<String> recoverFromDisk() {
         List<String> recovered = new ArrayList<>();
-        Path systemsDir = stateRoot.systemsDir();
-        if (!Files.isDirectory(systemsDir)) {
+        List<SourceRepository.SourceEntry> entries;
+        try {
+            entries = sourceRepository.listSources();
+        } catch (Exception e) {
+            log.warn("Failed to list sources for recovery — platform will start with no systems", e);
             return recovered;
         }
-        try (var nsStream = Files.list(systemsDir)) {
-            for (Path nsDir : nsStream.toList()) {
-                if (!Files.isDirectory(nsDir)) continue;
-                String namespace = nsDir.getFileName().toString();
-                try (var sysStream = Files.list(nsDir)) {
-                    for (Path sysDir : sysStream.toList()) {
-                        if (!Files.isDirectory(sysDir)) continue;
-                        Path sourceFile = sysDir.resolve("source.ts");
-                        if (!Files.isRegularFile(sourceFile)) continue;
-                        String systemName = sysDir.getFileName().toString();
-                        try {
-                            String source = Files.readString(sourceFile, StandardCharsets.UTF_8);
-                            deploy(source, namespace);
-                            recovered.add(namespace + "/" + systemName);
-                            log.info("Recovered system {}/{}", namespace, systemName);
-                        } catch (Exception e) {
-                            log.warn("Failed to recover system {}/{}", namespace, systemName, e);
-                        }
-                    }
-                } catch (IOException e) {
-                    log.warn("Error scanning namespace dir {}", nsDir, e);
-                }
+        for (SourceRepository.SourceEntry entry : entries) {
+            String namespace = entry.namespace();
+            String systemName = entry.name();
+            try {
+                String source = sourceRepository.getSource(namespace, systemName)
+                        .orElseThrow(() -> new IllegalStateException(
+                                "Source listed but not found: " + namespace + "/" + systemName));
+                deploy(source, namespace);
+                recovered.add(namespace + "/" + systemName);
+                log.info("Recovered system {}/{}", namespace, systemName);
+            } catch (Exception e) {
+                log.warn("Failed to recover system {}/{}", namespace, systemName, e);
             }
-        } catch (IOException e) {
-            log.warn("Error scanning systems dir for recovery", e);
         }
         return recovered;
     }

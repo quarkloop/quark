@@ -20,7 +20,7 @@ import java.util.Map;
  * returns a status field with system/node health).
  *
  * <p>Quarkus also exposes /q/health/live and /q/health/ready via SmallRye Health
- * (the PlatformLivenessCheck and StateRootHealthCheck beans). This node
+ * (the PlatformLivenessCheck and StateRootHealthCheck beans). This endpoint
  * provides the same information at simpler paths for operator convenience.
  */
 @Path("/health")

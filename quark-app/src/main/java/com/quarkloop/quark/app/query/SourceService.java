@@ -1,34 +1,29 @@
 package com.quarkloop.quark.app.query;
 
-import com.quarkloop.quark.adapter.state.StateRoot;
+import com.quarkloop.quark.core.engine.store.SourceRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.util.Optional;
 
 /**
- * Read the persisted {@code source.ts} for a system.
+ * Read the persisted {@code .quark.ts} source for a system.
+ *
+ * <p>Delegates to {@link SourceRepository} (backed by DuckDB's {@code systems}
+ * table). The legacy filesystem-based {@code StateRoot} adapter has been
+ * removed; source is now read directly from the durable store.
  */
 @ApplicationScoped
 public class SourceService {
 
-    private final StateRoot stateRoot;
+    private final SourceRepository sourceRepository;
 
     @Inject
-    public SourceService(StateRoot stateRoot) {
-        this.stateRoot = stateRoot;
+    public SourceService(SourceRepository sourceRepository) {
+        this.sourceRepository = sourceRepository;
     }
 
     public Optional<String> getSource(String namespace, String systemName) {
-        var file = stateRoot.systemSourceFile(namespace, systemName);
-        if (!Files.isRegularFile(file)) return Optional.empty();
-        try {
-            return Optional.of(Files.readString(file, StandardCharsets.UTF_8));
-        } catch (IOException e) {
-            throw new IllegalStateException("Failed to read source file: " + file, e);
-        }
+        return sourceRepository.getSource(namespace, systemName);
     }
 }
