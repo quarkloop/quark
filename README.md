@@ -167,12 +167,11 @@ quark-platform/
 │   ├── quark-runtime/                   ← Quarkus runner (QuarkRuntime.java, --macro:truffle-svm)
 │   └── providers/                       ← Node implementations
 │       ├── provider-stubs/              ← Noop/memory stubs (testing)
-│       ├── provider-timer/              ← source/timer:v1
-│       ├── provider-cpu-profiler/       ← function/cpu-profiler:v1
-│       ├── provider-memory-profiler/    ← function/memory-profiler:v1
-│       ├── provider-list/               ← store/list:v1
-│       ├── provider-json-writer/        ← store/json-writer:v1
-│       └── provider-streaming-endpoint/ ← endpoint/stream:v1
+│       ├── provider-timer/              ← quark/time/schedule/timer:v1
+│       ├── provider-cpu-profiler/       ← quark/system/cpu/profile:v1
+│       ├── provider-memory-profiler/    ← quark/system/memory/profile:v1
+│       ├── provider-json-writer/        ← quark/io/file/write:v1
+│       └── provider-streaming-endpoint/ ← quark/stream/sse/broadcast:v1
 │
 ├── quark-catalog/                       ← CATALOG service (Go + SQLite)
 │   ├── cmd/quark-catalog/main.go        ← Entry point
@@ -270,10 +269,10 @@ quarkctl delete system monitor -n alice
 
 # Node package registry
 quarkctl node list
-quarkctl node info source/timer:v1
+quarkctl node info quark/time/schedule/timer:v1
 quarkctl node search timer
-quarkctl node push -f my-node.ts --uri source/my-node:v1
-quarkctl node pull source/my-node:v1
+quarkctl node push -f my-node.ts --uri acme/transform/payments/risk-score:v1
+quarkctl node pull acme/transform/payments/risk-score:v1
 
 # Get JSON output (for AI agents)
 quarkctl get system monitor -n alice --json
