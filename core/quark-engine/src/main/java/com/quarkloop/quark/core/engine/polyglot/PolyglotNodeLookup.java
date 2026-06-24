@@ -14,5 +14,5 @@ import java.util.Optional;
  * if the node is available from an external source.
  */
 public interface PolyglotNodeLookup {
-    Optional<NodeImplementationFactory<?>> lookupFactory(NodeUri uri);
+    Optional<NodeImplementationFactory> lookupFactory(NodeUri uri);
 }

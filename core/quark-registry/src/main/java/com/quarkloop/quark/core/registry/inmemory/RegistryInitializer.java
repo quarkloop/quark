@@ -28,14 +28,14 @@ public class RegistryInitializer {
     private static final Logger log = LoggerFactory.getLogger(RegistryInitializer.class);
 
     @Inject
-    Instance<NodeImplementationFactory<?>> factories;
+    Instance<NodeImplementationFactory> factories;
 
     @Inject
     NodeRegistry registry;
 
     void onStart(@Observes @Priority(1) StartupEvent event) {
         int count = 0;
-        for (NodeImplementationFactory<?> factory : factories) {
+        for (NodeImplementationFactory factory : factories) {
             registry.register(factory);
             count++;
         }

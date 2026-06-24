@@ -1,12 +1,9 @@
 package com.quarkloop.quark.runtime.polyglot;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.quarkloop.quark.core.domain.category.NodeCategory;
 import com.quarkloop.quark.core.domain.identity.NodeUri;
-import com.quarkloop.quark.core.engine.dataplane.DataPlaneIpc;
-import com.quarkloop.quark.core.registry.NodeDescriptor;
-import com.quarkloop.quark.core.registry.NodeImplementationFactory;
 import com.quarkloop.quark.core.engine.nats.NatsConnectionManager;
+import com.quarkloop.quark.core.registry.NodeImplementationFactory;
 import io.nats.client.Connection;
 import io.nats.client.Message;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -17,24 +14,11 @@ import org.slf4j.LoggerFactory;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Retrieves node packages from the Catalog service and creates
  * {@link TypeScriptNodeFactory} instances for TypeScript nodes.
- *
- * <p>When a {@code .quark.ts} file references a URI that is not in the built-in
- * Java {@code NodeRegistry}, the {@code SystemDeployer} calls this registry
- * to fetch the node implementation from the Catalog.
- *
- * <p>The Catalog stores node packages with a {@code content_type} field:
- * <ul>
- *   <li>{@code "typescript"} — source code, evaluated by GraalJS</li>
- *   <li>{@code "shared-library"} — .so file, loaded via JNI (future)</li>
- *   <li>{@code "python"} — source code, evaluated by GraalPy (future)</li>
- * </ul>
- *
- * <p>This class handles {@code "typescript"} content. Java built-in nodes are
- * handled by the existing {@code InMemoryNodeRegistry}.
  */
 @ApplicationScoped
 public class PolyglotNodeRegistry implements com.quarkloop.quark.core.engine.polyglot.PolyglotNodeLookup {
@@ -45,26 +29,22 @@ public class PolyglotNodeRegistry implements com.quarkloop.quark.core.engine.pol
     private final ObjectMapper mapper = new ObjectMapper();
     private final NatsConnectionManager natsConnectionManager;
 
-    /** Cache of URI → factory, to avoid re-downloading on every deploy. */
-    private final Map<String, NodeImplementationFactory<?>> cache = new HashMap<>();
+    /** Cache of URI → factory, thread-safe. */
+    private final ConcurrentHashMap<String, NodeImplementationFactory> cache = new ConcurrentHashMap<>();
 
     @Inject
     public PolyglotNodeRegistry(NatsConnectionManager natsConnectionManager) {
         this.natsConnectionManager = natsConnectionManager;
     }
 
-    /**
-     * Look up a node implementation by URI from the Catalog.
-     *
-     * @param uri the full node URI (e.g., "function/my-fn:v1")
-     * @return the factory, or empty if not found in the catalog
-     */
-    public Optional<NodeImplementationFactory<?>> lookupFactory(NodeUri uri) {
+    @Override
+    public Optional<NodeImplementationFactory> lookupFactory(NodeUri uri) {
         String uriStr = uri.rawUri();
 
         // Check cache first
-        if (cache.containsKey(uriStr)) {
-            return Optional.of(cache.get(uriStr));
+        NodeImplementationFactory cached = cache.get(uriStr);
+        if (cached != null) {
+            return Optional.of(cached);
         }
 
         // Query the catalog
@@ -87,7 +67,7 @@ public class PolyglotNodeRegistry implements com.quarkloop.quark.core.engine.pol
             String manifest = pkg.get("manifest").asText();
             byte[] content = pkg.get("content").binaryValue();
 
-            NodeImplementationFactory<?> factory = createFactory(uriStr, contentType, content, manifest);
+            NodeImplementationFactory factory = createFactory(uriStr, contentType, content, manifest);
             if (factory != null) {
                 cache.put(uriStr, factory);
                 log.info("Loaded node {} from catalog (type={}, {} bytes)", uriStr, contentType, content.length);
@@ -100,20 +80,15 @@ public class PolyglotNodeRegistry implements com.quarkloop.quark.core.engine.pol
         return Optional.empty();
     }
 
-    /**
-     * Create the appropriate factory based on content type.
-     */
-    private NodeImplementationFactory<?> createFactory(String uri, String contentType, byte[] content, String manifestJson) {
+    private NodeImplementationFactory createFactory(String uri, String contentType, byte[] content, String manifestJson) {
         try {
             var manifest = mapper.readTree(manifestJson);
-            String categoryStr = manifest.has("category") ? manifest.get("category").asText() : "function";
-            NodeCategory category = NodeCategory.valueOf(categoryStr.toUpperCase());
             String description = manifest.has("description") ? manifest.get("description").asText() : "";
 
             return switch (contentType) {
                 case "typescript" -> {
                     String source = new String(content, StandardCharsets.UTF_8);
-                    yield new TypeScriptNodeFactory(uri, source, category, description);
+                    yield new TypeScriptNodeFactory(uri, source, description);
                 }
                 case "shared-library" -> {
                     log.warn("Shared-library node loading not yet implemented for {}", uri);
@@ -134,9 +109,6 @@ public class PolyglotNodeRegistry implements com.quarkloop.quark.core.engine.pol
         }
     }
 
-    /**
-     * Check if a node package exists in the catalog.
-     */
     public boolean existsInCatalog(String uri) {
         try {
             Connection conn = natsConnectionManager.getConnection();
@@ -150,9 +122,6 @@ public class PolyglotNodeRegistry implements com.quarkloop.quark.core.engine.pol
         }
     }
 
-    /**
-     * Clear the cache (called when a system is undeployed).
-     */
     public void clearCache() {
         cache.clear();
     }

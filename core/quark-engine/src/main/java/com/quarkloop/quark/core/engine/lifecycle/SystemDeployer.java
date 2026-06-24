@@ -1,11 +1,12 @@
 package com.quarkloop.quark.core.engine.lifecycle;
 
-import com.quarkloop.quark.core.domain.category.NodeCategory;
 import com.quarkloop.quark.core.domain.config.NodeConfig;
 import com.quarkloop.quark.core.domain.identity.Namespace;
 import com.quarkloop.quark.core.domain.metadata.NodeMetadata;
-import com.quarkloop.quark.core.domain.node.*;
-import com.quarkloop.quark.core.domain.spi.*;
+import com.quarkloop.quark.core.domain.node.SimpleNode;
+import com.quarkloop.quark.core.domain.spi.NodeProvider;
+import com.quarkloop.quark.core.domain.spi.QuarkMessage;
+import com.quarkloop.quark.core.domain.spi.QuarkPublisher;
 import com.quarkloop.quark.core.domain.system.NodeDefinition;
 import com.quarkloop.quark.core.domain.system.SystemDefinition;
 import com.quarkloop.quark.core.engine.bus.MessageBus;
@@ -13,7 +14,6 @@ import com.quarkloop.quark.core.engine.bus.Subscription;
 import com.quarkloop.quark.core.engine.metrics.NamespaceMetrics;
 import com.quarkloop.quark.core.engine.polyglot.PolyglotNodeLookup;
 import com.quarkloop.quark.core.engine.runtime.RuntimeContext;
-import com.quarkloop.quark.core.registry.NodeDescriptor;
 import com.quarkloop.quark.core.registry.NodeImplementationFactory;
 import com.quarkloop.quark.core.registry.NodeRegistry;
 import jakarta.annotation.PreDestroy;
@@ -65,12 +65,10 @@ public class SystemDeployer {
                 undeployInternal(ns, name);
             }
 
-            Map<String, NodeImplementationFactory<?>> factories = new HashMap<>();
+            Map<String, NodeImplementationFactory> factories = new HashMap<>();
             List<String> missingUris = new ArrayList<>();
             for (NodeDefinition def : system.nodes().values()) {
-                // 1. Check built-in Java registry first
-                Optional<NodeImplementationFactory<?>> f = registry.lookupFactory(def.uri());
-                // 2. Fall back to polyglot registry (TypeScript/Python from catalog)
+                Optional<NodeImplementationFactory> f = registry.lookupFactory(def.uri());
                 if (f.isEmpty()) {
                     f = polyglotLookup.lookupFactory(def.uri());
                 }
@@ -115,10 +113,10 @@ public class SystemDeployer {
         RuntimeSystem runtime = opt.get();
         log.info("Undeploying system {}/{}", ns, name);
 
-        for (EndpointProvider ep : runtimeContext.getEndpoints(ns, name))
-            try { ep.stop(); } catch (Exception e) { log.warn("Failed to stop endpoint", e); }
-        for (SourceProvider sp : runtimeContext.getSources(ns, name))
-            try { sp.stop(); } catch (Exception e) { log.warn("Failed to stop source", e); }
+        // Close all startable providers (call close() on every NodeProvider)
+        for (NodeProvider provider : runtimeContext.getStartableProviders(ns, name))
+            try { provider.close(); } catch (Exception e) { log.warn("Failed to close provider", e); }
+        // Close all subscriptions
         for (Subscription sub : runtimeContext.getSubscriptions(ns, name))
             try { sub.close(); } catch (Exception e) { log.warn("Failed to close subscription", e); }
 
@@ -129,7 +127,7 @@ public class SystemDeployer {
     }
 
     private void deployNode(SystemDefinition system, NodeDefinition def,
-                             NodeImplementationFactory<?> factory, RuntimeSystem runtime) {
+                             NodeImplementationFactory factory, RuntimeSystem runtime) {
         log.info("Deploying node {} ({})", def.name(), def.uri());
 
         Map<String, Object> configWithMeta = new HashMap<>(def.config().asMap());
@@ -138,36 +136,44 @@ public class SystemDeployer {
         configWithMeta.put(CONFIG_KEY_NODE, def.name());
         NodeConfig config = NodeConfig.of(configWithMeta);
 
-        Object provider;
+        NodeProvider provider;
         try { provider = factory.create(config); }
         catch (Exception e) {
             throw new DeploymentException("Factory " + factory.getClass().getName() +
                     " failed for " + def.uri() + " (" + def.name() + "): " + e.getMessage(), e);
         }
 
+        // Initialize the provider
+        provider.init(config);
+
         Set<String> allowedEvents = new HashSet<>(def.events());
         QuarkPublisher publisher = messageBus.createPublisher(
                 system.name(), system.namespace().value(), def.name(), allowedEvents);
 
+        // If the node has listens, create subscriptions that call onMessage
         if (!def.listens().isEmpty())
             createSubscriptions(system, def, provider, publisher);
 
-        if (provider instanceof SourceProvider sp) {
-            sp.start(publisher, config);
-            runtimeContext.recordSource(system.namespace().value(), system.name(), def.name(), sp);
-        } else if (provider instanceof EndpointProvider ep) {
-            ep.start(publisher, config);
-            runtimeContext.recordEndpoint(system.namespace().value(), system.name(), def.name(), ep);
+        // If the node has no listens (autonomous), call start()
+        // The engine calls start() for all providers — the default no-op
+        // makes this safe for providers that don't override it.
+        if (def.listens().isEmpty()) {
+            provider.start(publisher, config);
+            runtimeContext.recordStartableProvider(system.namespace().value(), system.name(), def.name(), provider);
+        } else {
+            // For nodes with listens, also record them as startable so close() is called on undeploy
+            runtimeContext.recordStartableProvider(system.namespace().value(), system.name(), def.name(), provider);
         }
 
-        Node domainNode = createDomainNode(def, factory.descriptor());
+        var metadata = NodeMetadata.initial().withLabels(def.labels()).withAnnotations(def.annotations());
+        var domainNode = new SimpleNode(def.name(), def.uri(), def.config(), metadata);
         runtime.register(new RuntimeNode(domainNode, provider));
         log.info("Node {} deployed (listens={}, events={}, bus={})",
                 def.name(), def.listens(), def.events(), messageBus.isConnected() ? "connected" : "degraded");
     }
 
     private void createSubscriptions(SystemDefinition system, NodeDefinition def,
-                                      Object provider, QuarkPublisher publisher) {
+                                      NodeProvider provider, QuarkPublisher publisher) {
         List<Subscription> subs = new ArrayList<>();
         String namespace = system.namespace().value();
         for (String rel : def.listens()) {
@@ -178,25 +184,10 @@ public class SystemDeployer {
         runtimeContext.recordSubscriptions(namespace, system.name(), def.name(), subs);
     }
 
-    /**
-     * Dispatch an incoming message to the appropriate provider method,
-     * measuring the CPU time consumed and recording per-namespace metrics.
-     *
-     * <p>CPU time is measured via {@link NamespaceMetrics#getCurrentThreadCpuTimeNanos()}
-     * before and after the handler call. The delta is attributed to the
-     * namespace. If the JVM does not support thread CPU time measurement,
-     * the delta is -1 and only the message count is recorded.
-     *
-     * <p>Errors thrown by the handler are recorded in the namespace's error
-     * counter and then re-thrown so the MessageBus can NAK the message.
-     */
-    private void dispatchToProvider(QuarkMessage msg, Object provider, QuarkPublisher publisher, String namespace) {
+    private void dispatchToProvider(QuarkMessage msg, NodeProvider provider, QuarkPublisher publisher, String namespace) {
         long cpuBefore = namespaceMetrics.getCurrentThreadCpuTimeNanos();
         try {
-            if (provider instanceof FunctionProvider fp) fp.onMessage(msg, publisher);
-            else if (provider instanceof StoreProvider sp) sp.onMessage(msg, publisher);
-            else if (provider instanceof EndpointProvider ep) ep.onMessage(msg, publisher);
-            else if (provider instanceof PolicyProvider pp) pp.onMessage(msg, publisher);
+            provider.onMessage(msg, publisher);
             long cpuAfter = namespaceMetrics.getCurrentThreadCpuTimeNanos();
             long cpuDelta = cpuBefore >= 0 && cpuAfter >= 0 ? cpuAfter - cpuBefore : -1;
             namespaceMetrics.recordMessageHandled(namespace, cpuDelta);
@@ -204,16 +195,5 @@ public class SystemDeployer {
             namespaceMetrics.recordError(namespace);
             throw e;
         }
-    }
-
-    private Node createDomainNode(NodeDefinition def, NodeDescriptor descriptor) {
-        NodeMetadata metadata = NodeMetadata.initial().withLabels(def.labels()).withAnnotations(def.annotations());
-        return switch (descriptor.category()) {
-            case SOURCE -> new Source(def.name(), def.uri(), def.config(), metadata);
-            case FUNCTION -> new Function(def.name(), def.uri(), def.config(), metadata);
-            case STORE -> new Store(def.name(), def.uri(), def.config(), metadata);
-            case ENDPOINT -> new Endpoint(def.name(), def.uri(), def.config(), metadata);
-            case POLICY -> new Policy(def.name(), def.uri(), def.config(), metadata);
-        };
     }
 }

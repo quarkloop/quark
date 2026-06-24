@@ -1,8 +1,7 @@
 package com.quarkloop.quark.core.engine.runtime;
 
 import com.quarkloop.quark.core.domain.identity.Namespace;
-import com.quarkloop.quark.core.domain.spi.EndpointProvider;
-import com.quarkloop.quark.core.domain.spi.SourceProvider;
+import com.quarkloop.quark.core.domain.spi.NodeProvider;
 import com.quarkloop.quark.core.engine.bus.Subscription;
 import com.quarkloop.quark.core.engine.lifecycle.RuntimeNode;
 import com.quarkloop.quark.core.engine.lifecycle.RuntimeSystem;
@@ -72,26 +71,17 @@ public final class RuntimeContext {
         return getNode(namespace.value(), systemName, nodeName);
     }
 
-    public void recordSource(String ns, String sys, String node, SourceProvider sp) {
-        systemStates.computeIfAbsent(key(ns, sys), k -> new SystemRuntimeState()).sources.put(node, sp);
-    }
-
-    public void recordEndpoint(String ns, String sys, String node, EndpointProvider ep) {
-        systemStates.computeIfAbsent(key(ns, sys), k -> new SystemRuntimeState()).endpoints.put(node, ep);
+    public void recordStartableProvider(String ns, String sys, String node, NodeProvider provider) {
+        systemStates.computeIfAbsent(key(ns, sys), k -> new SystemRuntimeState()).providers.put(node, provider);
     }
 
     public void recordSubscriptions(String ns, String sys, String node, List<Subscription> subs) {
         systemStates.computeIfAbsent(key(ns, sys), k -> new SystemRuntimeState()).subscriptions.put(node, new ArrayList<>(subs));
     }
 
-    public Collection<SourceProvider> getSources(String ns, String sys) {
+    public Collection<NodeProvider> getStartableProviders(String ns, String sys) {
         SystemRuntimeState s = systemStates.get(key(ns, sys));
-        return s == null ? List.of() : s.sources.values();
-    }
-
-    public Collection<EndpointProvider> getEndpoints(String ns, String sys) {
-        SystemRuntimeState s = systemStates.get(key(ns, sys));
-        return s == null ? List.of() : s.endpoints.values();
+        return s == null ? List.of() : s.providers.values();
     }
 
     public Collection<Subscription> getSubscriptions(String ns, String sys) {
@@ -109,8 +99,7 @@ public final class RuntimeContext {
     private static String key(String ns, String sys) { return ns + "/" + sys; }
 
     private static final class SystemRuntimeState {
-        final ConcurrentMap<String, SourceProvider> sources = new ConcurrentHashMap<>();
-        final ConcurrentMap<String, EndpointProvider> endpoints = new ConcurrentHashMap<>();
+        final ConcurrentMap<String, NodeProvider> providers = new ConcurrentHashMap<>();
         final ConcurrentMap<String, List<Subscription>> subscriptions = new ConcurrentHashMap<>();
     }
 }

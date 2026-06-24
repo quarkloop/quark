@@ -6,7 +6,7 @@ import java.util.Map;
 
 public record NodeRecord(
         String namespace, String systemName, String name,
-        String uri, String category, String state, String health,
+        String uri, String state, String health,
         long version, String errorMessage,
         List<String> listens, List<String> events,
         Map<String, Object> config, Map<String, String> labels, Map<String, String> annotations,
@@ -18,7 +18,6 @@ public record NodeRecord(
         java.util.Objects.requireNonNull(systemName);
         java.util.Objects.requireNonNull(name);
         java.util.Objects.requireNonNull(uri);
-        java.util.Objects.requireNonNull(category);
         java.util.Objects.requireNonNull(state);
         java.util.Objects.requireNonNull(health);
         if (version < 1) version = 1;

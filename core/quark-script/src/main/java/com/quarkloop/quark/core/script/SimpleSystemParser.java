@@ -1,6 +1,5 @@
 package com.quarkloop.quark.core.script;
 
-import com.quarkloop.quark.core.domain.category.NodeCategory;
 import com.quarkloop.quark.core.domain.config.NodeConfig;
 import com.quarkloop.quark.core.domain.identity.Namespace;
 import com.quarkloop.quark.core.domain.identity.NodeUri;
@@ -275,9 +274,6 @@ public class SimpleSystemParser implements SystemParser {
 
         // Extract config (all unrecognized string/numeric fields)
         Map<String, Object> config = parseConfig(block);
-
-        // Determine category from URI
-        NodeCategory category = uri.category();
 
         return new NodeDefinition(
                 nodeName, uri, NodeConfig.of(config),
