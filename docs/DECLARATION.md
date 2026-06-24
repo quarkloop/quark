@@ -1,7 +1,7 @@
 # Quark Declarative Format
 
-**Status**: Architecture — TypeScript + NATS JetStream
-**Date**: 2026-06-20
+**Status**: Architecture — TypeScript + NATS Core + Three-Service (Control Plane / Catalog / Data Plane)
+**Date**: 2026-06-24
 
 ---
 
@@ -14,9 +14,9 @@ Quark's declarative format is built on two primitives:
 1. **Nodes** — The components. Defined by a name, a Docker-style URI, and configuration.
 2. **NATS Subjects** — The wiring. Nodes communicate through named subjects, not direct references.
 
-The `.quark.ts` file IS the program. Users write TypeScript. The server evaluates it via GraalJS. The result is a running system on a NATS JetStream backbone.
+The `.quark.ts` file IS the program. Users write TypeScript. The control plane parses the declaration via `SimpleSystemParser` (regex-based, no GraalJS), persists the source to the Catalog (Go + SQLite), and forwards a deploy command to a data-plane process via NATS. The data plane uses GraalJS to evaluate TypeScript node logic at execution time.
 
-No arrow notation. No YAML. No custom parser. JavaScript IS the language.
+No arrow notation. No YAML. Server-side parsing is regex-based (`SimpleSystemParser`); runtime-side TypeScript evaluation uses GraalJS.
 
 ---
 
@@ -25,11 +25,10 @@ No arrow notation. No YAML. No custom parser. JavaScript IS the language.
 Every Quark declaration file has exactly this structure:
 
 ```typescript
-
-
 export default({
     name: "<system-name>",
     namespace: "<namespace>",
+    runtime: "shared" | "isolated",  // optional, default "shared"
     nodes: {
         "<node-name>": {
             uses: "<category>/<implementation>:<version>",
@@ -43,6 +42,28 @@ export default({
     },
 });
 ```
+
+### System-Level Fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `name` | string | (required) | System name. Combined with namespace, uniquely identifies the system. |
+| `namespace` | string | (required) | Tenant namespace. Encoded into every NATS subject for multi-tenant isolation. |
+| `runtime` | `"shared"` \| `"isolated"` | `"shared"` | Process isolation mode. `shared` runs in the shared data-plane process; `isolated` spawns a dedicated data-plane process for this namespace. |
+
+---
+
+### Deployment Flow
+
+When a user runs `quarkctl apply -f system.quark.ts -n alice`:
+
+1. CLI PUTs the source to `PUT /api/v1/namespaces/alice/systems/monitor` on the control plane.
+2. Control plane parses the source with `SimpleSystemParser` (regex) → `SystemDefinition`.
+3. Control plane persists the system record + source to the Catalog via `catalog.system.save` and `catalog.source.save` NATS requests.
+4. Control plane's `ProcessManager` ensures a data-plane process exists for the runtime (`shared` or `ns-<namespace>`), spawning one if needed.
+5. Control plane sends a `DeployCommand` (carrying the source) to `quark.control.<runtimeId>.deploy` via NATS request-reply.
+6. Data plane receives the command, parses the source with `GraalJsSystemParser` (full GraalJS), instantiates providers, starts NATS subscriptions, and replies with a `StatusResponse` containing node info.
+7. Control plane returns `201 Created` to the CLI.
 
 ---
 
@@ -115,7 +136,7 @@ Every node URI must carry a version tag, just like Docker images:
 listens: ["timer.tick", "memory.data"]
 ```
 
-The engine creates a NATS JetStream Consumer for each subject. The node receives messages from these subjects via `onMessage()`.
+The engine creates a NATS subscription for each subject. The node receives messages from these subjects via `onMessage()`.
 
 Subjects are **relative** — the engine prefixes them with `<system>.<namespace>.`:
 - `timer.tick` → `monitor.alice.timer.tick`
@@ -131,11 +152,11 @@ Subjects are **relative** — the engine prefixes them with `<system>.<namespace
 events: ["data", "updated"]
 ```
 
-The engine creates NATS publish ACLs allowing this node to publish ONLY to:
+The engine allows this node to publish to:
 - `monitor.alice.<nodeName>.data`
 - `monitor.alice.<nodeName>.updated`
 
-Any attempt to publish to a different subject is rejected at the NATS transport layer.
+(Note: as of v8, NATS Core is used rather than JetStream — see `NODE.md` §6.2 — so publish ACLs are validated at the engine layer, not at the NATS transport layer.)
 
 #### `onFailure` — Error handling
 
@@ -143,7 +164,9 @@ Any attempt to publish to a different subject is rejected at the NATS transport 
 onFailure: { retry: 3, routeTo: "writer" }
 ```
 
-When a node fails to process a message:
+**Important (v8 status):** The `onFailure` field is **parsed** by the engine but **not enforced** at runtime. NATS Core does not provide automatic retries or fallback routing. The `retry` and `routeTo` fields are stored as node metadata but no retry loop or fallback subject publishing is implemented. See `NODE.md` §6.2 for the rationale and the planned JetStream upgrade path.
+
+When the JetStream upgrade lands, the intended behavior is:
 1. NATS retries up to `retry` times with exponential backoff
 2. After max retries, the engine publishes the error payload to `<system>.<namespace>.fallback.<nodeName>`
 3. The node specified in `routeTo` must `listens` to the fallback subject to receive it
@@ -155,11 +178,10 @@ The error payload includes the original message data plus error metadata (except
 ### Complete Example: System Monitor
 
 ```typescript
-
-
 export default({
     name: "monitor",
     namespace: "alice",
+    runtime: "shared",  // default — runs in the shared data-plane process
 
     nodes: {
         timer: {
@@ -210,20 +232,16 @@ export default({
 
 ```
 timer publishes "tick" → monitor.alice.timer.tick
-    ↓ (NATS JetStream)
+    ↓ (NATS Core)
 cpu listens ["timer.tick"] → receives tick → reads CPU → publishes "data"
-    ↓ (NATS JetStream)
+    ↓ (NATS Core)
     ├── writer listens ["cpu.data"] → writes to file
     └── list listens ["cpu.data"] → stores → publishes "updated"
-                                       ↓ (NATS JetStream)
+                                       ↓ (NATS Core)
                                        stream listens ["list.updated"] → pushes SSE
-
-If cpu fails 3 times:
-    ↓ (NATS fallback routing)
-    monitor.alice.fallback.cpu
-    ↓
-    writer listens ["fallback.cpu"] → writes error to file
 ```
+
+Note: as of v8, the `onFailure` fallback routing (`monitor.alice.fallback.cpu`) is parsed but not enforced. Failures propagate as exceptions to the data-plane log; the writer's `fallback.cpu` listener will not receive error payloads until the JetStream upgrade.
 
 ---
 
@@ -234,8 +252,9 @@ If cpu fails 3 times:
 | 1 | Everything is a Node | No hidden concepts. Every component is a node with a URI. |
 | 2 | NATS is the backbone | All communication flows through NATS subjects. No direct method calls between nodes. |
 | 3 | Zero coupling | No node knows about any other node. They only know their subjects. |
-| 4 | Persistence by default | JetStream persists all messages. Crashes don't lose data. |
-| 5 | TypeScript is the language | No YAML, no custom DSL, no arrow notation. Users write TypeScript. |
-| 6 | Type safety | The `quark.d.ts` npm package provides full type definitions. |
-| 7 | Multi-tenant by construction | NATS subjects encode namespace. Cross-tenant access is impossible. |
-| 8 | Declarative | The file declares what nodes exist and how they communicate. The engine handles execution. |
+| 4 | TypeScript is the language | No YAML, no custom DSL, no arrow notation. Users write TypeScript. |
+| 5 | Type safety | The `quark.d.ts` npm package provides full type definitions. |
+| 6 | Multi-tenant by construction | NATS subjects encode namespace. Cross-tenant access is impossible. |
+| 7 | Declarative | The file declares what nodes exist and how they communicate. The engine handles execution. |
+| 8 | Strict tier separation | `core/` (shared, no GraalJS) ← `server/` (control plane, no GraalJS), `core/` ← `runtime/` (data plane, with GraalJS). Never `server/` ↔ `runtime/`. |
+| 9 | Fail-fast | No silent fallbacks. If a dependency (NATS, Catalog, GraalJS) is down, throw. |

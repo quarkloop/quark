@@ -2,8 +2,8 @@
 
 ## A Universal Runtime for Programmable Nodes
 
-**Status**: Architecture — NATS JetStream + GraalJS
-**Date**: 2026-06-20
+**Status**: Architecture — Three-Service (Control Plane / Catalog / Data Plane) + NATS Core + GraalJS
+**Date**: 2026-06-24
 
 ---
 
@@ -18,38 +18,71 @@ The goal is not to model databases, workflows, or AI agents specifically. The go
 ## Core Principles
 
 1. **Everything is a Node** — Any entity in the system is a Node with a URI.
-2. **NATS is the Backbone** — All communication flows through NATS JetStream. No direct method calls between nodes.
+2. **NATS is the Backbone** — All communication flows through NATS Core. No direct method calls between nodes. (Note: as of v8, NATS Core is used rather than JetStream — see `NODE.md` §6 for details.)
 3. **Zero Coupling** — No node knows about any other node. They only know their NATS subjects.
-4. **Persistence by Default** — JetStream persists all messages. Crashes don't lose data.
-5. **TypeScript is the Language** — Users write `.quark.ts` files. No YAML, no custom DSL.
-6. **Type Safety** — The `quark.d.ts` npm package provides full TypeScript type definitions.
-7. **Multi-tenant by Construction** — NATS subjects encode namespace. Cross-tenant access is impossible.
-8. **Declarative** — The file declares what nodes exist and how they communicate. The engine handles execution.
+4. **TypeScript is the Language** — Users write `.quark.ts` files. No YAML, no custom DSL.
+5. **Type Safety** — The `quark.d.ts` npm package provides full TypeScript type definitions.
+6. **Multi-tenant by Construction** — NATS subjects encode namespace. Cross-tenant access is impossible.
+7. **Declarative** — The file declares what nodes exist and how they communicate. The engine handles execution.
+8. **Strict Tier Separation** — `core/`, `server/`, `runtime/` are Maven tiers with one-way dependencies. The control plane never includes GraalJS; only the data plane does.
 
 ---
 
-## Three-Layer Architecture
+## Three-Service Architecture
 
-### Layer 1: GraalJS (Parsing)
+Quark runs as three cooperating services plus an external NATS broker. Each service has a single responsibility and communicates exclusively via NATS.
 
-- **Input**: `.quark.ts` file (TypeScript source)
-- **Output**: `SystemConfig` (plain data structure)
-- **Responsibility**: Transpile TS → JS, evaluate in sandboxed GraalJS Context, extract config
-- **Does NOT**: Touch NATS, instantiate providers, execute anything
+### Service 1: Control Plane (`server/`)
 
-### Layer 2: Engine (Execution)
+- **Language**: Java 21 / Native image (Oracle GraalVM)
+- **Binary**: `server/quark-server/target/quark-server-0.1.0-SNAPSHOT-runner` (76 MB native, 4 min build, 46 ms startup)
+- **Includes GraalJS**: ❌ No — uses `SimpleSystemParser` (regex-based) to parse `.quark.ts`
+- **Responsibility**: REST API, deploy/undeploy orchestration, spawns data-plane processes, forwards persistence requests to the Catalog
+- **Does NOT**: Execute node logic, touch GraalJS, open the SQLite database directly
 
-- **Input**: `SystemConfig` + Provider instances
-- **Output**: Running system (NATS consumers/publishers live)
-- **Responsibility**: Embedded NATS server, JetStream streams/consumers/ACLs, lifecycle management, retry/fallback, state persistence, REST API
-- **Does NOT**: Parse TypeScript, implement node logic
+### Service 2: Catalog (`quark-catalog/`)
 
-### Layer 3: Providers (Implementation)
+- **Language**: Go (pure Go, no CGO)
+- **Binary**: `quark-catalog/quark-catalog` (15 MB, <5 s build)
+- **Driver**: `modernc.org/sqlite` (pure Go SQLite, no JNI)
+- **Responsibility**: SQLite-backed metadata store (systems, nodes, events, source, registry, node packages). Listens on `catalog.*` and `registry.*` NATS subjects.
+- **Does NOT**: Execute node logic, talk to the data plane, know about NATS subjects beyond its own request-reply protocol
 
-- **Input**: `QuarkMessage` (incoming NATS message)
-- **Output**: `QuarkPublisher.publish()` (outgoing NATS message)
-- **Responsibility**: Implement node behavior (timer ticks, CPU reads, file writes, HTTP serving)
-- **Does NOT**: Know about NATS subjects, other nodes, or the engine internals
+### Service 3: Data Plane (`runtime/`)
+
+- **Language**: Java 21 / Native image (Oracle GraalVM with `--macro:truffle-svm`)
+- **Binary**: `runtime/quark-runtime/target/quark-runtime-runner-runner` (194 MB native, 9 min build, 38 ms startup)
+- **Includes GraalJS**: ✅ Yes — uses `GraalJsSystemParser` + `TypeScriptNodeFactory` for TypeScript node execution
+- **Responsibility**: Executes node systems, hosts GraalJS, runs providers, forwards events/metrics to the control plane
+- **Does NOT**: Expose a REST API (only `/q/health/*`), persist state directly (forwards everything to control plane → Catalog)
+- **Lifecycle**: Spawned on demand by the control plane's `ProcessManager`. One shared process (`runtimeId=shared`) for non-isolated namespaces; one process per isolated namespace (`runtimeId=ns-<namespace>`).
+
+### Service 4: NATS Broker (external)
+
+- **Binary**: `nats-server` (external process, not embedded)
+- **Role**: Message bus for all inter-service communication
+- **Mode**: NATS Core (not JetStream) as of v8
+
+### IPC Subject Taxonomy
+
+Two distinct subject taxonomies flow through NATS:
+
+**Control-plane ↔ data-plane IPC** (`quark.*`):
+- `quark.control.<runtimeId>.deploy` / `.undeploy` — deploy commands
+- `quark.data.<runtimeId>.status` — deploy/undeploy result
+- `quark.data.event.>` — events forwarded from data plane (wildcard)
+- `quark.data.heartbeat.>` — per-namespace metrics (wildcard)
+
+**Control-plane ↔ Catalog** (`catalog.*`, `registry.*`):
+- `catalog.system.{save,get,list,delete,updateState}`
+- `catalog.node.{save,saveAll,list,delete}`
+- `catalog.event.{append,appendBatch,query,count}`
+- `catalog.source.{save,get,list}`
+- `catalog.registry.{save,find,list,exists}`
+- `registry.node.{push,pull,info,list,search,delete,exists}`
+
+**Node-data subjects** (runtime-internal, between nodes):
+- `<system>.<namespace>.<node>.<event>` (e.g. `monitor.alice.timer.tick`)
 
 ---
 
@@ -69,9 +102,9 @@ The goal is not to model databases, workflows, or AI agents specifically. The go
 
 Nodes communicate exclusively through NATS subjects:
 
-- **`listens`**: Array of subjects the node subscribes to (NATS Consumer)
-- **`events`**: Array of event types the node publishes (NATS Publisher ACL)
-- **`onFailure`**: Retry count + fallback routing target
+- **`listens`**: Array of subjects the node subscribes to (NATS subscription)
+- **`events`**: Array of event types the node publishes (NATS publish)
+- **`onFailure`**: Retry count + fallback routing target (parsed but **not enforced** in v8 — see `NODE.md` §6.2)
 
 No node has a direct reference to any other node. The NATS subject is the only coupling — and it's a string, not a code-level dependency.
 
@@ -105,6 +138,19 @@ Execution emerges from composition — a Source publishing events that a Functio
 
 ---
 
+## Build Modes
+
+| Mode | Command | Output | Use case |
+|------|---------|--------|----------|
+| JVM (default) | `make build` | `.jar` files | Development, debugging |
+| Native (server only) | `make build-native-server` | 76 MB binary | Production control plane |
+| Native (runtime only) | `make build-native-runtime` | 194 MB binary | Production data plane |
+| Native (both) | `make build-native` | Both binaries | Full production deployment |
+
+Native builds require Oracle GraalVM 21+ with `native-image`. The data plane native build requires `--macro:truffle-svm` (Truffle support); the server native build must NOT include it.
+
+---
+
 ## Design Principles Summary
 
 | Principle | Rule |
@@ -112,8 +158,9 @@ Execution emerges from composition — a Source publishing events that a Functio
 | Everything is a Node | No hidden concepts. Every component has a URI. |
 | NATS is the backbone | All communication via subjects. No direct calls. |
 | Zero coupling | Nodes know subjects, not other nodes. |
-| Persistence by default | JetStream persists everything. |
 | TypeScript is the language | No YAML, no DSL, no arrows. |
 | Type safety | npm package provides full type definitions. |
 | Multi-tenant by construction | Subjects encode namespace. |
 | Declarative | Declare what, not how. Engine handles execution. |
+| Strict tier separation | `core/` ← `server/`, `core/` ← `runtime/`. Never `server/` ↔ `runtime/`. |
+| Fail-fast | No silent fallbacks. If a dependency is down, throw. |

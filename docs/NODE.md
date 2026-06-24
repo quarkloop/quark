@@ -1,7 +1,7 @@
 # Quark Node Specification
 
-**Status**: Architecture — NATS JetStream + GraalJS
-**Date**: 2026-06-20
+**Status**: Architecture — Three-Service (Control Plane / Catalog / Data Plane) + NATS Core + GraalJS
+**Date**: 2026-06-24
 
 ---
 
@@ -9,59 +9,38 @@
 
 Quark is a universal runtime for programmable nodes. Everything in Quark — sources, functions, stores, endpoints, policies — is a **Node** identified by a Docker-style URI (`category/implementation:version`).
 
-Users write **TypeScript files** (`.quark.ts`) that declare nodes and their communication patterns. The server evaluates these files via **GraalJS** and executes them on an **embedded NATS JetStream** backbone. Nodes communicate exclusively through NATS subjects — no node knows about any other node directly.
+Users write **TypeScript files** (`.quark.ts`) that declare nodes and their communication patterns. The control plane parses these files via **`SimpleSystemParser`** (regex-based, no GraalJS) and forwards them to a data-plane process, where **GraalJS** evaluates TypeScript node logic over an **external NATS Core** backbone. Nodes communicate exclusively through NATS subjects — no node knows about any other node directly.
+
+See `docs/DESIGN.md` for the full three-service architecture (control plane, Catalog, data plane).
 
 ---
 
-## 2. Three-Layer Architecture
+## 2. Three-Service Architecture
 
-```
-┌─────────────────────────────────────────────────────┐
-│                   GraalJS Layer                      │
-│                                                      │
-│  Input:  .quark.ts file (TypeScript source)          │
-│  Output: SystemConfig (plain data structure)         │
-│                                                      │
-│  - Transpiles TS → JS (esbuild or tsc)              │
-│  - Evaluates JS in a sandboxed GraalJS Context       │
-│  - User calls  which returns config    │
-│  - No NATS, no providers, no execution               │
-└───────────────────────┬─────────────────────────────┘
-                        │ SystemConfig
-                        ▼
-┌─────────────────────────────────────────────────────┐
-│                    Engine Layer                      │
-│                                                      │
-│  Input:  SystemConfig + Provider instances           │
-│  Output: Running system (NATS consumers live)        │
-│                                                      │
-│  - Embedded NATS server with JetStream               │
-│  - Creates JetStream consumers for each `listens`    │
-│  - Creates publish ACLs for each `events`            │
-│  - Handles retry/fallback per `onFailure`            │
-│  - Manages lifecycle (CREATING → ACTIVE → PAUSED)    │
-│  - Persists state (state.json, events.jsonl)         │
-│  - Exposes REST API for management                   │
-└───────────────────────┬─────────────────────────────┘
-                        │ QuarkMessage + QuarkPublisher
-                        ▼
-┌─────────────────────────────────────────────────────┐
-│                   Provider Layer                     │
-│                                                      │
-│  Input:  QuarkMessage (incoming NATS message)        │
-│  Output: QuarkPublisher.publish() (outgoing)         │
-│                                                      │
-│  - Self-contained Java modules (providers/provider-*)│
-│  - Implements one SPI interface                      │
-│  - Knows nothing about NATS, GraalJS, or other nodes │
-│  - No static/shared state (instance-per-node)        │
-└─────────────────────────────────────────────────────┘
-```
+Quark runs as three cooperating services (see `docs/DESIGN.md` for the full diagram):
 
-Each layer has strict boundaries:
-- **GraalJS layer** never touches NATS or providers
-- **Engine layer** never parses TypeScript
-- **Provider layer** never sees NATS subjects or other nodes
+| Service | Tier | Includes GraalJS? | Responsibility |
+|---------|------|-------------------|----------------|
+| **Control plane** (`server/`) | `server/` | ❌ No | REST API, deploy orchestration, parses `.quark.ts` with `SimpleSystemParser` (regex), spawns data-plane processes |
+| **Catalog** (`quark-catalog/`) | (Go) | n/a | SQLite-backed metadata store (systems, nodes, events, source, registry) |
+| **Data plane** (`runtime/`) | `runtime/` | ✅ Yes | Executes nodes via GraalJS + providers; connects to external NATS server |
+
+### Parse-time vs Execute-time
+
+The `.quark.ts` file is parsed **twice**:
+
+1. **Parse-time (control plane)**: `SimpleSystemParser` (in `core/quark-script`) extracts system name, namespace, runtime mode, and node definitions using regex. No GraalJS, no JS evaluation. This produces a `SystemDefinition` record used for metadata persistence and deploy routing.
+
+2. **Execute-time (data plane)**: `GraalJsSystemParser` (in `runtime/quark-script`) evaluates the TypeScript via GraalJS to extract runtime config (e.g. dynamic config values that require JS evaluation). `TypeScriptNodeFactory` (in `runtime/quark-polyglot`) uses GraalJS to execute TypeScript node implementations.
+
+### Provider Layer
+
+Providers are self-contained Java modules in `runtime/providers/provider-*`:
+- Input: `QuarkMessage` (incoming NATS message)
+- Output: `QuarkPublisher.publish()` (outgoing NATS message)
+- Implements one SPI interface (`SourceProvider`, `FunctionProvider`, `StoreProvider`, `EndpointProvider`, `PolicyProvider`)
+- Knows nothing about NATS subjects, other nodes, or the engine internals
+- No static/shared state (instance-per-node)
 
 ---
 
@@ -350,28 +329,45 @@ Systems in the same namespace share the namespace for management purposes (list,
 
 ---
 
-## 9. File Layout on Disk
+## 9. Persistence Layout
+
+As of v8, all persistence is delegated to the **Catalog service** (Go + SQLite). The Catalog database lives at:
 
 ```
 $QUARK_STATE_ROOT/
-├── platform-events.jsonl                       Platform-level events
-└── systems/
-    └── <namespace>/
-        └── <system-name>/
-            ├── source.ts                        Original .quark.ts file
-            ├── events.jsonl                     Per-system event log
+├── catalog.db                                  SQLite database (Catalog service)
+│                                               Tables: systems, nodes, events,
+│                                                       node_packages, registry,
+│                                                       catalog_meta
+└── dataplane-logs/                             Per-runtimeId data-plane stdout/stderr
+    └── dataplane-<runtimeId>.log
 ```
 
-> **Note**: `system.meta.json` and `state.json` are planned but not yet written by v0.1. NATS JetStream data files will appear here once JetStream is implemented (see §6.4).
+The legacy on-disk layout (`$QUARK_STATE_ROOT/systems/<ns>/<sys>/source.ts` + `events.jsonl`) is **migrated automatically** on first Catalog startup via `store.MigrateLegacy()` — the `systems/` directory is renamed to `systems.backup/` after migration.
+
+> **Note**: `system.meta.json` and `state.json` mentioned in earlier specs are no longer planned — all metadata lives in the Catalog's SQLite tables.
 
 ---
 
 ## 10. REST API
 
+All endpoints are scoped under `/api/v1/` on the control plane (port 8080):
+
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/registry` | List registered implementations |
-| GET | `/health` | Platform health |
+| GET | `/api/v1/namespaces` | List all active namespaces |
+| GET | `/api/v1/namespaces/{ns}` | Get namespace details + metrics |
+| GET | `/api/v1/namespaces/{ns}/systems` | List systems in a namespace |
+| GET | `/api/v1/namespaces/{ns}/systems/{name}` | Get system details |
+| PUT | `/api/v1/namespaces/{ns}/systems/{name}` | Apply (declarative reconcile) |
+| DELETE | `/api/v1/namespaces/{ns}/systems/{name}` | Undeploy a system |
+| GET | `/api/v1/namespaces/{ns}/systems/{name}/source` | Get the original .quark.ts source |
+| GET | `/api/v1/namespaces/{ns}/systems/{name}/nodes` | List nodes in a system |
+| GET | `/api/v1/namespaces/{ns}/systems/{name}/nodes/{node}` | Get node details |
+| GET | `/api/v1/namespaces/{ns}/events` | Query events |
+| GET | `/api/v1/registry` | List registered node implementations |
+| GET | `/q/health/live` | Liveness check (SmallRye Health default path) |
+| GET | `/q/health/ready` | Readiness check (NATS, Catalog, registry) |
 
 ---
 
@@ -381,21 +377,29 @@ $QUARK_STATE_ROOT/
 # Deploy a .quark.ts file
 quarkctl apply -f monitor.quark.ts -n alice
 
-# List systems
+# List systems / nodes / namespaces
 quarkctl get systems -n alice
-
-# Get system details
-quarkctl get system monitor -n alice
-
-# List nodes
 quarkctl get nodes -n alice -s monitor
+quarkctl get namespaces
 
-# Pause a node
-quarkctl node pause cpu -n alice -s monitor
+# Get system / node details
+quarkctl get system monitor -n alice
+quarkctl get node cpu -n alice -s monitor
 
-# Watch events
-quarkctl watch events -n alice -s monitor
+# Query events
+quarkctl get events -n alice
+quarkctl watch events -n alice
 
-# Get JSON output
+# Delete a system
+quarkctl delete system monitor -n alice
+
+# Node package registry
+quarkctl node list
+quarkctl node info source/timer:v1
+quarkctl node search timer
+quarkctl node push -f my-node.ts --uri source/my-node:v1
+quarkctl node pull source/my-node:v1
+
+# Get JSON output (for AI agents)
 quarkctl get system monitor -n alice --json
 ```

@@ -1,7 +1,9 @@
 # Quark Abstractions
 
-**Status**: Architecture — NATS JetStream + GraalJS
-**Date**: 2026-06-20
+**Status**: Architecture — Three-Service (Control Plane / Catalog / Data Plane) + NATS Core + GraalJS
+**Date**: 2026-06-24
+
+> **Note**: This document is conceptual/vision-level. For the current implementation status of NATS (Core vs JetStream) and which `onFailure` features are enforced, see `docs/NODE.md` §6. For the three-service architecture (control plane, Catalog, data plane), see `docs/DESIGN.md`.
 
 ---
 
@@ -95,7 +97,7 @@ Users do not build databases or pipelines.
 
 Users construct programmable Node systems via TypeScript.
 
-Those systems become executable on NATS JetStream.
+Those systems become executable on NATS.
 
 Quark serves as the runtime for those systems.
 
@@ -103,18 +105,20 @@ Quark serves as the runtime for those systems.
 
 ## NATS as the Nervous System
 
-In the current architecture, NATS JetStream is the execution model:
+In the current architecture, NATS is the execution model:
 
-- **NATS consumers** handle message delivery
+- **NATS subscriptions** handle message delivery (NATS Core, not JetStream — see `NODE.md` §6.2)
 - **NATS subjects** ARE the routing table
 - **NATS messages** ARE the data envelope
 - **`listens` and `events`** replace all arrow types
 
 NATS provides:
 * **Decoupling** — nodes communicate through subjects, not direct references
-* **Persistence** — JetStream streams ensure messages survive crashes
-* **Resiliency** — JetStream consumers handle retries and fallback routing
 * **Multi-tenancy** — subjects encode namespace, isolation is implicit
+
+> **Note (v8 status):** As of v8, the platform uses **NATS Core** rather than JetStream. This means there is **no message persistence**, **no automatic retries**, and **no fallback routing**. The `onFailure.retry` and `onFailure.routeTo` fields are parsed and stored as node metadata but not enforced at runtime. See `NODE.md` §6.2 for the rationale and the planned JetStream upgrade path. The `AGENTS.md` pitfall #6 prohibits *code-level* silent fallbacks (e.g. in-memory bus when NATS is down) — this is distinct from the `onFailure.routeTo` *domain concept* (a fallback subject the user models in their `.quark.ts`).
+
+> **Parse-time vs Execute-time**: Server-side parsing uses `SimpleSystemParser` (regex, no GraalJS) to extract system structure; runtime-side TypeScript evaluation uses GraalJS in the data plane to execute node logic. See `NODE.md` §2.
 
 ---
 

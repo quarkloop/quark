@@ -93,22 +93,21 @@ quarkctl apply -f access-log-processor.quark.ts -n alice-team
 
 Output:
 ```
-✓ System alice-team/access-log-processor deployed.
+✓ System alice-team/access-log-processor created.
   Nodes:     7
-  State:     DEPLOYED
+  State:     ACTIVE
   Health:    HEALTHY
 ```
 
 Behind the scenes:
-1. CLI sends the TypeScript source to the server
-2. Server transpiles TS → JS, evaluates via GraalJS
-3. Server reads the system config
-4. Server resolves every node URI against the provider registry
-5. Server creates NATS JetStream stream for `access-log-processor.alice-team.>`
-6. Server creates JetStream consumers for each node's `listens`
-7. Server creates publish ACLs for each node's `events`
-8. Server instantiates and starts all SPI providers
-9. Server persists the source file and state snapshot
+1. CLI PUTs the TypeScript source to the control plane (`PUT /api/v1/namespaces/alice-team/systems/access-log-processor`).
+2. Control plane parses the source with `SimpleSystemParser` (regex-based, no GraalJS) → `SystemDefinition`.
+3. Control plane persists the system record + source to the Catalog via NATS (`catalog.system.save`, `catalog.source.save`).
+4. Control plane's `ProcessManager` ensures a data-plane process exists for the runtime (spawns one if needed).
+5. Control plane sends a `DeployCommand` to `quark.control.<runtimeId>.deploy` via NATS request-reply.
+6. Data plane receives the command, parses the source with `GraalJsSystemParser` (full GraalJS), instantiates providers, creates NATS subscriptions for each node's `listens`, validates each node's `events` against its declared publish set, and starts the lifecycle.
+7. Data plane replies with a `StatusResponse` containing node info.
+8. Control plane returns `201 Created` to the CLI.
 
 ---
 
@@ -118,21 +117,23 @@ Behind the scenes:
 quarkctl get systems -n alice-team
 quarkctl get nodes -n alice-team -s access-log-processor
 quarkctl watch events -n alice-team -s access-log-processor
-quarkctl describe node classify-severity -n alice-team -s access-log-processor
+quarkctl get node classify-severity -n alice-team -s access-log-processor
 ```
 
 ---
 
 ## 5. Alice pauses a node
 
+> **Note (v8 status):** The `pause`/`resume`/`drain`/`archive`/`recover` node lifecycle commands are **not yet implemented** in the current CLI. The lifecycle state machine exists in the engine (`CREATING → ACTIVE → PAUSED → DRAINING → ARCHIVED → DELETED`), but there are no CLI commands or REST endpoints to trigger transitions beyond deploy/undeploy. This section describes the intended UX.
+
 ```bash
-quarkctl node pause enrich-geo -n alice-team -s access-log-processor
+quarkctl node pause enrich-geo -n alice-team -s access-log-processor   # (planned, not yet implemented)
 ```
 
-The NATS consumer for `enrich-geo` pauses. Messages accumulate in JetStream. On resume, the consumer picks up where it left off.
+In the intended design, the NATS subscription for `enrich-geo` would pause. With NATS Core (current), messages would be lost while paused; with the planned JetStream upgrade, messages would accumulate and resume on `node resume`.
 
 ```bash
-quarkctl node resume enrich-geo -n alice-team -s access-log-processor
+quarkctl node resume enrich-geo -n alice-team -s access-log-processor  # (planned, not yet implemented)
 ```
 
 ---
@@ -143,7 +144,7 @@ quarkctl node resume enrich-geo -n alice-team -s access-log-processor
 quarkctl apply -f access-log-processor.quark.ts -n bob-team
 ```
 
-Bob gets his own NATS subjects: `access-log-processor.bob-team.*`. Alice and Bob are fully isolated — different JetStream streams, different consumers, different subjects.
+Bob gets his own NATS subjects: `access-log-processor.bob-team.*`. Alice and Bob are fully isolated — different subjects, different node instances, different data-plane metrics heartbeats. If both use the default `runtime: "shared"`, they share the same data-plane process but remain isolated at the NATS subject level. If Bob adds `runtime: "isolated"` to his `.quark.ts`, he gets a dedicated data-plane process (`runtimeId=ns-bob-team`).
 
 ---
 
@@ -155,7 +156,7 @@ Alice edits her TypeScript file to add a policy node and redeploys:
 quarkctl apply -f access-log-processor.quark.ts -n alice-team
 ```
 
-The server undeploys the old system and deploys the new one. NATS stream is recreated.
+The control plane sends an `undeploy` command to the data plane (which stops the old system's providers and unsubscribes its NATS subjects), then sends a `deploy` command for the new version. The Catalog's system record is updated with the new source.
 
 ---
 
@@ -187,7 +188,7 @@ quarkctl get system access-log-processor -n alice-team --json
 quarkctl delete system access-log-processor -n alice-team
 ```
 
-Server stops all consumers, removes NATS stream, deletes persistent state. Clean.
+Control plane sends an `undeploy` command to the data plane (which stops all providers and unsubscribes NATS subjects), then deletes the system record and source from the Catalog. Clean.
 
 ---
 
@@ -199,8 +200,8 @@ Server stops all consumers, removes NATS stream, deletes persistent state. Clean
 | What the user writes | YAML only | TypeScript only |
 | What the user runs | `quarkctl apply -f` | `quarkctl apply -f` |
 | What the user monitors | `quarkctl get systems` | `quarkctl get nodes` |
-| Communication | Kubernetes Services + networking | NATS JetStream subjects |
+| Communication | Kubernetes Services + networking | NATS Core subjects (JetStream planned) |
 | Multi-tenancy | namespaces | namespaces |
 | AI agent integration | `quarkctl ... --json` | `quarkctl ... --json` |
 
-**The `.quark.ts` file IS the program.** The CLI is the interface. The server is the interpreter. NATS is the backbone. Users never write Java code.
+**The `.quark.ts` file IS the program.** The CLI is the interface. The control plane is the interpreter (parses + orchestrates). The Catalog persists metadata. The data plane executes (GraalJS + providers). NATS is the backbone. Users never write Java code.
