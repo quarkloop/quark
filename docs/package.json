@@ -1,0 +1,34 @@
+{
+  "name": "quark-docs",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "postbuild": "pagefind --site .next/server/app --output-path public/pagefind"
+  },
+  "dependencies": {
+    "fumadocs-core": "^15.0.0",
+    "fumadocs-mdx": "^11.0.0",
+    "fumadocs-ui": "^15.0.0",
+    "lucide-react": "^0.460.0",
+    "next": "^15.1.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "server-only": "^0.0.1",
+    "zod": "^3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "autoprefixer": "^10.4.20",
+    "pagefind": "^1.1.1",
+    "postcss": "^8.4.49",
+    "postcss-import": "^16.1.1",
+    "tailwindcss": "^3.4.15",
+    "typescript": "^5.7.2"
+  }
+}
