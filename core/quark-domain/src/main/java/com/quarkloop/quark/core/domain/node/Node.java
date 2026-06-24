@@ -1,6 +1,5 @@
 package com.quarkloop.quark.core.domain.node;
 
-import com.quarkloop.quark.core.domain.category.NodeCategory;
 import com.quarkloop.quark.core.domain.config.NodeConfig;
 import com.quarkloop.quark.core.domain.identity.NodeUri;
 import com.quarkloop.quark.core.domain.metadata.Annotations;
@@ -9,8 +8,14 @@ import com.quarkloop.quark.core.domain.metadata.NodeMetadata;
 
 /**
  * The base abstraction for everything in Quark.
+ *
+ * <p>A Node is identified by its URI, has a name, configuration, and metadata.
+ * There are no behavioral categories — the domain (from the URI) is the only
+ * organizational axis. The runtime behavior is determined by which methods the
+ * node's {@link com.quarkloop.quark.core.domain.spi.NodeProvider} implementation
+ * overrides.
  */
-public sealed interface Node permits PassiveNode, ActiveNode {
+public interface Node {
 
     String name();
 
@@ -26,15 +31,5 @@ public sealed interface Node permits PassiveNode, ActiveNode {
 
     default Annotations annotations() {
         return metadata().annotations();
-    }
-
-    NodeCategory category();
-
-    default boolean isPassive() {
-        return this instanceof PassiveNode;
-    }
-
-    default boolean isActive() {
-        return this instanceof ActiveNode;
     }
 }

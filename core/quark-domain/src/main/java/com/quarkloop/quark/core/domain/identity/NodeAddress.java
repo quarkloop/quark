@@ -1,38 +1,33 @@
 package com.quarkloop.quark.core.domain.identity;
 
-import com.quarkloop.quark.core.domain.category.NodeCategory;
-
 import java.util.Objects;
 
 /**
  * A fully-qualified global address for a Node.
- * Format: quark://<instance>/<namespace>/<category>/<name>
+ * Format: quark://<instance>/<namespace>/<domain>/<subdomain>/<node>
  */
 public record NodeAddress(
         String instance,
         Namespace namespace,
-        NodeCategory category,
-        NodeName name
+        NodeUri uri
 ) {
     public NodeAddress {
         if (instance == null || instance.isBlank()) {
             throw new IllegalArgumentException("instance cannot be null or blank");
         }
         Objects.requireNonNull(namespace, "namespace cannot be null");
-        Objects.requireNonNull(category, "category cannot be null");
-        Objects.requireNonNull(name, "name cannot be null");
+        Objects.requireNonNull(uri, "uri cannot be null");
     }
 
-    public static NodeAddress of(String instance, Namespace namespace, NodeCategory category, NodeName name) {
-        return new NodeAddress(instance, namespace, category, name);
+    public static NodeAddress of(String instance, Namespace namespace, NodeUri uri) {
+        return new NodeAddress(instance, namespace, uri);
     }
 
     @Override
     public String toString() {
-        return String.format("quark://%s/%s/%s/%s",
+        return String.format("quark://%s/%s/%s",
                 instance,
                 namespace.value(),
-                category.label(),
-                name.value());
+                uri.pattern());
     }
 }

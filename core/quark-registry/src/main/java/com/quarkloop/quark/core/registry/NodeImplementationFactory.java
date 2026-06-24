@@ -1,30 +1,32 @@
 package com.quarkloop.quark.core.registry;
 
-import com.quarkloop.quark.core.domain.category.NodeCategory;
 import com.quarkloop.quark.core.domain.config.NodeConfig;
+import com.quarkloop.quark.core.domain.spi.NodeProvider;
 
 /**
  * SPI for node implementation providers.
+ *
+ * <p>Each factory creates {@link NodeProvider} instances from configuration.
+ * The factory no longer declares a behavioral category — the engine detects
+ * which methods the provider overrides at runtime.
  */
-public interface NodeImplementationFactory<T> {
+public interface NodeImplementationFactory {
 
     /**
-     * @return The URI pattern this factory handles, e.g. "source/timer" (without version)
+     * @return The URI pattern this factory handles, e.g. "quark/time/schedule/timer" (without version)
      */
     String uriPattern();
 
     /**
-     * @return Create an instance from the given configuration
+     * Create a node provider instance from the given configuration.
+     *
+     * @param config the node's configuration
+     * @return a new NodeProvider instance
      */
-    T create(NodeConfig config);
+    NodeProvider create(NodeConfig config);
 
     /**
      * @return The descriptor for registry registration
      */
     NodeDescriptor descriptor();
-
-    /**
-     * @return The category this factory produces
-     */
-    NodeCategory category();
 }
