@@ -208,16 +208,20 @@ public class ProcessManager {
             return nativeState.toString();
         }
 
-        // 3. JVM JAR at standard Maven target path
+        // 3. JVM JAR at standard Maven target path.
+        //    Quarkus produces TWO jars: <finalName>.jar (thin, no main manifest)
+        //    and <finalName>-runner.jar (fat, runnable). We must use the -runner
+        //    variant. With finalName=quark-runtime-runner, the runnable jar is
+        //    quark-runtime-runner-runner.jar (yes, double -runner suffix).
         Path jarMaven = Paths.get("runtime", "quark-runtime", "target",
-                "quark-runtime-runner.jar");
+                "quark-runtime-runner-runner.jar");
         if (Files.isRegularFile(jarMaven)) {
             return jarMaven.toAbsolutePath().toString();
         }
         // 4. JVM JAR relative to state root's parent
         Path jarState = Paths.get(stateRootPath).toAbsolutePath().resolve("..")
                 .resolve("runtime").resolve("quark-runtime").resolve("target")
-                .resolve("quark-runtime-runner.jar").normalize();
+                .resolve("quark-runtime-runner-runner.jar").normalize();
         if (Files.isRegularFile(jarState)) {
             return jarState.toString();
         }
