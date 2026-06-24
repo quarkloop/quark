@@ -1,0 +1,19 @@
+{
+    "uri": "quark/log/console/stdout:v1",
+    "domain": "log",
+    "subdomain": "console",
+    "node": "stdout",
+    "version": "1.0.0",
+    "language": "typescript",
+    "description": "Writes message payload to standard output as JSON",
+    "config": {
+        "pretty": {
+            "type": "boolean",
+            "default": false,
+            "description": "Pretty-print JSON output"
+        }
+    },
+    "events": [],
+    "dependencies": {},
+    "supportedRuntimes": ["jvm", "native"]
+}

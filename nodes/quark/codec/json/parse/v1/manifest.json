@@ -1,0 +1,24 @@
+{
+    "uri": "quark/codec/json/parse:v1",
+    "domain": "codec",
+    "subdomain": "json",
+    "node": "parse",
+    "version": "1.0.0",
+    "language": "typescript",
+    "description": "Parses a JSON string from the message payload into an object",
+    "config": {
+        "field": {
+            "type": "string",
+            "default": "data",
+            "description": "Field name in the payload containing the JSON string to parse"
+        },
+        "strict": {
+            "type": "boolean",
+            "default": false,
+            "description": "If true, throw on parse errors instead of publishing an error event"
+        }
+    },
+    "events": ["parsed", "error"],
+    "dependencies": {},
+    "supportedRuntimes": ["jvm", "native"]
+}

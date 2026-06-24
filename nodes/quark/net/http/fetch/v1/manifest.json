@@ -1,0 +1,34 @@
+{
+    "uri": "quark/net/http/fetch:v1",
+    "domain": "net",
+    "subdomain": "http",
+    "node": "fetch",
+    "version": "1.0.0",
+    "language": "typescript",
+    "description": "Fetches a URL from the message payload and emits the response body",
+    "config": {
+        "urlField": {
+            "type": "string",
+            "default": "url",
+            "description": "Field name in the payload containing the URL to fetch"
+        },
+        "method": {
+            "type": "string",
+            "default": "GET",
+            "description": "HTTP method (GET, POST, PUT, DELETE)"
+        },
+        "headers": {
+            "type": "object",
+            "default": {},
+            "description": "HTTP headers to send with the request"
+        },
+        "timeout": {
+            "type": "integer",
+            "default": 30000,
+            "description": "Request timeout in milliseconds"
+        }
+    },
+    "events": ["response", "error"],
+    "dependencies": {},
+    "supportedRuntimes": ["jvm", "native"]
+}

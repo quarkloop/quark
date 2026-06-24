@@ -1,0 +1,19 @@
+{
+    "uri": "quark/route/flow/conditional:v1",
+    "domain": "route",
+    "subdomain": "flow",
+    "node": "conditional",
+    "version": "1.0.0",
+    "language": "typescript",
+    "description": "Routes messages to different events based on content predicates",
+    "config": {
+        "rules": {
+            "type": "array",
+            "required": true,
+            "description": "Array of { when: <expression>, emit: <event> } objects. First match wins. Use 'payload' to access the message payload."
+        }
+    },
+    "events": [],
+    "dependencies": {},
+    "supportedRuntimes": ["jvm", "native"]
+}

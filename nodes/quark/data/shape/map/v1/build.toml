@@ -1,0 +1,6 @@
+[package]
+format = "zip"
+contentType = "typescript"
+
+[build.typescript]
+output = "src/"

@@ -1,0 +1,24 @@
+{
+    "uri": "quark/data/shape/map:v1",
+    "domain": "data",
+    "subdomain": "shape",
+    "node": "map",
+    "version": "1.0.0",
+    "language": "typescript",
+    "description": "Declaratively maps fields from the input payload to a new output shape",
+    "config": {
+        "mapping": {
+            "type": "object",
+            "required": true,
+            "description": "Object mapping source field paths to target field names. e.g. { \"data.cpu\": \"cpuUsage\", \"data.mem\": \"memUsage\" }"
+        },
+        "preserve": {
+            "type": "boolean",
+            "default": false,
+            "description": "If true, include unmapped fields from the source payload in the output"
+        }
+    },
+    "events": ["mapped"],
+    "dependencies": {},
+    "supportedRuntimes": ["jvm", "native"]
+}
