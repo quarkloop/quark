@@ -1,0 +1,322 @@
+---
+title: "Node URI Specification"
+description: "The formal specification for Quark Node URIs — the 4-segment namespace/domain/subdomain/node format with semver versioning."
+status: "v1 — Draft"
+date: "2026-06-25"
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+## 1. Overview
+
+Every Node in the Quark Platform is identified by a **URI** — a string that
+uniquely names the node, identifies its maintainer, groups it with related
+nodes, and pins its version. The URI is the contract between the user
+(writing `.quark.ts`) and the platform (resolving and instantiating the node).
+
+This document is the authoritative specification for the URI format.
+
+---
+
+## 2. URI Format
+
+```
+<namespace>/<domain>/<subdomain>/<node>:<version>
+```
+
+**Always 4 path segments + 1 version tag. No exceptions. No optional parts.**
+
+```
+quark/time/schedule/timer:v1
+^^^^^ ^^^^ ^^^^^^^^ ^^^^^ ^^^
+  │     │      │      │     └── version
+  │     │      │      └──────── node (the specific implementation)
+  │     │      └─────────────── subdomain (grouping within the domain)
+  │     └────────────────────── domain (what area of computing)
+  └──────────────────────────── namespace (who maintains it)
+```
+
+### Example breakdown
+
+| URI | namespace | domain | subdomain | node | version |
+|-----|-----------|--------|-----------|------|---------|
+| `quark/time/schedule/timer:v1` | `quark` | `time` | `schedule` | `timer` | `v1` |
+| `quark/db/postgres/write:v1` | `quark` | `db` | `postgres` | `write` | `v1` |
+| `quark/ai/openai/inference:v1` | `quark` | `ai` | `openai` | `inference` | `v1` |
+| `quark/net/http/webhook:v1` | `quark` | `net` | `http` | `webhook` | `v1` |
+| `acme/notify/slack/post:v1` | `acme` | `notify` | `slack` | `post` | `v1` |
+
+---
+
+## 3. Segment Specifications
+
+### 3.1 Namespace (segment 1)
+
+The namespace identifies **who maintains the node**.
+
+| Namespace | Meaning |
+|-----------|---------|
+| `quark` | Official standard library — maintained by the Quark project, reviewed, documented in this spec |
+| `<org>` | Organization-specific — maintained by a company or team for internal use (e.g., `acme`, `observability`) |
+| `<user>` | Community-contributed — maintained by an individual, shared publicly (e.g., `jane`) |
+
+**Rules:**
+- Lowercase, alphanumeric, 2–32 characters.
+- No hyphens (would visually conflict with the path separator).
+- The `quark` namespace is **reserved** — only nodes that pass the standard library review process may use it.
+- Third-party namespaces are self-registered in the Catalog's registry, but must match a verified org/user identity.
+- A node in `quark/` and the same implementation in `acme/` are **different nodes** — different code, different guarantees. The URI is the identity.
+
+### 3.2 Domain (segment 2)
+
+The domain identifies **what area of computing** the node operates in. It is the primary organizational axis — like Go's top-level packages (`net/`, `io/`, `crypto/`).
+
+The Quark standard library defines **18 domains** (see [Node Catalog](./node-catalog) for the full list):
+
+| Domain | Covers |
+|--------|--------|
+| `time` | Scheduling, delays |
+| `net` | Network protocols (HTTP, gRPC, MQTT, WebSocket, AMQP) |
+| `io` | Filesystem and stream I/O |
+| `db` | Databases (query, write, CDC) |
+| `data` | Data manipulation (map, filter, validate, merge) |
+| `codec` | Encoding/decoding (JSON, CSV, XML, base64, YAML) |
+| `text` | Text processing (template, extract, analyze) |
+| `ai` | AI/ML (inference, embeddings, training) |
+| `notify` | Notifications (email, Slack, Discord, push, SMS) |
+| `log` | Structured logging (console, syslog, remote) |
+| `search` | Search operations (web, vector, fulltext) |
+| `stream` | Real-time streaming to clients (SSE, WebSocket, gRPC stream) |
+| `route` | Flow control (conditional, fan-out, fan-in, throttle) |
+| `compute` | Long-running tasks (transcode, report, batch) |
+| `cloud` | Cloud provider services (AWS, GCP, Azure) |
+| `system` | System metrics (CPU, memory, disk, process) |
+| `console` | Terminal/console (TTY, PTY, CLI) |
+| `crypto` | Cryptography (hash, encrypt, sign, verify) |
+
+**Rules:**
+- Lowercase, alphanumeric, 2–20 characters.
+- Adding a new domain requires a spec update (but not a major version bump).
+- The 18 domains above are the **only** valid values for the standard library. Third-party namespaces may define their own domains.
+
+### 3.3 Subdomain (segment 3)
+
+The subdomain groups nodes within a domain. It answers: **what kind of thing is this?**
+
+A subdomain can be:
+
+| Subdomain type | When to use | Examples |
+|----------------|-------------|---------|
+| Vendor | The implementation is specific to a vendor | `postgres`, `mysql`, `openai`, `slack`, `aws` |
+| Protocol | The implementation speaks a specific protocol | `http`, `mqtt`, `grpc`, `websocket` |
+| Format | The implementation handles a specific format | `json`, `csv`, `base64` |
+| Functional | The implementation belongs to a functional group | `schedule`, `flow`, `control`, `console`, `remote` |
+
+**Rules:**
+- Lowercase, kebab-case, 2–20 characters.
+- Every domain must have at least one subdomain — there is no "default" subdomain.
+- Subdomain names are defined per-domain (see [Node Catalog](./node-catalog)).
+
+<Callout type="info" title="Why subdomains are mandatory">
+  A mandatory subdomain forces organization. You can't dump 50 nodes as flat
+  siblings under `quark/transform/` — they must be separated by concern into
+  subdomains like `quark/codec/json/`, `quark/codec/csv/`, etc. This makes
+  the catalog navigable and the URI self-describing.
+</Callout>
+
+### 3.4 Node (segment 4)
+
+The node is the specific implementation — the concrete node identity within a subdomain.
+
+**Rules:**
+- Lowercase, kebab-case, 2–30 characters.
+- Verb-noun for actions: `parse-json`, `validate-schema`, `write-file`.
+- Noun for systems: `timer`, `cron`, `webhook`, `watcher`.
+- No version in the name (version is the `:vN` suffix).
+- No category/domain prefix (the domain is already in the path).
+- No vendor names (the vendor is the subdomain, if applicable).
+
+### 3.5 Version (after `:`)
+
+The version pins the node's contract.
+
+**Format:** Full [semver 2.0](https://semver.org/) with shorthand support:
+
+```
+:v1                          — major only (shorthand for :1.0.0)
+:v1.2                        — major.minor (shorthand for :1.2.0)
+:v1.2.3                      — full semver
+:v1.2.3-dev.4                — prerelease (dev build)
+:v1.2.3-rc.1                 — prerelease (release candidate)
+:v1.2.3+sha.abc123           — build metadata (ignored for resolution)
+:v1.2.3-rc.1+sha.abc123      — prerelease + metadata
+:latest                      — alias for newest stable
+:edge                        — alias for newest build (any prerelease)
+```
+
+**Resolution rules:**
+
+1. `:v1` is shorthand for `:1.0.0`. The platform resolves to the newest `1.x.x` compatible with major 1.
+2. `:v1.2` is shorthand for `:1.2.0`. Resolves to newest `1.2.x`.
+3. Full version `:v1.2.3` is pinned. Exact match, no resolution.
+4. Prereleases (`-dev`, `-rc`, `-beta`) are **never** resolved by shorthand. `:v1` will never resolve to `1.0.0-rc.1`. You must explicitly write `:v1.0.0-rc.1`.
+5. `:latest` resolves to the newest stable version (no prerelease tag).
+6. `:edge` resolves to the newest version (including prereleases).
+7. Build metadata (`+sha.abc123`) is ignored for resolution. It's for traceability only.
+
+**Compatibility contract (semver):**
+
+| Bump | Meaning | Impact on `.quark.ts` files |
+|------|---------|-----------------------------|
+| Major (`:v1` → `:v2`) | Breaking change | Config schema changed, events renamed. `.quark.ts` may need updates. |
+| Minor (`:v1.0` → `:v1.1`) | New feature, backward-compatible | New optional config fields, new events. Old `.quark.ts` still works. |
+| Patch (`:v1.0.0` → `:v1.0.1`) | Bug fix, backward-compatible | No config changes. Safe to upgrade. |
+| Prerelease (`-rc.1`, `-dev.3`) | Not stable | May change at any time. Don't use in production. |
+
+**Enterprise workflow example:**
+
+```bash
+# Dev phase
+acme/transform/payments/risk-score:v0.1.0-dev.3      — dev build, day 3
+acme/transform/payments/risk-score:v0.1.0-rc.1       — release candidate
+
+# Production
+acme/transform/payments/risk-score:v1.0.0             — first stable release
+acme/transform/payments/risk-score:v1.0.1             — hotfix
+
+# Major upgrade
+acme/transform/payments/risk-score:v2.0.0             — breaking change
+```
+
+Users can pin at any granularity:
+
+```typescript
+uses: "acme/transform/payments/risk-score:v1.0.1"   // pinned to exact hotfix
+uses: "acme/transform/payments/risk-score:v1.0"     // resolves to newest 1.0.x
+uses: "acme/transform/payments/risk-score:v1"       // resolves to newest 1.x.x
+```
+
+---
+
+## 4. Validation
+
+### Regex
+
+```
+^[a-z0-9]{2,32}/[a-z0-9-]{2,20}/[a-z0-9-]{2,20}/[a-z0-9-]{2,30}:(v[0-9]+(\.[0-9]+){0,2}(-[a-z0-9.-]+)?(\+[a-z0-9.-]+)?|latest|edge)$
+```
+
+### Validation rules
+
+A valid Quark Node URI must satisfy:
+
+1. Exactly 4 path segments separated by `/`.
+2. A version tag starting with `:` after the 4th segment.
+3. Namespace: lowercase alphanumeric, 2–32 chars.
+4. Domain: lowercase alphanumeric + hyphens, 2–20 chars.
+5. Subdomain: lowercase alphanumeric + hyphens, 2–20 chars.
+6. Node: lowercase alphanumeric + hyphens, 2–30 chars.
+7. Version: `v<major>[.minor[.patch]][-prerelease][+metadata]`, or `latest`, or `edge`.
+
+---
+
+## 5. Evolution Rules
+
+### Adding a new node to an existing subdomain
+
+✅ Allowed without spec change. Example: adding `quark/net/grpc/call:v1` to
+the `net` domain, `grpc` subdomain.
+
+### Adding a new subdomain to an existing domain
+
+✅ Allowed, but requires:
+1. At least 1 node planned for it.
+2. Documented in the [Node Catalog](./node-catalog) with its concern definition.
+3. The subdomain name must not overlap with existing subdomains in the same domain.
+
+### Adding a new domain
+
+✅ Allowed, but requires a spec update (this document). The domain must be
+documented with at least 1 subdomain and 1 node.
+
+### Deprecating a node
+
+1. Mark as deprecated in the Catalog (still installable, but flagged).
+2. Provide a migration path in the docs.
+3. **Never delete the URI** — `quark/io/file/write:v1` must always resolve, even if deprecated.
+
+---
+
+## 6. Third-Party Examples
+
+Third-party nodes follow the exact same 4-segment structure — only the namespace changes.
+
+### `acme/` — a fintech company's internal nodes
+
+```
+acme/db/acme-ledger/write:v1              — write to Acme's internal ledger
+acme/notify/acme-push/send:v1             — Acme's mobile push notification
+acme/ai/local/fraud-detect:v1             — Acme's proprietary fraud detection
+```
+
+### `jane/` — a community contributor
+
+```
+jane/ai/local/summarize:v1                — community text summarizer
+jane/notify/discord/post:v1               — Discord notification sink
+```
+
+### `observability/` — a shared observability namespace
+
+```
+observability/system/prometheus/scrape:v1 — scrape Prometheus metrics
+observability/log/remote/victoria:v1      — write to VictoriaMetrics
+observability/net/grpc/jaeger:v1          — send traces to Jaeger
+```
+
+---
+
+## 7. Design Rationale
+
+### Why 4 fixed segments?
+
+A parser can split on `/` and know exactly what each segment means. No
+"is this a 2-part or 3-part URI?" ambiguity. A human reading
+`quark/db/postgres/write:v1` immediately sees: standard library, database,
+Postgres, write operation, version 1.
+
+### Why domain-based organization (not behavioral)?
+
+The domain tells you **what area of computing** the node operates in — like
+Go's `net/http`, `database/sql`, `crypto/sha256`. The node's implementation
+(determined by its registered `NodeImplementationFactory`, not its URI) tells
+the engine **how to run it**.
+
+This separates two concerns that the old behavioral categories
+(`source/`, `transform/`, `sink/`) tried to conflate:
+organization (how humans find nodes) and runtime behavior (how the engine
+calls them). A database query and a database write are both in `db/` because
+they're both database operations — even though one produces data and the
+other consumes it.
+
+### Why is the subdomain mandatory?
+
+Forced organization. Without a mandatory subdomain, 50 nodes would pile up
+as flat siblings under each domain. The subdomain forces authors to group
+by concern (vendor, protocol, format, or functional group), making the
+catalog navigable and the URI self-describing.
+
+### Why semver with shorthand?
+
+Full semver (`:v1.2.3-rc.1+sha.abc123`) supports enterprise development
+workflows (dev builds, release candidates, hotfixes). Shorthand (`:v1`,
+`:v1.2`) keeps simple cases simple. The resolution rules ensure that
+shorthands never accidentally resolve to unstable prereleases.
+
+---
+
+## 8. Reference
+
+- [Node Catalog](./node-catalog) — the full list of 18 domains, their subdomains, and all standard library nodes.
+- [Declaration Format](./declaration) — how node URIs appear in `.quark.ts` files.
+- [Node Specification](./node) — the full node spec (lifecycle, communication, persistence).

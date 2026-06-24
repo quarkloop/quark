@@ -1,0 +1,606 @@
+---
+title: "Node Catalog"
+description: "The Quark standard library — 18 domains, their subdomains, and all standard library nodes with their URIs and descriptions."
+status: "v1 — Draft"
+date: "2026-06-25"
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+## Overview
+
+This document is the authoritative catalog of the Quark standard library
+(`quark/` namespace). It lists all 18 domains, their subdomains, and every
+standard library node.
+
+The URI format is defined in [Node URI Specification](./node-uri). Each
+entry below follows the format:
+
+```
+quark/<domain>/<subdomain>/<node>:<version>
+```
+
+<Callout type="info">
+  This catalog is a **living document**. New nodes are added as they're
+  implemented. A node listed here without a "✅ Implemented" badge is
+  planned but not yet available in the runtime.
+</Callout>
+
+---
+
+## 1. `time` — Scheduling
+
+Nodes that produce data on a time-based schedule.
+
+**Subdomains:** `schedule`
+
+### `time/schedule`
+
+| URI | Description |
+|-----|-------------|
+| `quark/time/schedule/timer:v1` | Emit a `tick` event at a fixed interval. Config: `interval` (e.g., `"1s"`, `"5m"`) |
+| `quark/time/schedule/cron:v1` | Emit a `tick` event on a cron schedule. Config: `schedule` (e.g., `"0 * * * *"`) |
+
+---
+
+## 2. `net` — Network Protocols
+
+Nodes that operate over network protocols — HTTP, gRPC, MQTT, WebSocket, AMQP.
+
+**Subdomains:** `http`, `grpc`, `mqtt`, `websocket`, `amqp`
+
+### `net/http`
+
+| URI | Description |
+|-----|-------------|
+| `quark/net/http/webhook:v1` | Receive inbound HTTP POST requests and publish them as events. Config: `path`, `method` |
+| `quark/net/http/server:v1` | Full HTTP server with route matching. Config: `routes` (array of `{ method, path }`) |
+| `quark/net/http/fetch:v1` | Fetch a URL (from the message payload) and emit the response body. Config: `headers`, `timeout` |
+| `quark/net/http/call:v1` | Call an external HTTP API and merge the response into the message. Config: `url`, `method`, `headers` |
+
+### `net/grpc`
+
+| URI | Description |
+|-----|-------------|
+| `quark/net/grpc/server:v1` | gRPC server — receive requests, publish as events. Config: `port`, `proto` |
+| `quark/net/grpc/call:v1` | Call a gRPC method and emit the response. Config: `target`, `method` |
+
+### `net/mqtt`
+
+| URI | Description |
+|-----|-------------|
+| `quark/net/mqtt/sub:v1` | Subscribe to an MQTT topic and publish messages as events. Config: `broker`, `topic` |
+| `quark/net/mqtt/pub:v1` | Publish messages to an MQTT topic. Config: `broker`, `topic` |
+
+### `net/websocket`
+
+| URI | Description |
+|-----|-------------|
+| `quark/net/websocket/server:v1` | WebSocket server — receive messages, publish as events. Config: `path` |
+| `quark/net/websocket/client:v1` | Connect to a WebSocket server and publish received messages. Config: `url` |
+
+### `net/amqp`
+
+| URI | Description |
+|-----|-------------|
+| `quark/net/amqp/consume:v1` | Consume from an AMQP queue. Config: `url`, `queue` |
+
+---
+
+## 3. `io` — Filesystem and Stream I/O
+
+Nodes that read from or write to the filesystem, and nodes that operate on
+raw I/O streams (stdin, stdout, stderr).
+
+**Subdomains:** `file`, `stream`
+
+### `io/file`
+
+| URI | Description |
+|-----|-------------|
+| `quark/io/file/watch:v1` | Watch a file or directory for changes and emit events. Config: `path`, `pattern` |
+| `quark/io/file/tail:v1` | Tail a file (like `tail -f`) and emit new lines. Config: `path` |
+| `quark/io/file/write:v1` | Write or append data to a file. Config: `path`, `mode` (`"write"` \| `"append"`) |
+| `quark/io/file/rotate:v1` | Write to a file with log rotation. Config: `path`, `maxSize`, `maxFiles` |
+| `quark/io/file/read:v1` | Read a file's contents and emit as an event. Config: `path` |
+
+### `io/stream`
+
+| URI | Description |
+|-----|-------------|
+| `quark/io/stream/stdin:v1` | Read from standard input and emit as events. |
+| `quark/io/stream/stdout:v1` | Write message payload to standard output. |
+| `quark/io/stream/stderr:v1` | Write message payload to standard error. |
+
+---
+
+## 4. `db` — Databases
+
+Nodes that interact with databases — querying, writing, and change data
+capture (CDC). Each vendor is a subdomain.
+
+**Subdomains:** `postgres`, `mysql`, `mongodb`, `redis`
+
+### `db/postgres`
+
+| URI | Description |
+|-----|-------------|
+| `quark/db/postgres/query:v1` | Execute a SQL query and emit result rows. Config: `url`, `sql` |
+| `quark/db/postgres/write:v1` | Write data to a Postgres table. Config: `url`, `table`, `mode` (`"insert"` \| `"upsert"`) |
+| `quark/db/postgres/cdc:v1` | Stream changes from Postgres WAL. Config: `url`, `slot` |
+
+### `db/mysql`
+
+| URI | Description |
+|-----|-------------|
+| `quark/db/mysql/query:v1` | Execute a SQL query and emit result rows. Config: `url`, `sql` |
+| `quark/db/mysql/write:v1` | Write data to a MySQL table. Config: `url`, `table`, `mode` |
+| `quark/db/mysql/cdc:v1` | Stream changes from MySQL binlog. Config: `url`, `serverId` |
+
+### `db/mongodb`
+
+| URI | Description |
+|-----|-------------|
+| `quark/db/mongodb/query:v1` | Query MongoDB and emit result documents. Config: `url`, `database`, `collection`, `filter` |
+| `quark/db/mongodb/write:v1` | Write documents to MongoDB. Config: `url`, `database`, `collection` |
+| `quark/db/mongodb/cdc:v1` | Stream changes from MongoDB oplog. Config: `url`, `database` |
+
+### `db/redis`
+
+| URI | Description |
+|-----|-------------|
+| `quark/db/redis/get:v1` | Get a value from Redis and emit it. Config: `url`, `key` |
+| `quark/db/redis/set:v1` | Set a key in Redis. Config: `url`, `key`, `ttl` |
+| `quark/db/redis/push:v1` | Push to a Redis list. Config: `url`, `key` |
+
+---
+
+## 5. `data` — Data Manipulation
+
+Nodes that change the shape or content of data without calling external
+systems. Stateless, pure, 1:1.
+
+**Subdomains:** `shape`, `predicate`
+
+### `data/shape`
+
+| URI | Description |
+|-----|-------------|
+| `quark/data/shape/map:v1` | Declarative field mapping (JSON-to-JSON). Config: `mapping` (object) |
+| `quark/data/shape/rename:v1` | Rename fields in the message. Config: `rename` (map of old→new) |
+| `quark/data/shape/merge:v1` | Merge multiple fields into one. Config: `fields`, `target` |
+| `quark/data/shape/extract:v1` | Extract a field from a nested object. Config: `path` |
+
+### `data/predicate`
+
+| URI | Description |
+|-----|-------------|
+| `quark/data/predicate/filter:v1` | Drop messages that don't match a predicate. Config: `predicate` (expression) |
+| `quark/data/predicate/validate:v1` | Validate message against a JSON Schema. Config: `schema` |
+
+---
+
+## 6. `codec` — Encoding/Decoding
+
+Nodes that parse (string → object) and serialize (object → string) data
+in various formats. Each format is a subdomain.
+
+**Subdomains:** `json`, `csv`, `xml`, `yaml`, `base64`
+
+### `codec/json`
+
+| URI | Description |
+|-----|-------------|
+| `quark/codec/json/parse:v1` | Parse a JSON string into an object. Config: `strict` (boolean) |
+| `quark/codec/json/stringify:v1` | Serialize an object into a JSON string. Config: `pretty` (boolean) |
+
+### `codec/csv`
+
+| URI | Description |
+|-----|-------------|
+| `quark/codec/csv/parse:v1` | Parse a CSV string into an array of objects. Config: `delimiter`, `header` |
+| `quark/codec/csv/stringify:v1` | Serialize an array of objects into a CSV string. Config: `delimiter` |
+
+### `codec/xml`
+
+| URI | Description |
+|-----|-------------|
+| `quark/codec/xml/parse:v1` | Parse an XML string into an object. |
+| `quark/codec/xml/stringify:v1` | Serialize an object into an XML string. |
+
+### `codec/yaml`
+
+| URI | Description |
+|-----|-------------|
+| `quark/codec/yaml/parse:v1` | Parse a YAML string into an object. |
+| `quark/codec/yaml/stringify:v1` | Serialize an object into a YAML string. |
+
+### `codec/base64`
+
+| URI | Description |
+|-----|-------------|
+| `quark/codec/base64/encode:v1` | Base64-encode the message payload. |
+| `quark/codec/base64/decode:v1` | Base64-decode the message payload. |
+
+---
+
+## 7. `text` — Text Processing
+
+Nodes that process, extract, and analyze text content.
+
+**Subdomains:** `template`, `extract`, `analyze`
+
+### `text/template`
+
+| URI | Description |
+|-----|-------------|
+| `quark/text/template/render:v1` | Apply a text template to the message. Config: `template` |
+
+### `text/extract`
+
+| URI | Description |
+|-----|-------------|
+| `quark/text/extract/pdf:v1` | Extract text from a PDF file. Config: `path` or `field` |
+| `quark/text/extract/html:v1` | Extract text from HTML. Config: `selector` |
+| `quark/text/extract/docx:v1` | Extract text from a DOCX file. |
+
+### `text/analyze`
+
+| URI | Description |
+|-----|-------------|
+| `quark/text/analyze/summarize:v1` | Summarize text (extractive). Config: `sentences` |
+| `quark/text/analyze/classify:v1` | Classify text into categories. Config: `categories` |
+| `quark/text/analyze/sentiment:v1` | Analyze sentiment of text. |
+
+---
+
+## 8. `ai` — AI/ML
+
+Nodes that run AI/ML inference, generate embeddings, or train models. Each
+vendor is a subdomain.
+
+**Subdomains:** `openai`, `anthropic`, `local`, `train`
+
+### `ai/openai`
+
+| URI | Description |
+|-----|-------------|
+| `quark/ai/openai/inference:v1` | Call an OpenAI LLM. Config: `model`, `prompt`, `apiKey` |
+| `quark/ai/openai/embed:v1` | Generate text embeddings via OpenAI. Config: `model`, `input` |
+
+### `ai/anthropic`
+
+| URI | Description |
+|-----|-------------|
+| `quark/ai/anthropic/inference:v1` | Call an Anthropic LLM. Config: `model`, `prompt`, `apiKey` |
+
+### `ai/local`
+
+| URI | Description |
+|-----|-------------|
+| `quark/ai/local/inference:v1` | Run a local LLM (Ollama, llama.cpp). Config: `model`, `prompt` |
+| `quark/ai/local/embed:v1` | Generate text embeddings locally. Config: `model`, `input` |
+
+### `ai/train`
+
+| URI | Description |
+|-----|-------------|
+| `quark/ai/train/embedding:v1` | Train a small embedding model. Config: `corpus`, `dimensions` |
+| `quark/ai/train/classifier:v1` | Train a text classifier. Config: `trainingData`, `labels` |
+
+---
+
+## 9. `notify` — Notifications
+
+Nodes that send notifications to various channels. Each channel is a subdomain.
+
+**Subdomains:** `email`, `slack`, `discord`, `push`, `sms`
+
+### `notify/email`
+
+| URI | Description |
+|-----|-------------|
+| `quark/notify/email/send:v1` | Send an email. Config: `to`, `from`, `subject`, `body`, `smtp` |
+
+### `notify/slack`
+
+| URI | Description |
+|-----|-------------|
+| `quark/notify/slack/post:v1` | Post a message to Slack. Config: `webhook`, `channel` |
+
+### `notify/discord`
+
+| URI | Description |
+|-----|-------------|
+| `quark/notify/discord/post:v1` | Post a message to Discord. Config: `webhook` |
+
+### `notify/push`
+
+| URI | Description |
+|-----|-------------|
+| `quark/notify/push/send:v1` | Send a mobile push notification. Config: `token`, `platform`, `message` |
+
+### `notify/sms`
+
+| URI | Description |
+|-----|-------------|
+| `quark/notify/sms/send:v1` | Send an SMS. Config: `to`, `from`, `body` |
+
+---
+
+## 10. `log` — Structured Logging
+
+Nodes that write structured log entries to various destinations.
+
+**Subdomains:** `console`, `system`, `remote`
+
+### `log/console`
+
+| URI | Description |
+|-----|-------------|
+| `quark/log/console/stdout:v1` | Write structured log to stdout. Config: `level`, `format` |
+| `quark/log/console/stderr:v1` | Write structured log to stderr. Config: `level`, `format` |
+
+### `log/system`
+
+| URI | Description |
+|-----|-------------|
+| `quark/log/system/syslog:v1` | Write to syslog. Config: `facility`, `level` |
+
+### `log/remote`
+
+| URI | Description |
+|-----|-------------|
+| `quark/log/remote/loki:v1` | Write to Grafana Loki. Config: `url`, `labels` |
+| `quark/log/remote/elasticsearch:v1` | Write to Elasticsearch. Config: `url`, `index` |
+
+---
+
+## 11. `search` — Search Operations
+
+Nodes that perform search — web search, vector similarity search, full-text search.
+
+**Subdomains:** `web`, `vector`, `fulltext`
+
+### `search/web`
+
+| URI | Description |
+|-----|-------------|
+| `quark/search/web/query:v1` | Query a web search engine. Config: `engine`, `query`, `limit` |
+
+### `search/vector`
+
+| URI | Description |
+|-----|-------------|
+| `quark/search/vector/query:v1` | Vector similarity search. Config: `url`, `collection`, `vector`, `limit` |
+| `quark/search/vector/upsert:v1` | Upsert vectors into a vector database. Config: `url`, `collection` |
+
+### `search/fulltext`
+
+| URI | Description |
+|-----|-------------|
+| `quark/search/fulltext/elastic:v1` | Elasticsearch full-text query. Config: `url`, `index`, `query` |
+
+---
+
+## 12. `stream` — Real-Time Streaming
+
+Nodes that push data to connected clients in real-time. Unlike `log` or
+`notify` (fire-and-forget), these nodes maintain active client connections.
+
+**Subdomains:** `sse`, `websocket`, `grpc`
+
+### `stream/sse`
+
+| URI | Description |
+|-----|-------------|
+| `quark/stream/sse/broadcast:v1` | SSE broadcast — clients connect via HTTP and receive an event stream. Config: `path` |
+
+### `stream/websocket`
+
+| URI | Description |
+|-----|-------------|
+| `quark/stream/websocket/push:v1` | Push events to connected WebSocket clients. Config: `path` |
+
+### `stream/grpc`
+
+| URI | Description |
+|-----|-------------|
+| `quark/stream/grpc/stream:v1` | gRPC server streaming — clients connect and receive a stream. Config: `port`, `proto` |
+
+---
+
+## 13. `route` — Flow Control
+
+Nodes that control where messages go without changing their shape.
+Stateless — routing decisions are per-message.
+
+**Subdomains:** `flow`, `control`
+
+### `route/flow`
+
+| URI | Description |
+|-----|-------------|
+| `quark/route/flow/conditional:v1` | Route to different subjects based on content. Config: `rules` (array of `{ when, emit }`) |
+| `quark/route/flow/fan-out:v1` | Broadcast to multiple subjects. Config: `events` (array) |
+| `quark/route/flow/fan-in:v1` | Merge multiple subjects into one. |
+| `quark/route/flow/join:v1` | Join two streams by correlation key. Config: `key`, `timeout` |
+| `quark/route/flow/relay:v1` | Forward unchanged (subject rename). |
+
+### `route/control`
+
+| URI | Description |
+|-----|-------------|
+| `quark/route/control/throttle:v1` | Rate limit — drop or delay excess messages. Config: `rate`, `per` |
+| `quark/route/control/sample:v1` | Random sampling — emit 1 in N messages. Config: `rate` (e.g., `0.1`) |
+| `quark/route/control/deduplicate:v1` | Drop duplicate messages by key. Config: `key`, `window` |
+
+---
+
+## 14. `compute` — Long-Running Tasks
+
+Nodes that run long computations (seconds to hours) and produce artifacts
+(model files, transcoded media, generated reports). Unlike `data` nodes
+which are instant and 1:1, `compute` nodes have execution lifecycles.
+
+**Subdomains:** `media`, `report`, `data`
+
+### `compute/media`
+
+| URI | Description |
+|-----|-------------|
+| `quark/compute/media/transcode:v1` | Transcode video/audio. Config: `input`, `output`, `format`, `codec` |
+| `quark/compute/media/resize:v1` | Resize images in batch. Config: `input`, `output`, `width`, `height` |
+
+### `compute/report`
+
+| URI | Description |
+|-----|-------------|
+| `quark/compute/report/pdf:v1` | Generate a PDF report. Config: `template`, `data` |
+| `quark/compute/report/html:v1` | Generate an HTML report. Config: `template`, `data` |
+
+### `compute/data`
+
+| URI | Description |
+|-----|-------------|
+| `quark/compute/data/batch:v1` | Batch process a dataset. Config: `input`, `processor` |
+| `quark/compute/data/aggregate:v1` | Aggregate a dataset. Config: `groupBy`, `functions` |
+
+---
+
+## 15. `cloud` — Cloud Provider Services
+
+Nodes that integrate with cloud provider services. Each provider is a subdomain.
+
+**Subdomains:** `aws`, `gcp`, `azure`
+
+### `cloud/aws`
+
+| URI | Description |
+|-----|-------------|
+| `quark/cloud/aws/s3-event:v1` | Receive S3 event notifications. Config: `bucket`, `region` |
+| `quark/cloud/aws/s3-write:v1` | Upload to S3. Config: `bucket`, `key`, `region` |
+| `quark/cloud/aws/sns-sub:v1` | Subscribe to SNS topic. Config: `topicArn`, `region` |
+
+### `cloud/gcp`
+
+| URI | Description |
+|-----|-------------|
+| `quark/cloud/gcp/pubsub:v1` | Receive GCP Pub/Sub messages. Config: `projectId`, `subscription` |
+| `quark/cloud/gcp/storage:v1` | Upload to GCS. Config: `bucket`, `object` |
+
+### `cloud/azure`
+
+| URI | Description |
+|-----|-------------|
+| `quark/cloud/azure/eventgrid:v1` | Receive Azure Event Grid events. Config: `topic`, `subscription` |
+| `quark/cloud/azure/blob:v1` | Upload to Azure Blob Storage. Config: `container`, `blob` |
+
+---
+
+## 16. `system` — System Metrics
+
+Nodes that observe the system and emit metrics periodically.
+
+**Subdomains:** `cpu`, `memory`, `disk`, `process`
+
+### `system/cpu`
+
+| URI | Description |
+|-----|-------------|
+| `quark/system/cpu/profile:v1` | Emit CPU usage metrics. Config: `interval` |
+
+### `system/memory`
+
+| URI | Description |
+|-----|-------------|
+| `quark/system/memory/profile:v1` | Emit memory usage metrics. Config: `interval` |
+
+### `system/disk`
+
+| URI | Description |
+|-----|-------------|
+| `quark/system/disk/usage:v1` | Emit disk usage metrics. Config: `path`, `interval` |
+
+### `system/process`
+
+| URI | Description |
+|-----|-------------|
+| `quark/system/process/list:v1` | Emit list of running processes. Config: `interval` |
+
+---
+
+## 17. `console` — Terminal/Console
+
+Nodes that interact with the terminal — TTY/PTY operations and interactive
+command-line interfaces.
+
+**Subdomains:** `tty`, `cli`
+
+### `console/tty`
+
+| URI | Description |
+|-----|-------------|
+| `quark/console/tty/read:v1` | Read from a TTY/PTY. Config: `device` |
+| `quark/console/tty/write:v1` | Write to a TTY/PTY. Config: `device` |
+
+### `console/cli`
+
+| URI | Description |
+|-----|-------------|
+| `quark/console/cli/prompt:v1` | Interactive CLI prompt — read user input. Config: `prompt`, `default` |
+
+---
+
+## 18. `crypto` — Cryptography
+
+Nodes that perform cryptographic operations — hashing, encryption, signing.
+
+**Subdomains:** `hash`, `cipher`, `sign`
+
+### `crypto/hash`
+
+| URI | Description |
+|-----|-------------|
+| `quark/crypto/hash/sha256:v1` | Compute SHA-256 hash of the message payload. |
+| `quark/crypto/hash/md5:v1` | Compute MD5 hash of the message payload. |
+
+### `crypto/cipher`
+
+| URI | Description |
+|-----|-------------|
+| `quark/crypto/cipher/encrypt:v1` | Encrypt the message payload. Config: `algorithm`, `key` |
+| `quark/crypto/cipher/decrypt:v1` | Decrypt the message payload. Config: `algorithm`, `key` |
+
+### `crypto/sign`
+
+| URI | Description |
+|-----|-------------|
+| `quark/crypto/sign/hmac:v1` | Compute HMAC signature. Config: `algorithm`, `key` |
+| `quark/crypto/sign/verify:v1` | Verify an HMAC signature. Config: `algorithm`, `key` |
+
+---
+
+## Summary
+
+| Domain | Subdomains | Node count |
+|--------|-----------|------------|
+| `time` | 1 | 2 |
+| `net` | 5 | 11 |
+| `io` | 2 | 8 |
+| `db` | 4 | 12 |
+| `data` | 2 | 6 |
+| `codec` | 5 | 10 |
+| `text` | 3 | 7 |
+| `ai` | 4 | 7 |
+| `notify` | 5 | 5 |
+| `log` | 3 | 5 |
+| `search` | 3 | 4 |
+| `stream` | 3 | 3 |
+| `route` | 2 | 8 |
+| `compute` | 3 | 6 |
+| `cloud` | 3 | 7 |
+| `system` | 4 | 4 |
+| `console` | 2 | 3 |
+| `crypto` | 3 | 6 |
+| **Total** | **55** | **114** |
