@@ -38,3 +38,4 @@ worklog.md
 *.zip
 .env
 quark-catalog/quark-catalog
+cli/cli
