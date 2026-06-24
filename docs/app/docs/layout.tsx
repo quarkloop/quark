@@ -11,8 +11,8 @@ export default function Layout({ children }: { children: ReactNode }) {
       sidebar={{
         defaultOpenLevel: 1,
         banner: (
-          <div className="flex items-center gap-2 rounded-lg border border-accent-500/20 bg-accent-500/5 px-3 py-2 text-xs text-ink-300">
-            <span className="h-1.5 w-1.5 rounded-full bg-accent-400" />
+          <div className="flex items-center gap-2 rounded-lg border border-ember-500/20 bg-ember-500/5 px-3 py-2 text-xs text-sand-300">
+            <span className="h-1.5 w-1.5 rounded-full bg-ember-400" />
             <span>v0.1.0-SNAPSHOT</span>
           </div>
         ),

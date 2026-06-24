@@ -38,7 +38,7 @@ export default async function Page({
       <DocsTitle className="font-display tracking-tight">
         {page.data.title}
       </DocsTitle>
-      <DocsDescription className="text-base text-ink-400">
+      <DocsDescription className="text-base text-sand-400">
         {page.data.description}
       </DocsDescription>
       <DocsBody>

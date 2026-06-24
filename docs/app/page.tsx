@@ -94,10 +94,10 @@ export default function HomePage() {
       {/* Hero */}
       <section className="mx-auto max-w-7xl px-6 pt-24 pb-20">
         <div className="mx-auto max-w-3xl text-center">
-          <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/40 px-3 py-1 text-xs font-medium text-ink-400 backdrop-blur-sm animate-fade-in">
+          <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/40 px-3 py-1 text-xs font-medium text-sand-400 backdrop-blur-sm animate-fade-in">
             <span className="relative flex h-1.5 w-1.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent-500 opacity-75" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-accent-500" />
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-ember-500 opacity-75" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-ember-500" />
             </span>
             v0.1.0 · Three-service architecture
           </div>
@@ -106,10 +106,10 @@ export default function HomePage() {
             A universal runtime
             <br />
             for{" "}
-            <span className="text-accent-500">programmable nodes</span>
+            <span className="text-ember-500">programmable nodes</span>
           </h1>
 
-          <p className="mt-6 text-lg sm:text-xl text-ink-400 leading-relaxed text-pretty animate-slide-up [animation-delay:60ms]">
+          <p className="mt-6 text-lg sm:text-xl text-sand-400 leading-relaxed text-pretty animate-slide-up [animation-delay:60ms]">
             Declare nodes in TypeScript. Parse them on the control plane.
             Execute them on the data plane with GraalJS. Persist them through
             the Catalog. Wire it all together with NATS.
@@ -118,14 +118,14 @@ export default function HomePage() {
           <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-3 animate-slide-up [animation-delay:120ms]">
             <Link
               href="/docs/declaration"
-              className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-accent-500 px-6 py-3 text-sm font-semibold text-ink-950 transition-all hover:bg-accent-400 hover:shadow-glow focus-ring"
+              className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-ember-500 px-6 py-3 text-sm font-semibold text-sand-950 transition-all hover:bg-ember-400 hover:shadow-glow focus-ring"
             >
               Read the spec
               <ArrowRight className="h-4 w-4" />
             </Link>
             <Link
               href="/docs/environment-bootstrap"
-              className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl border border-border bg-card/60 px-6 py-3 text-sm font-semibold text-ink-200 hover:bg-card transition-all focus-ring"
+              className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl border border-border bg-card/60 px-6 py-3 text-sm font-semibold text-sand-200 hover:bg-card transition-all focus-ring"
             >
               <Terminal className="h-4 w-4" />
               Bootstrap environment
@@ -141,7 +141,7 @@ export default function HomePage() {
             <h2 className="font-display text-2xl font-semibold tracking-tight">
               Three services, one platform
             </h2>
-            <p className="mt-1 text-sm text-ink-400">
+            <p className="mt-1 text-sm text-sand-400">
               Each service has a single responsibility and communicates via NATS.
             </p>
           </div>
@@ -162,7 +162,7 @@ export default function HomePage() {
 
       {/* Features */}
       <section className="mx-auto max-w-7xl px-6 pb-24">
-        <div className="rounded-3xl border border-border/60 glass-panel-strong p-8 sm:p-12">
+        <div className="rounded-3xl border border-border/60 card-warm p-8 sm:p-12">
           <h2 className="font-display text-2xl font-semibold tracking-tight text-center">
             Built on non-negotiable principles
           </h2>
@@ -186,13 +186,13 @@ export default function HomePage() {
             <h2 className="font-display text-2xl font-semibold tracking-tight">
               Documentation
             </h2>
-            <p className="mt-1 text-sm text-ink-400">
+            <p className="mt-1 text-sm text-sand-400">
               {docs.length} documents · browse by topic
             </p>
           </div>
           <Link
             href="/docs"
-            className="text-sm text-accent-500 hover:text-accent-400 inline-flex items-center gap-1"
+            className="text-sm text-ember-500 hover:text-ember-400 inline-flex items-center gap-1"
           >
             View all
             <ArrowRight className="h-3.5 w-3.5" />

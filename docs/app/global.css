@@ -6,33 +6,43 @@
 
 @layer base {
   :root {
-    /* Light theme — warm editorial */
-    --background: 36 33% 97%;
-    --foreground: 30 10% 8%;
-    --muted: 36 20% 94%;
-    --muted-foreground: 30 8% 42%;
-    --card: 36 33% 99%;
-    --card-foreground: 30 10% 8%;
-    --border: 36 14% 86%;
-    --accent: 25 95% 53%;
+    /*
+     * Light theme — warm cream like aged paper.
+     * Background is a visible warm cream (#f5ede0), NOT white.
+     * Cards are warm ivory (#fffaf5), clearly distinct from the bg.
+     * Text is warm dark brown (#3d2f24), NOT cold black.
+     */
+    --background: 33 40% 93%;
+    --foreground: 25 30% 19%;
+    --muted: 33 30% 90%;
+    --muted-foreground: 30 18% 42%;
+    --card: 36 55% 99%;
+    --card-foreground: 25 30% 19%;
+    --border: 33 35% 84%;
+    --accent: 22 88% 49%;
     --accent-foreground: 0 0% 100%;
-    --ring: 25 95% 53%;
+    --ring: 22 88% 49%;
 
-    --fd-radius: 0.625rem;
+    --fd-radius: 0.5rem;
   }
 
   .dark {
-    /* Dark theme — warm premium */
-    --background: 36 14% 4%;
-    --foreground: 36 33% 96%;
-    --muted: 36 10% 10%;
-    --muted-foreground: 36 10% 62%;
-    --card: 36 12% 7%;
-    --card-foreground: 36 33% 96%;
-    --border: 36 10% 14%;
-    --accent: 25 95% 56%;
-    --accent-foreground: 36 14% 4%;
-    --ring: 25 95% 56%;
+    /*
+     * Dark theme — warm dark brown like roasted coffee beans.
+     * Background is #1c1610 (warm near-black), NOT cold zinc.
+     * Cards are #2d2218 (warm dark brown), clearly distinct.
+     * Text is #f0e4d0 (warm beige), NOT cold gray.
+     */
+    --background: 30 26% 9%;
+    --foreground: 36 40% 85%;
+    --muted: 30 20% 14%;
+    --muted-foreground: 33 20% 60%;
+    --card: 30 24% 13%;
+    --card-foreground: 36 40% 85%;
+    --border: 30 18% 20%;
+    --accent: 22 88% 54%;
+    --accent-foreground: 30 26% 9%;
+    --ring: 22 88% 54%;
   }
 
   * {
@@ -53,22 +63,22 @@
     font-variation-settings: "opsz" 32;
   }
 
-  /* Premium scrollbar — solid color, no gradient */
+  /* Warm scrollbar — solid color, no gradient */
   ::-webkit-scrollbar {
     width: 10px;
     height: 10px;
   }
   ::-webkit-scrollbar-track {
-    background: transparent;
+    background: hsl(var(--muted));
   }
   ::-webkit-scrollbar-thumb {
-    background: hsl(var(--border));
+    background: hsl(var(--muted-foreground) / 0.4);
     border-radius: 8px;
     border: 2px solid transparent;
     background-clip: padding-box;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: hsl(var(--muted-foreground) / 0.5);
+    background: hsl(var(--accent) / 0.6);
     background-clip: padding-box;
     border: 2px solid transparent;
   }
@@ -80,22 +90,30 @@
 }
 
 @layer components {
-  /* Frosted panel — solid translucent background, no gradient */
-  .glass-panel {
-    background: hsl(var(--card) / 0.7);
-    backdrop-filter: blur(20px) saturate(160%);
-    -webkit-backdrop-filter: blur(20px) saturate(160%);
-    border: 1px solid hsl(var(--border) / 0.6);
-  }
-
-  .glass-panel-strong {
-    background: hsl(var(--card) / 0.9);
-    backdrop-filter: blur(24px) saturate(160%);
-    -webkit-backdrop-filter: blur(24px) saturate(160%);
+  /*
+   * Solid card panel — warm background, clear border, real shadow.
+   * This is the primary surface for cards and content blocks.
+   */
+  .card-warm {
+    background: hsl(var(--card));
     border: 1px solid hsl(var(--border));
+    box-shadow: 0 2px 4px 0 rgba(74,58,38,0.08), 0 4px 12px -2px rgba(74,58,38,0.10);
   }
 
-  /* Premium focus ring — solid accent color, no gradient */
+  .card-warm:hover {
+    border-color: hsl(var(--accent) / 0.4);
+    box-shadow: 0 4px 8px -2px rgba(74,58,38,0.10), 0 12px 32px -4px rgba(74,58,38,0.14);
+  }
+
+  /* Nav bar — solid warm background, not translucent */
+  .nav-warm {
+    background: hsl(var(--card) / 0.85);
+    backdrop-filter: blur(16px) saturate(150%);
+    -webkit-backdrop-filter: blur(16px) saturate(150%);
+    border-bottom: 1px solid hsl(var(--border));
+  }
+
+  /* Premium focus ring — solid accent color */
   .focus-ring {
     outline: none;
   }
@@ -113,23 +131,10 @@
   .text-pretty {
     text-wrap: pretty;
   }
-
-  /* Mask fade for sidebar scroll edges — mask is not a visual gradient;
-     it's a CSS mask for opacity falloff. */
-  .mask-fade-y {
-    mask-image: linear-gradient(
-      to bottom,
-      transparent,
-      black 24px,
-      black calc(100% - 24px),
-      transparent
-    );
-  }
 }
 
 /*
  * Fumadocs CSS variable overrides — map fd-* variables to the warm palette.
- * These overrides come after the @tailwind directives so they take precedence.
  */
 :root {
   --fd-background: hsl(var(--background));

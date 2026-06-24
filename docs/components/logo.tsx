@@ -22,9 +22,9 @@ export function Logo({
   return (
     <Link href="/" className="flex items-center gap-2.5 group">
       <div
-        className={`relative ${dimensions.box} rounded-lg bg-accent-500 shadow-glow-sm flex items-center justify-center transition-colors group-hover:bg-accent-400`}
+        className={`relative ${dimensions.box} rounded-lg bg-ember-500 shadow-glow-sm flex items-center justify-center transition-colors group-hover:bg-ember-400`}
       >
-        <span className={`font-display ${dimensions.text} font-bold text-ink-950`}>
+        <span className={`font-display ${dimensions.text} font-bold text-sand-950`}>
           Q
         </span>
       </div>
