@@ -16,49 +16,49 @@
 package store
 
 import (
-	"database/sql"
-	"fmt"
-	"os"
-	"path/filepath"
-	"time"
+        "database/sql"
+        "fmt"
+        "os"
+        "path/filepath"
+        "time"
 
-	_ "modernc.org/sqlite" // pure-Go SQLite driver
+        _ "modernc.org/sqlite" // pure-Go SQLite driver
 )
 
 // Store wraps a SQLite connection for catalog operations.
 type Store struct {
-	db *sql.DB
+        db *sql.DB
 }
 
 // MigrationResult tracks how many items were migrated from legacy JSONL
 // on first startup. Returned by MigrateLegacy so the caller can log it.
 type MigrationResult struct {
-	Systems int
-	Events  int
+        Systems int
+        Events  int
 }
 
 // Open opens (or creates) the SQLite database at stateRoot/catalog.db
 // and ensures the schema exists. The caller must call Close when done.
 func Open(stateRoot string) (*Store, error) {
-	if err := os.MkdirAll(stateRoot, 0o755); err != nil {
-		return nil, fmt.Errorf("cannot create state root: %w", err)
-	}
-	dbPath := filepath.Join(stateRoot, "catalog.db")
-	dsn := fmt.Sprintf(
-		"file:%s?_journal_mode=WAL&_busy_timeout=5000&_foreign_keys=on&_txlock=immediate",
-		dbPath,
-	)
-	db, err := sql.Open("sqlite", dsn)
-	if err != nil {
-		return nil, fmt.Errorf("cannot open SQLite: %w", err)
-	}
-	// SQLite serializes writes — a single connection avoids lock contention.
-	db.SetMaxOpenConns(1)
-	s := &Store{db: db}
-	if err := s.createSchema(); err != nil {
-		return nil, fmt.Errorf("cannot create schema: %w", err)
-	}
-	return s, nil
+        if err := os.MkdirAll(stateRoot, 0o755); err != nil {
+                return nil, fmt.Errorf("cannot create state root: %w", err)
+        }
+        dbPath := filepath.Join(stateRoot, "catalog.db")
+        dsn := fmt.Sprintf(
+                "file:%s?_journal_mode=WAL&_busy_timeout=5000&_foreign_keys=on&_txlock=immediate",
+                dbPath,
+        )
+        db, err := sql.Open("sqlite", dsn)
+        if err != nil {
+                return nil, fmt.Errorf("cannot open SQLite: %w", err)
+        }
+        // SQLite serializes writes — a single connection avoids lock contention.
+        db.SetMaxOpenConns(1)
+        s := &Store{db: db}
+        if err := s.createSchema(); err != nil {
+                return nil, fmt.Errorf("cannot create schema: %w", err)
+        }
+        return s, nil
 }
 
 // Close closes the underlying database connection.
@@ -72,8 +72,8 @@ func (s *Store) DB() *sql.DB { return s.db }
 // createSchema runs the full DDL. Uses CREATE TABLE IF NOT EXISTS so
 // it is safe to call on every startup.
 func (s *Store) createSchema() error {
-	_, err := s.db.Exec(schemaSQL)
-	return err
+        _, err := s.db.Exec(schemaSQL)
+        return err
 }
 
 const schemaSQL = `
@@ -94,7 +94,6 @@ CREATE TABLE IF NOT EXISTS nodes (
     system_name         TEXT NOT NULL,
     name                TEXT NOT NULL,
     uri                 TEXT NOT NULL,
-     NOT NULL,
     state               TEXT NOT NULL DEFAULT 'CREATING',
     health              TEXT NOT NULL DEFAULT 'UNKNOWN',
     version             INTEGER NOT NULL DEFAULT 1,
@@ -131,7 +130,7 @@ CREATE INDEX IF NOT EXISTS idx_events_ts      ON events(timestamp DESC);
 
 CREATE TABLE IF NOT EXISTS node_packages (
     uri          TEXT PRIMARY KEY,
-     NOT NULL,
+    category     TEXT,
     version      TEXT NOT NULL,
     manifest     TEXT NOT NULL,
     content      BLOB NOT NULL,
@@ -145,8 +144,6 @@ CREATE INDEX IF NOT EXISTS idx_packages_category ON node_packages(category);
 CREATE TABLE IF NOT EXISTS registry (
     uri         TEXT PRIMARY KEY,
     pattern     TEXT NOT NULL,
-     NOT NULL,
-    ,
     description TEXT NOT NULL
 );
 

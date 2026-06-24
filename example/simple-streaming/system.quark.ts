@@ -51,18 +51,10 @@ export default {
             listens: ["cpu.data", "memory.data", "fallback.cpu", "fallback.memory"],
         },
 
-        // In-memory list — accumulates data, publishes "updated" events.
-        list: {
-            uses: "quark/data/shape/map:v1",
-            maxSize: 100,
-            listens: ["cpu.data", "memory.data"],
-            events: ["updated"],
-        },
-
         // Streaming endpoint — SSE server.
         stream: {
             uses: "quark/stream/sse/broadcast:v1",
-            listens: ["list.updated"],
+            listens: ["cpu.data", "memory.data"],
         },
     },
 };
