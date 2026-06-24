@@ -2,7 +2,7 @@
 // Declaratively maps fields from the input payload to a new output shape.
 
 export default {
-    onMessage(message, publisher) {
+    onMessage: function(message, publisher) {
         const mapping = config.get("mapping") || {};
         const preserve = config.getBoolean("preserve", false);
         const payload = message.getPayload();
@@ -10,7 +10,8 @@ export default {
         const result = {};
 
         // Apply mapping: source path -> target field
-        for (const [sourcePath, targetField] of Object.entries(mapping)) {
+        for (const sourcePath in mapping) {
+            const targetField = mapping[sourcePath];
             const value = getNestedValue(payload, sourcePath);
             if (value !== undefined) {
                 setNestedValue(result, targetField, value);
@@ -19,9 +20,9 @@ export default {
 
         // Optionally preserve unmapped fields
         if (preserve) {
-            for (const [key, value] of Object.entries(payload)) {
+            for (const key in payload) {
                 if (!(key in result) && !Object.values(mapping).includes(key)) {
-                    result[key] = value;
+                    result[key] = payload[key];
                 }
             }
         }
@@ -29,7 +30,7 @@ export default {
         result._source = message.getSubject();
         publisher.publish("mapped", result);
     }
-};
+}
 
 function getNestedValue(obj, path) {
     const parts = path.split(".");

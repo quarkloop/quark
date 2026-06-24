@@ -3,7 +3,7 @@
 // First matching rule wins. If no rule matches, the message is dropped.
 
 export default {
-    onMessage(message, publisher) {
+    onMessage: function(message, publisher) {
         const rules = config.get("rules") || [];
         const payload = message.getPayload();
 

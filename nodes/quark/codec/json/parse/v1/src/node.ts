@@ -2,7 +2,7 @@
 // Parses a JSON string from the message payload into an object.
 
 export default {
-    onMessage(message, publisher) {
+    onMessage: function(message, publisher) {
         const field = config.getString("field", "data");
         const strict = config.getBoolean("strict", false);
         const payload = message.getPayload();

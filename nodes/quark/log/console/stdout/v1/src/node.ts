@@ -2,7 +2,7 @@
 // Writes each incoming message payload to standard output as JSON.
 
 export default {
-    onMessage(message, publisher) {
+    onMessage: function(message, publisher) {
         const payload = message.getPayload();
         console.log(JSON.stringify(payload));
     }

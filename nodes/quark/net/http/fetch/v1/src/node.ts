@@ -2,7 +2,7 @@
 // Fetches a URL from the message payload and emits the response body.
 
 export default {
-    onMessage(message, publisher) {
+    onMessage: function(message, publisher) {
         const urlField = config.getString("urlField", "url");
         const method = config.getString("method", "GET");
         const headers = config.get("headers") || {};
