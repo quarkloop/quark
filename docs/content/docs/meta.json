@@ -1,0 +1,15 @@
+{
+  "title": "Documentation",
+  "pages": [
+    "---Concepts---",
+    "abstraction",
+    "design",
+    "---Specification---",
+    "declaration",
+    "node",
+    "---Guides---",
+    "environment-bootstrap",
+    "cli",
+    "user-story"
+  ]
+}

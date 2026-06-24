@@ -1,0 +1,327 @@
+---
+title: "Node Specification"
+description: "The full Node spec — categories, lifecycle state machine, multi-tenancy, NATS messaging design, persistence layout, REST API, and CLI reference."
+status: "Architecture — Three-Service + NATS Core + GraalJS"
+date: "2026-06-24"
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+**Status**: Architecture — Three-Service (Control Plane / Catalog / Data Plane) + NATS Core + GraalJS
+**Date**: 2026-06-24
+
+---
+
+## 1. Introduction
+
+Quark is a universal runtime for programmable nodes. Everything in Quark —
+sources, functions, stores, endpoints, policies — is a **Node** identified by
+a Docker-style URI (`category/implementation:version`).
+
+Users write **TypeScript files** (`.quark.ts`) that declare nodes and their
+communication patterns. The control plane parses these files via
+**`SimpleSystemParser`** (regex-based, no GraalJS) and forwards them to a
+data-plane process, where **GraalJS** evaluates TypeScript node logic over an
+**external NATS Core** backbone. Nodes communicate exclusively through NATS
+subjects — no node knows about any other node directly.
+
+See [Design](./design) for the full three-service architecture (control plane,
+Catalog, data plane).
+
+---
+
+## 2. Three-Service Architecture
+
+Quark runs as three cooperating services (see [Design](./design) for the full
+diagram):
+
+| Service | Tier | Includes GraalJS? | Responsibility |
+|---------|------|-------------------|----------------|
+| **Control plane** (`server/`) | `server/` | ❌ No | REST API, deploy orchestration, parses `.quark.ts` with `SimpleSystemParser` (regex), spawns data-plane processes |
+| **Catalog** (`quark-catalog/`) | (Go) | n/a | SQLite-backed metadata store (systems, nodes, events, source, registry) |
+| **Data plane** (`runtime/`) | `runtime/` | ✅ Yes | Executes nodes via GraalJS + providers; connects to external NATS server |
+
+### Parse-time vs Execute-time
+
+The `.quark.ts` file is parsed **twice**:
+
+1. **Parse-time (control plane)**: `SimpleSystemParser` (in `core/quark-script`)
+   extracts system name, namespace, runtime mode, and node definitions using
+   regex. No GraalJS, no JS evaluation. This produces a `SystemDefinition`
+   record used for metadata persistence and deploy routing.
+
+2. **Execute-time (data plane)**: `GraalJsSystemParser` (in
+   `runtime/quark-script`) evaluates the TypeScript via GraalJS to extract
+   runtime config (e.g. dynamic config values that require JS evaluation).
+   `TypeScriptNodeFactory` (in `runtime/quark-polyglot`) uses GraalJS to
+   execute TypeScript node implementations.
+
+### Provider Layer
+
+Providers are self-contained Java modules in `runtime/providers/provider-*`:
+
+- Input: `QuarkMessage` (incoming NATS message)
+- Output: `QuarkPublisher.publish()` (outgoing NATS message)
+- Implements one SPI interface (`SourceProvider`, `FunctionProvider`, `StoreProvider`, `EndpointProvider`, `PolicyProvider`)
+- Knows nothing about NATS subjects, other nodes, or the engine internals
+- No static/shared state (instance-per-node)
+
+---
+
+## 3. The `.quark.ts` File
+
+### 3.1 Structure
+
+```typescript
+export default({
+    name: "monitor",
+    namespace: "alice",
+    runtime: "shared",  // optional, default "shared"
+
+    nodes: {
+        timer: {
+            uses: "source/timer:v1",
+            interval: "1s",
+            events: ["tick"],
+        },
+        cpu: {
+            uses: "function/cpu-profiler:v1",
+            timeout: "200ms",
+            listens: ["timer.tick"],
+            events: ["data"],
+            onFailure: { retry: 3, routeTo: "writer" },
+        },
+        writer: {
+            uses: "store/json-writer:v1",
+            path: "./out.jsonl",
+            mode: "append",
+            listens: ["cpu.data", "memory.data", "fallback.cpu", "fallback.memory"],
+        },
+    },
+});
+```
+
+### 3.2 The `uses` URI
+
+| Category | URI prefix | Role | SPI Interface |
+|----------|-----------|------|---------------|
+| Source | `source/` | Produces data autonomously | `SourceProvider` |
+| Function | `function/` | Transforms data on receipt | `FunctionProvider` |
+| Store | `store/` | Persists data | `StoreProvider` |
+| Endpoint | `endpoint/` | External interface (HTTP, SSE) | `EndpointProvider` |
+| Policy | `policy/` | Governance rules | `PolicyProvider` |
+
+### 3.3 Communication fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `listens` | `string[]` | Subjects the node subscribes to (relative, prefixed with `<system>.<namespace>.`) |
+| `events` | `string[]` | Events the node may publish (becomes `<system>.<namespace>.<nodeName>.<event>`) |
+| `onFailure` | `{ retry: number, routeTo: string }` | Parsed but not enforced in v8 — see §6.2 |
+| `timeout` | string (e.g. `"200ms"`) | Per-message processing timeout |
+
+---
+
+## 4. Subject Naming
+
+```
+<system>.<namespace>.<node>.<event>
+```
+
+Example: `monitor.alice.timer.tick`
+
+Multi-tenancy is implicit — Alice's subjects can never overlap with Bob's.
+
+Wildcards:
+
+- `*.data` — receive data from any node
+- `timer.>` — receive all events from the timer node
+
+---
+
+## 5. Lifecycle State Machine
+
+Every node follows:
+
+```
+CREATING → ACTIVE → PAUSED → DRAINING → ARCHIVED → DELETED
+                ↘ ERROR → RECOVERING ↗
+```
+
+State transitions emit `NODE_STATE_CHANGED` events. The lifecycle is managed
+by the engine — providers don't control it.
+
+When a node is paused:
+
+- Its lifecycle state transitions to `PAUSED`
+- The NATS subscription remains active (messages continue to be delivered and acknowledged)
+- A future JetStream upgrade will pause the consumer so messages accumulate for later delivery
+
+---
+
+## 6. NATS Messaging Design
+
+### 6.1 External NATS Server
+
+The Quark server connects to an **external** NATS server at
+`nats://localhost:4222` (configurable via `quark.nats.url`). Start one before
+deploying systems:
+
+```bash
+# Using Docker:
+docker run -p 4222:4222 nats:latest
+
+# Using Homebrew (macOS):
+brew install nats-server && nats-server
+
+# Using the binary directly:
+nats-server --addr 127.0.0.1 --port 4222
+```
+
+If no NATS server is available, the platform operates in **degraded mode**:
+systems can be deployed and tracked in the runtime registry, lifecycle events
+are emitted, but message flow between nodes is disabled. Start a NATS server
+and redeploy to enable full functionality.
+
+### 6.2 Core NATS Messaging (v0.1)
+
+This release uses **NATS Core** messaging (not JetStream). The implications:
+
+- **No message persistence** — messages are delivered to currently-connected subscribers only. If a subscriber is offline, the message is lost.
+- **No automatic retries** — `onFailure.retry` is parsed but not yet enforced. A failed `onMessage()` call logs the error and acknowledges the message.
+- **No fallback routing** — `onFailure.routeTo` is parsed but the `<sys>.<ns>.fallback.<node>` subject is never published to.
+- **ACLs are enforced in-process** — `NatsQuarkPublisher` checks that the event is in the node's declared `events` list before publishing. This is a defense-in-depth measure, not a NATS transport-level ACL.
+
+### 6.3 Subscriptions
+
+For each node with `listens`, the engine creates a NATS core subscription via
+`Connection.createDispatcher()` + `dispatcher.subscribe(fullSubject)`. The
+dispatcher's message handler:
+
+1. Wraps the NATS message in a `NatsQuarkMessage`
+2. Dispatches to the provider's `onMessage()`
+3. On success: `msg.ack()` (no-op in core NATS)
+4. On exception: logs the error and `msg.nak()` (no-op in core NATS)
+
+### 6.4 Planned: JetStream Upgrade
+
+A future release will upgrade to JetStream for:
+
+- Persistent streams per system (`<sys>.<ns>.>`)
+- Durable consumers with `MaxDeliver` and exponential backoff (wired to `onFailure.retry`)
+- Fallback subject routing after max retries (wired to `onFailure.routeTo`)
+- Transport-level publish ACLs
+
+The `onFailure` config field is parsed and stored today so that `.quark.ts`
+files are forward-compatible with the JetStream upgrade.
+
+---
+
+## 7. Multi-Tenancy
+
+### 7.1 Namespace Isolation
+
+NATS subjects encode the namespace: `monitor.alice.*` vs `monitor.bob.*`.
+Isolation is enforced at three levels:
+
+1. **Subject namespacing**: Alice's nodes can only publish/subscribe to `monitor.alice.*` subjects
+2. **NATS ACLs**: Publish permissions restrict each node to its own subjects
+3. **Engine validation**: The `listens` and `events` fields are validated to only reference subjects within the same system+namespace
+
+### 7.2 Multiple Systems Per Namespace
+
+A namespace can contain multiple independent systems:
+
+```
+Namespace: alice
+  ├── System: monitor        (subjects: monitor.alice.*)
+  ├── System: log-processor  (subjects: log-processor.alice.*)
+  └── System: alerting       (subjects: alerting.alice.*)
+```
+
+Systems in the same namespace share the namespace for management purposes
+(list, health, events queries) but are isolated at the NATS subject level.
+
+---
+
+## 8. Persistence Layout
+
+As of v8, all persistence is delegated to the **Catalog service** (Go +
+SQLite). The Catalog database lives at:
+
+```
+$QUARK_STATE_ROOT/
+├── catalog.db                                  SQLite database (Catalog service)
+│                                               Tables: systems, nodes, events,
+│                                                       node_packages, registry,
+│                                                       catalog_meta
+└── dataplane-logs/                             Per-runtimeId data-plane stdout/stderr
+    └── dataplane-<runtimeId>.log
+```
+
+The legacy on-disk layout (`$QUARK_STATE_ROOT/systems/<ns>/<sys>/source.ts` +
+`events.jsonl`) is **migrated automatically** on first Catalog startup via
+`store.MigrateLegacy()` — the `systems/` directory is renamed to
+`systems.backup/` after migration.
+
+<Callout type="info">
+  `system.meta.json` and `state.json` mentioned in earlier specs are no longer
+  planned — all metadata lives in the Catalog's SQLite tables.
+</Callout>
+
+---
+
+## 9. REST API
+
+All endpoints are scoped under `/api/v1/` on the control plane (port 8080):
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/namespaces` | List all active namespaces |
+| GET | `/api/v1/namespaces/{ns}` | Get namespace details + metrics |
+| GET | `/api/v1/namespaces/{ns}/systems` | List systems in a namespace |
+| GET | `/api/v1/namespaces/{ns}/systems/{name}` | Get system details |
+| PUT | `/api/v1/namespaces/{ns}/systems/{name}` | Apply (declarative reconcile) |
+| DELETE | `/api/v1/namespaces/{ns}/systems/{name}` | Undeploy a system |
+| GET | `/api/v1/namespaces/{ns}/systems/{name}/source` | Get the original .quark.ts source |
+| GET | `/api/v1/namespaces/{ns}/systems/{name}/nodes` | List nodes in a system |
+| GET | `/api/v1/namespaces/{ns}/systems/{name}/nodes/{node}` | Get node details |
+| GET | `/api/v1/namespaces/{ns}/events` | Query events |
+| GET | `/api/v1/registry` | List registered node implementations |
+| GET | `/q/health/live` | Liveness check (SmallRye Health default path) |
+| GET | `/q/health/ready` | Readiness check (NATS, Catalog, registry) |
+
+---
+
+## 10. CLI
+
+```bash
+# Deploy a .quark.ts file
+quarkctl apply -f monitor.quark.ts -n alice
+
+# List systems / nodes / namespaces
+quarkctl get systems -n alice
+quarkctl get nodes -n alice -s monitor
+quarkctl get namespaces
+
+# Get system / node details
+quarkctl get system monitor -n alice
+quarkctl get node cpu -n alice -s monitor
+
+# Query events
+quarkctl get events -n alice
+quarkctl watch events -n alice
+
+# Delete a system
+quarkctl delete system monitor -n alice
+
+# Node package registry
+quarkctl node list
+quarkctl node info source/timer:v1
+quarkctl node search timer
+quarkctl node push -f my-node.ts --uri source/my-node:v1
+quarkctl node pull source/my-node:v1
+
+# Get JSON output (for AI agents)
+quarkctl get system monitor -n alice --json
+```

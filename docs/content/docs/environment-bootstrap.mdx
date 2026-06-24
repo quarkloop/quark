@@ -1,0 +1,346 @@
+---
+title: "Environment Bootstrap"
+description: "Step-by-step environment setup for the Quark Platform — JDK 21, Go 1.24, NATS, project extraction, build, and end-to-end smoke test."
+status: "v0.1.0-SNAPSHOT"
+date: "2026-06-24"
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+import { Steps, Step } from "fumadocs-ui/components/steps";
+import { Tab, Tabs } from "fumadocs-ui/components/tabs";
+
+## Context
+
+You are working on the **Quark Platform** — a three-service system built on
+Java 21 + Quarkus 3.x (control plane and data plane), Go (Catalog service +
+CLI), NATS for messaging, and GraalJS for TypeScript node evaluation. The
+project lives at `/home/z/my-project/workspace/` and is managed via a git
+repository with conventional commits.
+
+**Architecture (post-v8):**
+
+| Service | Language | Includes GraalJS? | Role |
+|---------|----------|-------------------|------|
+| Control plane (`server/`) | Java/Native | ❌ No | REST API, deploy orchestration, spawns data-plane processes |
+| Catalog (`quark-catalog/`) | Go + SQLite (pure Go, no CGO) | n/a | Metadata store (systems, nodes, events, sources, registry) |
+| Data plane (`runtime/`) | Java/Native | ✅ Yes (via `--macro:truffle-svm`) | Executes nodes, hosts GraalJS, runs providers |
+| NATS broker | Go (external) | n/a | Message bus for all inter-service communication |
+
+Persistence is delegated to the Catalog (Go + SQLite via
+`modernc.org/sqlite`). DuckDB has been removed entirely. The data plane is
+spawned on demand by the control plane's `ProcessManager`.
+
+---
+
+## 1. Install JDK 21 (or use GraalVM JDK 21)
+
+<Callout type="info">
+  If GraalVM is already at `/home/z/graalvm-jdk-21.0.11+9.1/`, skip this step —
+  GraalVM JDK 21 includes `javac` and `native-image` and is preferred over
+  plain OpenJDK for this project (required for native builds).
+</Callout>
+
+Otherwise, install OpenJDK 21:
+
+```bash
+cd /home/z/my-project
+apt-get download openjdk-21-jdk-headless openjdk-21-jre-headless openjdk-21-jre openjdk-21-jdk
+mkdir -p /home/z/jdk21
+for deb in openjdk-21-jre-headless_*.deb openjdk-21-jre_*.deb openjdk-21-jdk-headless_*.deb openjdk-21-jdk_*.deb; do
+    [ -f "$deb" ] && dpkg-deb -x "$deb" /home/z/jdk21/
+done
+rm -f openjdk-21-*.deb
+```
+
+Set environment (add to `~/.bashrc`):
+
+<Tabs items={["GraalVM (preferred)", "OpenJDK (JVM only)"]}>
+  <Tab value="GraalVM (preferred)">
+    ```bash
+    # GraalVM JDK 21 — includes native-image, required for native builds
+    export JAVA_HOME=/home/z/graalvm-jdk-21.0.11+9.1
+    export PATH=$JAVA_HOME/bin:$PATH
+    ```
+  </Tab>
+  <Tab value="OpenJDK (JVM only)">
+    ```bash
+    # Plain OpenJDK 21 — JVM mode only, native builds will not work
+    export JAVA_HOME=/home/z/jdk21/usr/lib/jvm/java-21-openjdk-amd64
+    export PATH=$JAVA_HOME/bin:$PATH
+    ```
+  </Tab>
+</Tabs>
+
+Verify:
+
+```bash
+java -version   # must show 21.x
+javac -version  # must show 21.x
+# If using GraalVM, also verify native-image:
+native-image --version
+```
+
+---
+
+## 2. Install Go 1.24
+
+```bash
+cd /home/z/my-project
+curl -fsSL https://go.dev/dl/go1.24.4.linux-amd64.tar.gz -o go.tar.gz
+mkdir -p /home/z/go
+tar -C /home/z/go -xzf go.tar.gz --strip-components=1
+rm -f go.tar.gz
+```
+
+Set environment (add to `~/.bashrc`):
+
+```bash
+export GOROOT=/home/z/go
+export GOPATH=/home/z/gopath
+export PATH=$GOROOT/bin:$GOPATH/bin:$PATH
+mkdir -p /home/z/gopath
+```
+
+Verify:
+
+```bash
+go version  # must show go1.24.x
+```
+
+---
+
+## 3. Download NATS Server
+
+```bash
+cd /tmp
+curl -fsSL https://github.com/nats-io/nats-server/releases/download/v2.10.25/nats-server-v2.10.25-linux-amd64.tar.gz -o nats.tar.gz
+tar xzf nats.tar.gz
+cp nats-server-v2.10.25-linux-amd64/nats-server /home/z/go/bin/nats-server
+chmod +x /home/z/go/bin/nats-server
+rm -rf nats.tar.gz nats-server-v2.10.25-linux-amd64
+```
+
+Verify:
+
+```bash
+nats-server --version  # must show v2.10.x
+```
+
+---
+
+## 4. Extract Project
+
+If starting from a zip file in `/home/z/my-project/upload/`:
+
+```bash
+mkdir -p /home/z/my-project/workspace
+cd /home/z/my-project/workspace
+unzip -q /home/z/my-project/upload/quark-platform-v*.zip
+# The zip extracts to workspace/ — move contents up if needed
+git log --oneline | head -3
+git rev-list --count HEAD
+```
+
+---
+
+## 5. Build (JVM mode — default)
+
+```bash
+cd /home/z/my-project/workspace
+export JAVA_HOME=/home/z/graalvm-jdk-21.0.11+9.1
+export PATH=$JAVA_HOME/bin:$PATH
+export GOROOT=/home/z/go
+export GOPATH=/home/z/gopath
+export PATH=$GOROOT/bin:$GOPATH/bin:$PATH
+make build
+```
+
+Expected output:
+
+```
+[jvm] > Building Java modules (JVM mode)...
+✓ Java build complete
+    Server JAR:    server/quark-server/target/quark-server-0.1.0-SNAPSHOT-runner.jar
+    Runtime JAR:   runtime/quark-runtime/target/quark-runtime-runner-runner.jar
+> Building Go CLI binary...
+✓ Go build complete: cli/quarkctl
+> Building Catalog service...
+✓ Catalog build complete: quark-catalog/quark-catalog
+```
+
+### 5b. Build (Native mode — optional, requires GraalVM)
+
+```bash
+# Control plane only (~4 min, 3 GB RAM, 76 MB output)
+make build-native-server
+
+# Data plane with GraalJS (~9 min, 6.5 GB RAM, 194 MB output)
+make build-native-runtime
+
+# Both
+make build-native
+```
+
+---
+
+## 6. Start NATS Server (Background)
+
+```bash
+nats-server --addr 127.0.0.1 --port 4222 > /tmp/nats.log 2>&1 &
+sleep 2
+# Verify it's running
+grep "Server is ready" /tmp/nats.log
+```
+
+---
+
+## 7. Start the Catalog Service (Background)
+
+```bash
+cd /home/z/my-project/workspace
+rm -rf /home/z/my-project/quark-state
+mkdir -p /home/z/my-project/quark-state
+./quark-catalog/quark-catalog \
+  -nats nats://localhost:4222 \
+  -state /home/z/my-project/quark-state > /tmp/catalog.log 2>&1 &
+sleep 2
+# Verify
+grep "Catalog service ready" /tmp/catalog.log
+```
+
+---
+
+## 8. Start the Control Plane (Background)
+
+<Tabs items={["JVM mode", "Native mode"]}>
+  <Tab value="JVM mode">
+    ```bash
+    cd /home/z/my-project/workspace
+    java -Dquark.state.root=/home/z/my-project/quark-state \
+         -Dquark.nats.url=nats://localhost:4222 \
+         -jar server/quark-server/target/quark-server-0.1.0-SNAPSHOT-runner.jar \
+         > /tmp/server.log 2>&1 &
+    ```
+  </Tab>
+  <Tab value="Native mode">
+    ```bash
+    cd /home/z/my-project/workspace
+    ./server/quark-server/target/quark-server-0.1.0-SNAPSHOT-runner \
+      -Dquark.state.root=/home/z/my-project/quark-state \
+      -Dquark.nats.url=nats://localhost:4222 > /tmp/server.log 2>&1 &
+    ```
+  </Tab>
+</Tabs>
+
+```bash
+sleep 4
+# Verify
+curl -s http://localhost:8080/q/health/live
+```
+
+The control plane will auto-spawn a data-plane process when a system is deployed.
+
+---
+
+## 9. Run End-to-End Smoke Test
+
+```bash
+cd /home/z/my-project/workspace
+./cli/quarkctl apply -f example/simple-streaming/system.quark.ts -n alice
+sleep 3
+./cli/quarkctl get namespaces
+./cli/quarkctl get systems -n alice
+./cli/quarkctl get nodes -n alice -s monitor
+./cli/quarkctl delete system monitor -n alice
+```
+
+Expected: System deploys, 6 nodes ACTIVE/HEALTHY, the control plane spawns the
+data plane (visible in `/tmp/server.log` and
+`/home/z/my-project/quark-state/dataplane-logs/dataplane-shared.log`), events
+flow, clean undeploy.
+
+---
+
+## 10. Start Download Page (if needed)
+
+```bash
+curl -s https://z-cdn.chatglm.cn/fullstack/init-fullstack.sh | bash
+sleep 8
+# Copy zip files to public dir
+cp /home/z/my-project/download/quark-platform-v*.zip /home/z/my-project/public/
+```
+
+---
+
+## Key Paths
+
+| Item | Path |
+| --- | --- |
+| Project root | `/home/z/my-project/workspace/` |
+| GraalVM JDK 21 (pref) | `/home/z/graalvm-jdk-21.0.11+9.1/` |
+| OpenJDK 21 (fallback) | `/home/z/jdk21/usr/lib/jvm/java-21-openjdk-amd64/` |
+| Go 1.24 | `/home/z/go/` |
+| NATS server binary | `/home/z/go/bin/nats-server` |
+| Maven wrapper | `/home/z/my-project/workspace/mvnw` (DO NOT delete `.mvn/wrapper/`) |
+| CLI binary | `/home/z/my-project/workspace/cli/quarkctl` |
+| Catalog binary | `/home/z/my-project/workspace/quark-catalog/quark-catalog` |
+| Server JAR (JVM) | `/home/z/my-project/workspace/server/quark-server/target/quark-server-0.1.0-SNAPSHOT-runner.jar` |
+| Server native binary | `/home/z/my-project/workspace/server/quark-server/target/quark-server-0.1.0-SNAPSHOT-runner` |
+| Runtime JAR (JVM) | `/home/z/my-project/workspace/runtime/quark-runtime/target/quark-runtime-runner-runner.jar` |
+| Runtime native binary | `/home/z/my-project/workspace/runtime/quark-runtime/target/quark-runtime-runner-runner` |
+| State root (default) | `/home/z/my-project/quark-state/` (contains `catalog.db` + `dataplane-logs/`) |
+| Download zips | `/home/z/my-project/download/` |
+| Download page public dir | `/home/z/my-project/public/` |
+| Preview URL | `https://preview-<bot-id>.space-z.ai/` |
+
+---
+
+## Important Rules
+
+1. **NATS is required** — the platform uses fail-fast, no fallbacks. If NATS is not running, the server refuses to start.
+2. **No fallbacks** — see `AGENTS.md` pitfall #6. Code-level silent fallbacks (in-memory bus when NATS is down, file persistence when Catalog fails, default values when config is missing) are forbidden. Throw, don't degrade.
+3. **Build tools must be on PATH** — `java`, `javac`, `go`, `nats-server` must all be available. For native builds, `native-image` is also required (GraalVM only).
+4. **Maven wrapper** — use `./mvnw` not `mvn` (Maven is not installed system-wide). The wrapper needs `.mvn/wrapper/maven-wrapper.jar` — never delete this directory.
+5. **Legacy jar packaging** — `quarkus.package.jar.type=legacy-jar` in `application.properties` (required for GraalJS classloader in the runtime module).
+6. **Go build flag** — `GOFLAGS=-trimpath -buildvcs=false` in Makefile (required for VCS stamping).
+7. **State root** — set `quark.state.root` system property (or `QUARK_STATE_ROOT` env var) to control where the Catalog stores `catalog.db` and where data-plane logs are written.
+8. **Native image: server ≠ runtime** — the server native build must NOT include `--macro:truffle-svm` (keeps it at 76 MB, 3 GB peak RAM). The runtime native build MUST include it (194 MB, 6.5 GB peak RAM). See `AGENTS.md` pitfall #9.
+9. **GraalJS enterprise is broken** — use `org.graalvm.js:js-community` (community edition), not `org.graalvm.polyglot:js` (enterprise). The enterprise variant pulls in `truffle-enterprise`, whose `HSPathGen$EndPoint` has a known native-image incompatibility with GraalVM 21.0.11 + Truffle 24.1.x. See `AGENTS.md` pitfall #10.
+10. **Runtime jar naming quirk** — Quarkus produces `<finalName>-runner.jar` as the runnable fat jar. With `finalName=quark-runtime-runner`, the runnable jar is `quark-runtime-runner-runner.jar` (double `-runner` suffix). The thin `quark-runtime-runner.jar` has no main manifest and is NOT runnable.
+
+---
+
+## Environment Variables Summary
+
+```bash
+# Preferred: GraalVM JDK 21 (enables native builds)
+export JAVA_HOME=/home/z/graalvm-jdk-21.0.11+9.1
+export PATH=$JAVA_HOME/bin:$PATH
+
+# Go
+export GOROOT=/home/z/go
+export GOPATH=/home/z/gopath
+export PATH=$GOROOT/bin:$GOPATH/bin:$PATH
+
+# Quark platform
+export QUARK_STATE_ROOT=/home/z/my-project/quark-state
+```
+
+---
+
+## Cleanup (between sessions)
+
+```bash
+# Stop all Quark-related processes
+pkill -f "quark-server-0.1.0-SNAPSHOT-runner" 2>/dev/null
+pkill -f "quark-runtime-runner-runner" 2>/dev/null
+pkill -f "quark-catalog/quark-catalog" 2>/dev/null
+pkill nats-server 2>/dev/null
+
+# Remove build artifacts (optional — keeps disk usage low)
+cd /home/z/my-project/workspace && find . -type d -name target -prune -exec rm -rf {} + 2>/dev/null
+rm -f cli/quarkctl quark-catalog/quark-catalog
+
+# Remove state (CAUTION: deletes catalog.db and all persisted systems)
+rm -rf /home/z/my-project/quark-state
+```
