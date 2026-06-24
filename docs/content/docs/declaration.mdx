@@ -84,11 +84,11 @@ When a user runs `quarkctl apply -f system.quark.ts -n alice`:
 
 ### Node Definitions
 
-A node is defined by a name and a URI. The URI follows the Docker image
-convention:
+A node is defined by a name and a URI. The URI follows the 4-segment format
+defined in [Node URI Specification](./node-uri):
 
 ```
-<category>/<implementation>:<version>
+<namespace>/<domain>/<subdomain>/<node>:<version>
 ```
 
 **Simple nodes** (no listeners, no events — just config):
@@ -96,7 +96,7 @@ convention:
 ```typescript
 nodes: {
     writer: {
-        uses: "store/json-writer:v1",
+        uses: "quark/io/file/write:v1",
         path: "./out.jsonl",
         mode: "append",
         listens: ["cpu.data", "memory.data"],
@@ -109,7 +109,7 @@ nodes: {
 ```typescript
 nodes: {
     timer: {
-        uses: "source/timer:v1",
+        uses: "quark/time/schedule/timer:v1",
         interval: "1s",
         events: ["tick"],
     },
@@ -121,7 +121,7 @@ nodes: {
 ```typescript
 nodes: {
     cpu: {
-        uses: "function/cpu-profiler:v1",
+        uses: "quark/system/cpu/profile:v1",
         listens: ["timer.tick"],
         events: ["data"],
         onFailure: { retry: 3, routeTo: "writer" },
@@ -133,14 +133,16 @@ nodes: {
 
 ### URI Versioning
 
-Every node URI must carry a version tag, just like Docker images:
+Node URIs use full semver with shorthand support. See [Node URI Specification §3.5](./node-uri#version) for the complete rules.
 
 | Tag | Meaning |
 |-----|---------|
-| `:latest` | Most recent stable release |
-| `:v1` | Pinned to major version 1 |
-| `:v2.3` | Pinned to major 2, minor 3 |
-| `:edge` | Bleeding-edge, potentially unstable |
+| `:v1` | Shorthand for newest `1.x.x` (stable) |
+| `:v1.2` | Shorthand for newest `1.2.x` (stable) |
+| `:v1.2.3` | Pinned to exact version |
+| `:v1.2.3-rc.1` | Release candidate (must be explicit) |
+| `:latest` | Alias for newest stable |
+| `:edge` | Alias for newest build (including prereleases) |
 
 ---
 
@@ -219,13 +221,13 @@ export default({
 
     nodes: {
         timer: {
-            uses: "source/timer:v1",
+            uses: "quark/time/schedule/timer:v1",
             interval: "1s",
             events: ["tick"],
         },
 
         cpu: {
-            uses: "function/cpu-profiler:v1",
+            uses: "quark/system/cpu/profile:v1",
             timeout: "200ms",
             listens: ["timer.tick"],
             events: ["data"],
@@ -233,7 +235,7 @@ export default({
         },
 
         memory: {
-            uses: "function/memory-profiler:v1",
+            uses: "quark/system/memory/profile:v1",
             timeout: "200ms",
             listens: ["timer.tick"],
             events: ["data"],
@@ -241,21 +243,14 @@ export default({
         },
 
         writer: {
-            uses: "store/json-writer:v1",
+            uses: "quark/io/file/write:v1",
             path: "./out.jsonl",
             mode: "append",
             listens: ["cpu.data", "memory.data", "fallback.cpu", "fallback.memory"],
         },
 
-        list: {
-            uses: "store/list:v1",
-            maxSize: 100,
-            listens: ["cpu.data", "memory.data"],
-            events: ["updated"],
-        },
-
         stream: {
-            uses: "endpoint/stream:v1",
+            uses: "quark/stream/sse/broadcast:v1",
             listens: ["list.updated"],
         },
     },

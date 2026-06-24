@@ -36,14 +36,14 @@ export default({
 
     nodes: {
         "nginx-logs": {
-            uses: "source/filesystem:v1",
+            uses: "quark/io/file/watch:v1",
             path: "/var/log/nginx",
             pattern: "*.log",
             events: ["data"],
         },
 
         "parse-json": {
-            uses: "function/json-decoder:v2",
+            uses: "quark/codec/json/parse:v2",
             strict: false,
             listens: ["nginx-logs.data"],
             events: ["data"],
@@ -51,7 +51,7 @@ export default({
         },
 
         "enrich-geo": {
-            uses: "function/geoip-enricher:v1",
+            uses: "quark/transform/geoip/enrich:v1",
             ip_field: "client_ip",
             listens: ["parse-json.data"],
             events: ["data"],
@@ -59,7 +59,7 @@ export default({
         },
 
         "classify-severity": {
-            uses: "function/classifier:v1",
+            uses: "quark/data/shape/classify:v1",
             field: "level",
             classes: ["error", "normal"],
             listens: ["enrich-geo.data"],
@@ -67,19 +67,19 @@ export default({
         },
 
         "alert-db": {
-            uses: "store/time-series:latest",
+            uses: "quark/db/timeseries/write:latest",
             retention: "90d",
             listens: ["classify-severity.error"],
         },
 
         "analytics-db": {
-            uses: "store/columnar:v1",
+            uses: "quark/db/clickhouse/write:v1",
             retention: "365d",
             listens: ["classify-severity.normal"],
         },
 
         "ops-dashboard": {
-            uses: "endpoint/dashboard:latest",
+            uses: "quark/stream/sse/broadcast:latest",
             listens: ["classify-severity.error", "fallback.parse-json", "fallback.enrich-geo"],
         },
     },

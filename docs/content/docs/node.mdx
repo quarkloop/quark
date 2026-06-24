@@ -80,19 +80,19 @@ export default({
 
     nodes: {
         timer: {
-            uses: "source/timer:v1",
+            uses: "quark/time/schedule/timer:v1",
             interval: "1s",
             events: ["tick"],
         },
         cpu: {
-            uses: "function/cpu-profiler:v1",
+            uses: "quark/system/cpu/profile:v1",
             timeout: "200ms",
             listens: ["timer.tick"],
             events: ["data"],
             onFailure: { retry: 3, routeTo: "writer" },
         },
         writer: {
-            uses: "store/json-writer:v1",
+            uses: "quark/io/file/write:v1",
             path: "./out.jsonl",
             mode: "append",
             listens: ["cpu.data", "memory.data", "fallback.cpu", "fallback.memory"],
@@ -103,13 +103,31 @@ export default({
 
 ### 3.2 The `uses` URI
 
-| Category | URI prefix | Role | SPI Interface |
-|----------|-----------|------|---------------|
-| Source | `source/` | Produces data autonomously | `SourceProvider` |
-| Function | `function/` | Transforms data on receipt | `FunctionProvider` |
-| Store | `store/` | Persists data | `StoreProvider` |
-| Endpoint | `endpoint/` | External interface (HTTP, SSE) | `EndpointProvider` |
-| Policy | `policy/` | Governance rules | `PolicyProvider` |
+Node URIs follow the format defined in [Node URI Specification](./node-uri):
+
+```
+<namespace>/<domain>/<subdomain>/<node>:<version>
+```
+
+The standard library uses the `quark/` namespace with 18 domains. See [Node Catalog](./node-catalog) for the full list.
+
+Examples:
+
+| URI | Domain | What it does |
+|-----|--------|-------------|
+| `quark/time/schedule/timer:v1` | `time` | Emit tick at fixed interval |
+| `quark/system/cpu/profile:v1` | `system` | Emit CPU usage metrics |
+| `quark/io/file/write:v1` | `io` | Write data to a file |
+| `quark/ai/openai/inference:v1` | `ai` | Call OpenAI LLM |
+| `quark/notify/slack/post:v1` | `notify` | Post to Slack |
+| `quark/db/postgres/query:v1` | `db` | Query Postgres |
+
+Third-party nodes use their own namespace:
+
+```
+acme/db/acme-ledger/write:v1
+jane/notify/discord/post:v1
+```
 
 ### 3.3 Communication fields
 

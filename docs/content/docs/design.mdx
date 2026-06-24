@@ -101,15 +101,42 @@ Two distinct subject taxonomies flow through NATS:
 
 ## Node Model
 
-### Node Categories
+### Node Domains
 
-| Category | URI prefix | Role | SPI Interface |
-|----------|-----------|------|---------------|
-| Source | `source/` | Produces data autonomously | `SourceProvider` |
-| Function | `function/` | Transforms data on receipt | `FunctionProvider` |
-| Store | `store/` | Persists data | `StoreProvider` |
-| Endpoint | `endpoint/` | External interface (HTTP, SSE) | `EndpointProvider` |
-| Policy | `policy/` | Governance rules | `PolicyProvider` |
+Nodes are organized by **domain** — what area of computing they operate in —
+following the same philosophy as Go's standard library (`net/http`,
+`database/sql`, `crypto/sha256`). The Quark standard library defines 18
+domains:
+
+| Domain | Covers |
+|--------|--------|
+| `time` | Scheduling (timer, cron) |
+| `net` | Network protocols (HTTP, gRPC, MQTT, WebSocket) |
+| `io` | Filesystem and stream I/O |
+| `db` | Databases (Postgres, MySQL, MongoDB, Redis) |
+| `data` | Data manipulation (map, filter, validate) |
+| `codec` | Encoding/decoding (JSON, CSV, XML, base64) |
+| `text` | Text processing (template, extract, analyze) |
+| `ai` | AI/ML (inference, embeddings, training) |
+| `notify` | Notifications (email, Slack, Discord, push, SMS) |
+| `log` | Structured logging (console, syslog, remote) |
+| `search` | Search operations (web, vector, fulltext) |
+| `stream` | Real-time streaming to clients (SSE, WebSocket) |
+| `route` | Flow control (conditional, fan-out, throttle) |
+| `compute` | Long-running tasks (transcode, report, batch) |
+| `cloud` | Cloud provider services (AWS, GCP, Azure) |
+| `system` | System metrics (CPU, memory, disk, process) |
+| `console` | Terminal/console (TTY, PTY, CLI) |
+| `crypto` | Cryptography (hash, encrypt, sign, verify) |
+
+Each node is identified by a 4-segment URI:
+
+```
+quark/<domain>/<subdomain>/<node>:<version>
+```
+
+See [Node URI Specification](./node-uri) for the full format and
+[Node Catalog](./node-catalog) for all 114 standard library nodes.
 
 ### Communication Model
 
