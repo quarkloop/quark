@@ -1,0 +1,190 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import "fumadocs-ui/style.css";
+
+@layer base {
+  :root {
+    /* Light theme — clean editorial */
+    --background: 0 0% 100%;
+    --foreground: 240 10% 4%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 46%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 4%;
+    --border: 240 6% 90%;
+    --accent: 189 94% 43%;
+    --accent-foreground: 0 0% 100%;
+    --ring: 189 94% 43%;
+
+    --fd-radius: 0.625rem;
+  }
+
+  .dark {
+    /* Dark theme — premium tech */
+    --background: 240 8% 4%;
+    --foreground: 0 0% 98%;
+    --muted: 240 6% 10%;
+    --muted-foreground: 240 5% 65%;
+    --card: 240 7% 7%;
+    --card-foreground: 0 0% 98%;
+    --border: 240 6% 14%;
+    --accent: 189 94% 50%;
+    --accent-foreground: 240 8% 4%;
+    --ring: 189 94% 50%;
+  }
+
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-feature-settings: "ss01", "cv11", "cv02";
+    font-variation-settings: "opsz" 32;
+  }
+
+  /* Premium scrollbar */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
+    background-clip: padding-box;
+    border: 2px solid transparent;
+  }
+
+  ::selection {
+    background: hsl(var(--accent) / 0.25);
+    color: hsl(var(--foreground));
+  }
+}
+
+@layer components {
+  /* Glassmorphism panel — premium tech aesthetic */
+  .glass-panel {
+    background: hsl(var(--card) / 0.6);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid hsl(var(--border) / 0.6);
+  }
+
+  .glass-panel-strong {
+    background: hsl(var(--card) / 0.85);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid hsl(var(--border));
+  }
+
+  /* Subtle gradient border for hero cards */
+  .gradient-border {
+    position: relative;
+    background: hsl(var(--card));
+  }
+  .gradient-border::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    padding: 1px;
+    border-radius: inherit;
+    background: linear-gradient(
+      135deg,
+      hsl(var(--accent) / 0.4),
+      hsl(var(--border)) 50%,
+      hsl(var(--accent) / 0.2)
+    );
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  /* Shimmering accent text */
+  .accent-text {
+    background: linear-gradient(
+      110deg,
+      hsl(var(--accent)) 0%,
+      hsl(var(--accent-foreground) / 0.9) 50%,
+      hsl(var(--accent)) 100%
+    );
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: shimmer 4s linear infinite;
+  }
+
+  /* Premium focus ring */
+  .focus-ring {
+    outline: none;
+  }
+  .focus-ring:focus-visible {
+    box-shadow:
+      0 0 0 2px hsl(var(--background)),
+      0 0 0 4px hsl(var(--accent) / 0.6);
+  }
+
+  /* Grid background utility */
+  .bg-grid {
+    background-image: theme("backgroundImage.grid-dark");
+    background-size: 48px 48px;
+  }
+  :root:not(.dark) .bg-grid {
+    background-image: theme("backgroundImage.grid-light");
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .text-pretty {
+    text-wrap: pretty;
+  }
+
+  /* Mask fade for sidebar scroll edges */
+  .mask-fade-y {
+    mask-image: linear-gradient(
+      to bottom,
+      transparent,
+      black 24px,
+      black calc(100% - 24px),
+      transparent
+    );
+  }
+}
+
+/* Fumadocs overrides — make the docs UI match the premium tech theme */
+:root {
+  --fd-background: hsl(var(--background));
+  --fd-foreground: hsl(var(--foreground));
+  --fd-muted: hsl(var(--muted));
+  --fd-muted-foreground: hsl(var(--muted-foreground));
+  --fd-card: hsl(var(--card));
+  --fd-card-foreground: hsl(var(--card-foreground));
+  --fd-border: hsl(var(--border));
+  --fd-primary: hsl(var(--accent));
+  --fd-primary-foreground: hsl(var(--accent-foreground));
+  --fd-ring: hsl(var(--ring));
+}
