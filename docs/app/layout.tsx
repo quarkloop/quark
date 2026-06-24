@@ -1,6 +1,6 @@
-import { RootProvider } from "fumadocs-ui/provider";
 import type { ReactNode } from "react";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import { RootProvider } from "fumadocs-ui/provider";
 import "./global.css";
 
 const inter = Inter({
@@ -32,6 +32,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       suppressHydrationWarning
     >
       <head>
+        {/* Theme bootstrap — avoid FOUC by setting the class before hydration */}
         <script
           dangerouslySetInnerHTML={{
             __html: `

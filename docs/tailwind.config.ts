@@ -1,5 +1,11 @@
 import type { Config } from "tailwindcss";
 
+/**
+ * Tailwind configuration for the Quark Platform documentation.
+ *
+ * Design language: warm, editorial, premium. Solid colors only — no gradients.
+ * The accent is amber/orange (warm); the neutral base is a warm-tinted stone.
+ */
 const config: Config = {
   content: [
     "./app/**/*.{ts,tsx,mdx}",
@@ -18,46 +24,41 @@ const config: Config = {
         display: ["var(--font-inter)", "system-ui", "sans-serif"],
       },
       colors: {
-        // Premium tech palette — deep neutrals with electric cyan accent
+        // Warm neutral base — stone with a slight amber undertone
         ink: {
-          50: "#f7f7f8",
-          100: "#eeeef0",
-          200: "#d8d8dc",
-          300: "#b4b4bc",
-          400: "#82828c",
-          500: "#5e5e68",
-          600: "#4a4a52",
-          700: "#3a3a40",
-          800: "#202024",
-          900: "#131316",
-          950: "#0a0a0b",
+          50: "#faf9f7",
+          100: "#f3f1ec",
+          200: "#e8e4dc",
+          300: "#d4cdc0",
+          400: "#a89e8d",
+          500: "#7a7060",
+          600: "#5c5448",
+          700: "#463f36",
+          800: "#2c2823",
+          900: "#1a1814",
+          950: "#0e0d0a",
         },
+        // Warm accent — amber/orange
         accent: {
-          50: "#ecfeff",
-          100: "#cffafe",
-          200: "#a5f3fc",
-          300: "#67e8f9",
-          400: "#22d3ee",
-          500: "#06b6d4",
-          600: "#0891b2",
-          700: "#0e7490",
-          800: "#155e75",
-          900: "#164e63",
-          950: "#083344",
+          50: "#fff8ed",
+          100: "#ffefd4",
+          200: "#fedba8",
+          300: "#fdc070",
+          400: "#fb9e3c",
+          500: "#f97316",
+          600: "#ea5a0c",
+          700: "#c2410c",
+          800: "#9a3412",
+          900: "#7c2d12",
+          950: "#431407",
         },
-      },
-      backgroundImage: {
-        "grid-dark":
-          "linear-gradient(to right, rgba(255,255,255,0.04) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.04) 1px, transparent 1px)",
-        "grid-light":
-          "linear-gradient(to right, rgba(0,0,0,0.04) 1px, transparent 1px), linear-gradient(to bottom, rgba(0,0,0,0.04) 1px, transparent 1px)",
-        "radial-fade":
-          "radial-gradient(ellipse 80% 50% at 50% -20%, rgba(6,182,212,0.15), transparent)",
       },
       boxShadow: {
-        glow: "0 0 40px -10px rgba(6,182,212,0.35)",
-        "glow-sm": "0 0 20px -5px rgba(6,182,212,0.25)",
-        premium: "0 1px 0 0 rgba(255,255,255,0.05) inset, 0 1px 2px 0 rgba(0,0,0,0.4), 0 8px 24px -8px rgba(0,0,0,0.6)",
+        // Warm glow using accent color (no gradient, just a solid color shadow)
+        glow: "0 0 40px -10px rgba(249,115,22,0.30)",
+        "glow-sm": "0 0 20px -5px rgba(249,115,22,0.22)",
+        premium:
+          "0 1px 0 0 rgba(255,255,255,0.04) inset, 0 1px 2px 0 rgba(0,0,0,0.4), 0 8px 24px -8px rgba(0,0,0,0.6)",
       },
       transitionTimingFunction: {
         premium: "cubic-bezier(0.16, 1, 0.3, 1)",
@@ -66,7 +67,6 @@ const config: Config = {
         "fade-in": "fade-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both",
         "slide-up": "slide-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both",
         "pulse-slow": "pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite",
-        shimmer: "shimmer 2.5s linear infinite",
       },
       keyframes: {
         "fade-in": {
@@ -76,10 +76,6 @@ const config: Config = {
         "slide-up": {
           "0%": { opacity: "0", transform: "translateY(8px)" },
           "100%": { opacity: "1", transform: "translateY(0)" },
-        },
-        shimmer: {
-          "0%": { backgroundPosition: "-200% 0" },
-          "100%": { backgroundPosition: "200% 0" },
         },
       },
     },
