@@ -1,0 +1,31 @@
+{
+    "uri": "quark/io/file/write:v1",
+    "domain": "io",
+    "subdomain": "file",
+    "node": "write",
+    "version": "1.0.0",
+    "language": "java",
+    "description": "Appends incoming messages as JSON Lines to a file on disk",
+    "config": {
+        "path": {
+            "type": "string",
+            "required": true,
+            "description": "File path; parent directories are created automatically"
+        },
+        "mode": {
+            "type": "string",
+            "default": "append",
+            "description": "Write mode (only 'append' is supported)"
+        }
+    },
+    "events": [],
+    "dependencies": {
+        "java": [
+            "com.quarkloop.quark:quark-domain:0.1.0-SNAPSHOT",
+            "com.quarkloop.quark:quark-registry:0.1.0-SNAPSHOT",
+            "com.fasterxml.jackson.core:jackson-databind",
+            "com.fasterxml.jackson.datatype:jackson-datatype-jsr310"
+        ]
+    },
+    "supportedRuntimes": ["jvm", "native"]
+}

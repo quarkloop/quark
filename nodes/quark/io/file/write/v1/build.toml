@@ -1,0 +1,10 @@
+[package]
+format = "zip"
+contentType = "shared-library"
+
+[build.jvm]
+output = "target/file-write-v1.0.0.jar"
+
+[build.native]
+output = "target/file-write-v1.0.0.so"
+flags = ["--shared", "--no-fallback"]

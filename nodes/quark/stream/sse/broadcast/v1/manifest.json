@@ -1,0 +1,21 @@
+{
+    "uri": "quark/stream/sse/broadcast:v1",
+    "domain": "stream",
+    "subdomain": "sse",
+    "node": "broadcast",
+    "version": "1.0.0",
+    "language": "java",
+    "description": "Exposes an HTTP SSE endpoint that streams incoming NATS messages to connected clients",
+    "config": {},
+    "events": [],
+    "dependencies": {
+        "java": [
+            "com.quarkloop.quark:quark-domain:0.1.0-SNAPSHOT",
+            "com.quarkloop.quark:quark-registry:0.1.0-SNAPSHOT",
+            "com.fasterxml.jackson.core:jackson-databind",
+            "com.fasterxml.jackson.datatype:jackson-datatype-jsr310",
+            "org.eclipse.microprofile.config:microprofile-config-api"
+        ]
+    },
+    "supportedRuntimes": ["jvm", "native"]
+}

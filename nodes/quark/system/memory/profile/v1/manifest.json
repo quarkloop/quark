@@ -1,0 +1,18 @@
+{
+    "uri": "quark/system/memory/profile:v1",
+    "domain": "system",
+    "subdomain": "memory",
+    "node": "profile",
+    "version": "1.0.0",
+    "language": "java",
+    "description": "Reads JVM heap/non-heap memory usage on receipt of a trigger message",
+    "config": {},
+    "events": ["data"],
+    "dependencies": {
+        "java": [
+            "com.quarkloop.quark:quark-domain:0.1.0-SNAPSHOT",
+            "com.quarkloop.quark:quark-registry:0.1.0-SNAPSHOT"
+        ]
+    },
+    "supportedRuntimes": ["jvm", "native"]
+}

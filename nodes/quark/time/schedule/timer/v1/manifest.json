@@ -1,0 +1,24 @@
+{
+    "uri": "quark/time/schedule/timer:v1",
+    "domain": "time",
+    "subdomain": "schedule",
+    "node": "timer",
+    "version": "1.0.0",
+    "language": "java",
+    "description": "Emits a tick event at a fixed interval",
+    "config": {
+        "interval": {
+            "type": "string",
+            "default": "1s",
+            "description": "Duration like 1s, 500ms, 10s, 1m, 1h"
+        }
+    },
+    "events": ["tick"],
+    "dependencies": {
+        "java": [
+            "com.quarkloop.quark:quark-domain:0.1.0-SNAPSHOT",
+            "com.quarkloop.quark:quark-registry:0.1.0-SNAPSHOT"
+        ]
+    },
+    "supportedRuntimes": ["jvm", "native"]
+}
