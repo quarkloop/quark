@@ -22,11 +22,11 @@ import java.nio.charset.StandardCharsets;
  * Forwards lifecycle events from the data plane to the control plane via NATS.
  *
  * <p>In data-plane mode, the {@code EventBusPersistenceBridge} is a no-op
- * (DuckDBStore is not initialized). This forwarder replaces it: it subscribes
+ * (the Catalog client is not active). This forwarder replaces it: it subscribes
  * to the internal {@link EventBus} and publishes each {@link NodeEvent} to
  * the NATS subject {@code quark.data.<runtimeId>.event}. The control plane's
  * {@code ControlPlaneEventReceiver} subscribes to these subjects and
- * persists the events to DuckDB.
+ * persists the events to the Catalog.
  *
  * <p>Only active in data-plane mode ({@code quark.mode=data}).
  */

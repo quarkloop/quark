@@ -107,11 +107,11 @@ NATS subjects encode the namespace: `monitor.alice.*` vs `monitor.bob.*`. Isolat
 
 5. **Never use old terminology.** Use `system` (not the old name), `node` (not the old name), `fallback` (not the old name).
 
-6. **Never write fallbacks.** The platform uses a strict fail-fast approach. If a dependency (NATS, DuckDB, GraalJS) is unavailable, the platform MUST throw an error and refuse to start — NOT silently degrade or fall back to an alternative. Fallbacks are evil and forbidden. They hide problems, create unpredictable behavior, and make debugging impossible. If NATS is down, fail. If DuckDB is corrupted, fail. If a provider throws, let it throw. Every failure should be loud, immediate, and actionable.
+6. **Never write fallbacks.** The platform uses a strict fail-fast approach. If a dependency (NATS, Catalog, GraalJS) is unavailable, the platform MUST throw an error and refuse to start — NOT silently degrade or fall back to an alternative. Fallbacks are evil and forbidden. They hide problems, create unpredictable behavior, and make debugging impossible. If NATS is down, fail. If the Catalog is corrupted, fail. If a provider throws, let it throw. Every failure should be loud, immediate, and actionable.
 
    **Specific examples of forbidden fallbacks:**
    - In-memory message bus when NATS is unavailable → NO. Throw.
-   - File-based persistence when DuckDB fails → NO. Throw.
+   - File-based persistence when the Catalog fails → NO. Throw.
    - Default values when config is missing → NO. Throw with a clear message.
    - Catch-and-log instead of catch-and-throw → NO. Let exceptions propagate.
    - Return null/empty when an operation fails → NO. Throw.

@@ -65,7 +65,7 @@ public class DataPlaneProcess {
     /**
      * @param runtimeId    the data-plane runtime identifier ("shared" or "ns-&lt;namespace&gt;")
      * @param binaryPath   path to the quark-server binary (JAR for JVM mode, native executable for native mode)
-     * @param stateRootPath the platform state root (for DuckDB + log files)
+     * @param stateRootPath the platform state root (for catalog database + log files)
      * @param natsUrl      the NATS URL to connect to
      * @param httpPort     the HTTP port for the data-plane process
      */

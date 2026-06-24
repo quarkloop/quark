@@ -25,7 +25,7 @@ import java.util.Optional;
 /**
  * Read-only queries over the runtime registry and persistent store.
  *
- * <p>In control-plane mode, system/node listings are read from the DuckDB
+ * <p>In control-plane mode, system/node listings are read from the Catalog
  * persistent store (the control plane's RuntimeContext is empty because
  * systems execute in data-plane processes). In data-plane mode, listings
  * are read from the in-memory RuntimeContext (the actual runtime).
@@ -61,7 +61,7 @@ public class QueryService {
             out.sort(Comparator.comparing(SystemSummary::name));
             return out;
         }
-        // Control-plane mode: read from DuckDB
+        // Control-plane mode: read from the Catalog
         List<SystemSummary> out = new ArrayList<>();
         for (SystemRecord sr : systemRepository.findByNamespace(namespace)) {
             int nodeCount = nodeRepository.findBySystem(namespace, sr.name()).size();
@@ -79,7 +79,7 @@ public class QueryService {
         if (runtime.isPresent()) {
             return runtime.map(this::toDetail);
         }
-        // Control-plane mode: read from DuckDB
+        // Control-plane mode: read from the Catalog
         return systemRepository.findByNamespaceAndName(namespace, systemName)
                 .map(sr -> {
                     List<NodeSummary> nodes = listNodes(namespace, systemName);
@@ -99,7 +99,7 @@ public class QueryService {
                     .sorted(Comparator.comparing(NodeSummary::name))
                     .toList();
         }
-        // Control-plane mode: read from DuckDB
+        // Control-plane mode: read from the Catalog
         List<NodeSummary> out = new ArrayList<>();
         for (NodeRecord nr : nodeRepository.findBySystem(namespace, systemName)) {
             out.add(new NodeSummary(
@@ -123,7 +123,7 @@ public class QueryService {
             out.sort(Comparator.comparing(NodeSummary::name));
             return out;
         }
-        // Control-plane mode: read from DuckDB
+        // Control-plane mode: read from the Catalog
         List<NodeSummary> out = new ArrayList<>();
         for (NodeRecord nr : nodeRepository.findNodesByNamespace(namespace)) {
             out.add(new NodeSummary(

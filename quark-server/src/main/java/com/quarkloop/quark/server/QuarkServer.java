@@ -19,7 +19,7 @@ import jakarta.inject.Inject;
  * <p>Supports two modes controlled by the {@code quark.mode} config property:
  * <ul>
  *   <li><b>standalone</b> (default) — the control plane. Runs the REST API,
- *       DuckDB persistence, and the {@link ProcessManager} that spawns
+ *       Catalog persistence, and the {@link ProcessManager} that spawns
  *       data-plane processes for system execution.</li>
  *   <li><b>data</b> — a data-plane process. Connects to NATS, subscribes to
  *       deploy/undeploy command subjects (scoped by {@code runtimeId}), and

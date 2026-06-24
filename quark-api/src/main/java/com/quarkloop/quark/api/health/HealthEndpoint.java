@@ -42,12 +42,12 @@ public class HealthEndpoint {
     @GET
     @Path("/ready")
     public Response ready() {
-        // In production, this would check NATS, DuckDB, registry
+        // In production, this would check NATS, Catalog, registry
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("status", "UP");
         body.put("checks", List.of(
                 Map.of("name", "nats", "status", "UP"),
-                Map.of("name", "duckdb", "status", "UP"),
+                Map.of("name", "catalog", "status", "UP"),
                 Map.of("name", "registry", "status", "UP")
         ));
         return Response.ok(body).build();

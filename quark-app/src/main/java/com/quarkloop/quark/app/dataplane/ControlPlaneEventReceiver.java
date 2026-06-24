@@ -22,12 +22,12 @@ import java.nio.charset.StandardCharsets;
 
 /**
  * Receives lifecycle events from data-plane processes via NATS and persists
- * them to DuckDB.
+ * them to the Catalog.
  *
  * <p>Subscribes to the NATS wildcard subject {@code quark.data.>.event} to
  * receive events from ALL data-plane processes (shared + isolated). Each
  * event is a JSON-serialized {@link NodeEvent} that is deserialized and
- * appended to the {@link EventStore} (DuckDB).
+ * appended to the {@link EventStore} (Catalog).
  *
  * <p>Only active in control-plane mode ({@code quark.mode=standalone}).
  * In data-plane mode, the {@link DataPlaneEventForwarder} handles event

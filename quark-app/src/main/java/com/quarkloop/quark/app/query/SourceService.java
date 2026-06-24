@@ -9,9 +9,8 @@ import java.util.Optional;
 /**
  * Read the persisted {@code .quark.ts} source for a system.
  *
- * <p>Delegates to {@link SourceRepository} (backed by DuckDB's {@code systems}
- * table). The legacy filesystem-based {@code StateRoot} adapter has been
- * removed; source is now read directly from the durable store.
+ * <p>Delegates to {@link SourceRepository} (backed by the Catalog service's
+ * {@code systems} table). Source is now read directly from the durable store.
  */
 @ApplicationScoped
 public class SourceService {

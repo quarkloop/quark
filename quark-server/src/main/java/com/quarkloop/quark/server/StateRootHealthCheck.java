@@ -14,7 +14,7 @@ import java.nio.file.Paths;
 /**
  * Readiness check that verifies the platform state root is writable.
  *
- * <p>The state root is the directory under which DuckDB stores {@code quark.db}.
+ * <p>The state root is the directory for platform state (catalog database, logs)}.
  * If the state root is not accessible (permission denied, disk full, path is a
  * file not a directory, etc.) the platform cannot persist system declarations
  * or events, so it's not ready to serve requests.

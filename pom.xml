@@ -30,7 +30,6 @@
         <snakeyaml-engine.version>2.9</snakeyaml-engine.version>
         <graaljs.version>24.1.1</graaljs.version>
         <nats.version>2.20.2</nats.version>
-        <duckdb.version>1.1.0</duckdb.version>
 
         <!-- Test -->
         <assertj.version>3.27.3</assertj.version>
@@ -206,12 +205,6 @@
                 <version>${nats.version}</version>
             </dependency>
 
-            <!-- DuckDB embedded database -->
-            <dependency>
-                <groupId>org.duckdb</groupId>
-                <artifactId>duckdb_jdbc</artifactId>
-                <version>${duckdb.version}</version>
-            </dependency>
 
             <!-- Test -->
             <dependency>
@@ -302,7 +295,7 @@
                      Quarkus can discover @ApplicationScoped beans in dependency
                      JARs. Without this, only the application module (quark-server)
                      is indexed, and beans in quark-core-engine,
-                     quark-adapter-store-duckdb, etc. are invisible to CDI. -->
+                     quark-catalog, etc. are invisible to CDI. -->
                 <plugin>
                     <groupId>io.smallrye</groupId>
                     <artifactId>jandex-maven-plugin</artifactId>

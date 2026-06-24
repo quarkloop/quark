@@ -63,13 +63,13 @@ public class NamespaceEndpoint {
 
     @GET
     public Response list() {
-        // In control-plane mode, RuntimeContext is empty — read from DuckDB.
+        // In control-plane mode, RuntimeContext is empty — read from the Catalog.
         // In data-plane mode, RuntimeContext has the live systems.
         java.util.Set<String> namespaces = new java.util.TreeSet<>();
         for (var rs : runtimeContext.getAllSystems()) {
             namespaces.add(rs.namespace().value());
         }
-        // Also include namespaces from DuckDB (control-plane mode)
+        // Also include namespaces from the Catalog (control-plane mode)
         for (SystemRecord sr : systemRepository.findAllSystems()) {
             namespaces.add(sr.namespace());
         }
@@ -134,7 +134,7 @@ public class NamespaceEndpoint {
                 return m;
             }).toList();
         } else {
-            // Control-plane mode: read from DuckDB
+            // Control-plane mode: read from the Catalog
             sysRecs = systemRepository.findByNamespace(namespace);
             if (sysRecs.isEmpty()) {
                 return Response.status(Response.Status.NOT_FOUND).build();

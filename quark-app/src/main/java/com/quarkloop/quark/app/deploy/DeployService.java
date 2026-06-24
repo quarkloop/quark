@@ -46,7 +46,7 @@ import java.util.Map;
  * <p>Supports two execution modes controlled by {@code quark.mode}:
  * <ul>
  *   <li><b>standalone</b> (default, control plane) — parses the source,
- *       persists the system record to DuckDB, determines the runtime mode
+ *       persists the system record to the Catalog, determines the runtime mode
  *       (shared/isolated), ensures the appropriate data-plane process is
  *       running, and sends the deploy command to the data plane via NATS.
  *       Waits for the data-plane's status response (with a 30s timeout).</li>
@@ -57,7 +57,7 @@ import java.util.Map;
  *       {@code DataPlaneCommandHandler} calls them.</li>
  * </ul>
  *
- * <p>Persistence (DuckDB system record + source) is always handled by the
+ * <p>Persistence (Catalog system record + source) is always handled by the
  * control plane, never the data plane. The data plane only executes systems.
  *
  * <p>The CLI's deploy request body carries the source AND a namespace
@@ -167,11 +167,11 @@ public class DeployService {
      */
     private RuntimeSystem deployViaDataPlane(SystemDefinition systemDef, String source,
                                               String ns, String name, boolean isIsolated) {
-        // Persist the system record (with source) to DuckDB
+        // Persist the system record (with source) to the Catalog
         try {
             systemRepository.save(SystemRecord.creating(ns, name, source));
             systemRepository.updateState(ns, name, "ACTIVE", "HEALTHY", 1);
-            log.debug("Persisted system record {}/{} to DuckDB", ns, name);
+            log.debug("Persisted system record {}/{} to the Catalog", ns, name);
         } catch (Exception e) {
             log.warn("Failed to persist system record for {}/{} — deploy will continue", ns, name, e);
         }
@@ -217,8 +217,8 @@ public class DeployService {
                         + ns + "/" + name + ": " + resp.error());
             }
 
-            // Persist NodeRecords to DuckDB from the data plane's response.
-            // The data plane cannot write to DuckDB (cross-process write
+            // Persist NodeRecords to the Catalog from the data plane's response.
+            // The data plane cannot write to the Catalog (cross-process write
             // conflict), so it reports node info back and the control plane
             // persists it.
             if (resp.nodes() != null && !resp.nodes().isEmpty()) {
@@ -235,7 +235,7 @@ public class DeployService {
                         nodeRepository.save(record);
                         saved++;
                     }
-                    log.debug("Persisted {} node records for {}/{} to DuckDB", saved, ns, name);
+                    log.debug("Persisted {} node records for {}/{} to the Catalog", saved, ns, name);
                 } catch (Exception e) {
                     log.warn("Failed to persist node records for {}/{}", ns, name, e);
                 }
@@ -290,7 +290,7 @@ public class DeployService {
      *
      * <p>In control-plane mode: sends the undeploy command to the data plane
      * via NATS, waits for the response, then deletes the system record from
-     * DuckDB. If the undeployed system was the last in an isolated namespace,
+     * Catalog. If the undeployed system was the last in an isolated namespace,
      * stops the dedicated data-plane process.
      *
      * <p>In data-plane mode: calls {@link SystemDeployer#undeploy} directly.
@@ -340,11 +340,11 @@ public class DeployService {
                     namespace, systemName, e);
         }
 
-        // Delete the system record and node records from DuckDB
+        // Delete the system record and node records from the Catalog
         try {
             nodeRepository.deleteBySystem(namespace, systemName);
             systemRepository.delete(namespace, systemName);
-            log.debug("Deleted system + node records for {}/{} from DuckDB", namespace, systemName);
+            log.debug("Deleted system + node records for {}/{} from the Catalog", namespace, systemName);
         } catch (Exception e) {
             log.warn("Failed to delete records for {}/{}", namespace, systemName, e);
         }
@@ -455,8 +455,8 @@ public class DeployService {
 
     /**
      * Status response from the data plane after a deploy/undeploy command.
-     * Includes node info so the control plane can persist NodeRecords to DuckDB
-     * (the data plane cannot write to DuckDB because DuckDB doesn't support
+     * Includes node info so the control plane can persist NodeRecords to the Catalog
+     * (the data plane cannot write to the Catalog because the Catalog doesn't support
      * cross-process write access).
      */
     public record StatusResponse(boolean success, String systemName, String namespace,

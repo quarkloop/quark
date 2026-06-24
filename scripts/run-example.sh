@@ -114,19 +114,6 @@ echo "▶ Starting Quark server ($BUILD_MODE mode, background)..."
 export QUARK_STATE_ROOT="$STATE_DIR"
 export BUILD_MODE
 
-# In native mode, ensure the DuckDB native library (.so) is on the library path.
-# The library is extracted from the DuckDB JAR to quark-server/target/.
-if [ "$BUILD_MODE" = "native" ]; then
-    DUCKDB_SO="quark-server/target/libduckdb_java.so"
-    if [ ! -f "$DUCKDB_SO" ]; then
-        echo "▶ Extracting DuckDB native library..."
-        (cd quark-server/target && jar xf /home/z/.m2/repository/org/duckdb/duckdb_jdbc/1.1.0/duckdb_jdbc-1.1.0.jar libduckdb_java.so_linux_amd64 && mv libduckdb_java.so_linux_amd64 libduckdb_java.so) 2>/dev/null || true
-    fi
-    if [ -f "$DUCKDB_SO" ]; then
-        export LD_LIBRARY_PATH="$(pwd)/quark-server/target:${LD_LIBRARY_PATH:-}"
-        echo "  ✓ DuckDB native library at $DUCKDB_SO (LD_LIBRARY_PATH set)"
-    fi
-fi
 
 "${RUN_CMD[@]}" \
     -Dquarkus.http.port=8080 \

@@ -131,7 +131,7 @@ public class DataPlaneCommandHandler {
      * <p>After deploying, extracts node info from the {@link RuntimeSystem}
      * and includes it in the {@link DeployService.StatusResponse} so the
      * control plane can persist {@link com.quarkloop.quark.core.engine.store.NodeRecord}s
-     * to DuckDB (the data plane cannot write to DuckDB directly due to
+     * to the Catalog (the data plane cannot write to the Catalog directly due to
      * cross-process write conflict).
      */
     private void handleDeploy(String body, String replyTo) throws Exception {
