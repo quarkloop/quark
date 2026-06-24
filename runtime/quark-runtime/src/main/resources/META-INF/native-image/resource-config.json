@@ -5,6 +5,21 @@
         "glob": "META-INF/services/*"
       },
       {
+        "glob": "org/graalvm/polyglot/**"
+      },
+      {
+        "glob": "org/graalvm/js/**"
+      },
+      {
+        "glob": "org/graalvm/regex/**"
+      },
+      {
+        "glob": "com/oracle/truffle/**"
+      },
+      {
+        "glob": "org/graalvm/sdk/**"
+      },
+      {
         "glob": "META-INF/native-image/**"
       },
       {

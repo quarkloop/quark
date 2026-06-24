@@ -28,7 +28,7 @@
 
         <!-- Dependencies -->
         <snakeyaml-engine.version>2.9</snakeyaml-engine.version>
-        <graaljs.version>24.1.1</graaljs.version>
+        <graaljs.version>24.1.2</graaljs.version>
         <nats.version>2.20.2</nats.version>
 
         <!-- Test -->
@@ -208,6 +208,19 @@
             <dependency>
                 <groupId>org.graalvm.polyglot</groupId>
                 <artifactId>js</artifactId>
+                <version>${graaljs.version}</version>
+                <type>pom</type>
+                <!--
+                    Note: the runtime/quark-script module uses js-community
+                    instead of js to avoid pulling in truffle-enterprise,
+                    which has a known native-image incompatibility with
+                    GraalVM 21.0.11 + Truffle 24.1.x (HSPathGen$EndPoint
+                    calls a non-existent Path.resolve overload).
+                -->
+            </dependency>
+            <dependency>
+                <groupId>org.graalvm.js</groupId>
+                <artifactId>js-community</artifactId>
                 <version>${graaljs.version}</version>
                 <type>pom</type>
             </dependency>

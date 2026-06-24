@@ -213,5 +213,83 @@
     "name": "com.quarkloop.quark.app.deploy.ApplyService$ChangeType",
     "allDeclaredConstructors": true,
     "allDeclaredMethods": true
+  },
+  {
+    "name": "com.quarkloop.quark.adapter.catalog.NatsCatalogClient$SysResp",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allRecordComponents": true
+  },
+  {
+    "name": "com.quarkloop.quark.adapter.catalog.NatsCatalogClient$SysListResp",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allRecordComponents": true
+  },
+  {
+    "name": "com.quarkloop.quark.adapter.catalog.NatsCatalogClient$NodeResp",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allRecordComponents": true
+  },
+  {
+    "name": "com.quarkloop.quark.adapter.catalog.NatsCatalogClient$NodeListResp",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allRecordComponents": true
+  },
+  {
+    "name": "com.quarkloop.quark.adapter.catalog.NatsCatalogClient$EventResp",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allRecordComponents": true
+  },
+  {
+    "name": "com.quarkloop.quark.adapter.catalog.NatsCatalogClient$EventListResp",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allRecordComponents": true
+  },
+  {
+    "name": "com.quarkloop.quark.adapter.catalog.NatsCatalogClient$SrcResp",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allRecordComponents": true
+  },
+  {
+    "name": "com.quarkloop.quark.adapter.catalog.NatsCatalogClient$SrcEntry",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allRecordComponents": true
+  },
+  {
+    "name": "com.quarkloop.quark.adapter.catalog.NatsCatalogClient$SrcListResp",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allRecordComponents": true
+  },
+  {
+    "name": "com.quarkloop.quark.adapter.catalog.NatsCatalogClient$CountResp",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allRecordComponents": true
+  },
+  {
+    "name": "com.quarkloop.quark.adapter.catalog.NatsCatalogClient$ExistsResp",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allRecordComponents": true
+  },
+  {
+    "name": "com.quarkloop.quark.adapter.catalog.NatsCatalogClient$RegResp",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allRecordComponents": true
+  },
+  {
+    "name": "com.quarkloop.quark.adapter.catalog.NatsCatalogClient$RegListResp",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allRecordComponents": true
   }
 ]

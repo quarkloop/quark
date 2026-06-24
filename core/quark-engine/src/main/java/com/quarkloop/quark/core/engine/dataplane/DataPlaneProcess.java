@@ -242,7 +242,9 @@ public class DataPlaneProcess {
      * @return true if the process became ready, false if it timed out
      */
     public boolean waitForReady(int timeoutSeconds) {
-        String healthUrl = "http://127.0.0.1:" + httpPort + "/health/live";
+        // Quarkus's SmallRye Health default path is /q/health/live (not /health/live).
+        // The data plane exposes only the health endpoint (no Swagger, no REST API).
+        String healthUrl = "http://127.0.0.1:" + httpPort + "/q/health/live";
         long deadline = System.currentTimeMillis() + (timeoutSeconds * 1000L);
         HttpClient client = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(2))

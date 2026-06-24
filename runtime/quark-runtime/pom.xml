@@ -11,27 +11,98 @@
     </parent>
     <artifactId>quark-runtime-runner</artifactId>
     <name>Quark Runtime Runner</name>
-    <description>Quarkus runner for the data plane (runtime binary).</description>
+    <description>Quarkus runner for the data plane (runtime binary, includes GraalJS/Truffle).</description>
+
+    <properties>
+        <!--
+            Keep the finalName stable so ProcessManager can find the binary.
+            Without this, Quarkus would name it quark-runtime-runner-0.1.0-SNAPSHOT-runner
+            which is fine, but we want the same name in both JVM and native mode.
+        -->
+        <quarkus.package.output-name>quark-runtime-runner</quarkus.package.output-name>
+    </properties>
+
     <dependencies>
+        <!-- Data-plane application services (deploy handler, event forwarder, etc.) -->
         <dependency>
             <groupId>com.quarkloop.quark</groupId>
             <artifactId>quark-runtime-app</artifactId>
         </dependency>
+
+        <!-- All node providers — the data plane loads these via the registry -->
+        <dependency>
+            <groupId>com.quarkloop.quark</groupId>
+            <artifactId>provider-stubs</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.quarkloop.quark</groupId>
+            <artifactId>provider-timer</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.quarkloop.quark</groupId>
+            <artifactId>provider-cpu-profiler</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.quarkloop.quark</groupId>
+            <artifactId>provider-memory-profiler</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.quarkloop.quark</groupId>
+            <artifactId>provider-list</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.quarkloop.quark</groupId>
+            <artifactId>provider-json-writer</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.quarkloop.quark</groupId>
+            <artifactId>provider-streaming-endpoint</artifactId>
+        </dependency>
+
+        <!-- Quarkus -->
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-arc</artifactId>
         </dependency>
         <dependency>
             <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-rest-jackson</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
             <artifactId>quarkus-smallrye-health</artifactId>
         </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-scheduler</artifactId>
+        </dependency>
+
+        <!-- NATS -->
+        <dependency>
+            <groupId>io.nats</groupId>
+            <artifactId>jnats</artifactId>
+        </dependency>
+
+        <!-- Test -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-junit5</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
+
     <build>
+        <finalName>quark-runtime-runner</finalName>
         <plugins>
             <plugin>
                 <groupId>${quarkus.platform.group-id}</groupId>
                 <artifactId>quarkus-maven-plugin</artifactId>
             </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+            </plugin>
         </plugins>
     </build>
 </project>
+

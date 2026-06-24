@@ -169,65 +169,85 @@ public class ProcessManager {
     }
 
     /**
-     * Locate the quark-server binary (native executable or JAR).
+     * Locate the data-plane binary (native executable or JAR).
+     *
+     * <p>After the core/server/runtime split, the data plane runs the
+     * <b>runtime</b> module's binary ({@code runtime/quark-runtime}), which
+     * includes GraalJS/Truffle. The control plane runs the <b>server</b>
+     * module's binary, which is GraalJS-free.
      *
      * <p>Search order (first match wins):
      * <ol>
-     *   <li><b>Native binary</b> at {@code quark-server/target/quark-server}
-     *       (produced by {@code mvn -Pnative install}). Preferred because it
-     *       starts faster and uses less memory.</li>
-     *   <li><b>Native binary</b> relative to the state root's parent (common
-     *       in deployment layouts).</li>
-     *   <li><b>JVM JAR</b> at {@code quark-server/target/quark-server-0.1.0-SNAPSHOT-runner.jar}
-     *       (produced by {@code mvn install}).</li>
+     *   <li><b>Native binary</b> at {@code runtime/quark-runtime/target/quark-runtime-runner}
+     *       (produced by {@code mvn -pl runtime/quark-runtime -am -Pnative install}).</li>
+     *   <li><b>Native binary</b> relative to the state root's parent.</li>
+     *   <li><b>JVM JAR</b> at {@code runtime/quark-runtime/target/quark-runtime-runner-0.1.0-SNAPSHOT-runner.jar}.</li>
      *   <li><b>JVM JAR</b> relative to the state root's parent.</li>
-     *   <li><b>JVM JAR</b> from the {@code java.class.path} system property
-     *       (when running from an IDE or a fat classpath).</li>
+     *   <li><b>Fallback</b>: the old single-binary layout — {@code quark-server/target/quark-server-0.1.0-SNAPSHOT-runner}
+     *       (native) or {@code .jar} (JVM). Kept for backwards compatibility.</li>
      * </ol>
      *
      * @return the absolute path to the binary (native or JAR)
      * @throws IOException if no binary is found
      */
     private String findBinary() throws IOException {
-        // 1. Native binary at standard Maven target path
-        Path nativeMaven = Paths.get("quark-server", "target", "quark-server-0.1.0-SNAPSHOT-runner");
+        // 1. Native runtime binary at standard Maven target path.
+        //    Quarkus's native-image output is named <finalName>-runner
+        //    where finalName is set in the pom (we set it to "quark-runtime-runner",
+        //    so the binary is "quark-runtime-runner-runner").
+        Path nativeMaven = Paths.get("runtime", "quark-runtime", "target",
+                "quark-runtime-runner-runner");
         if (Files.isExecutable(nativeMaven)) {
             return nativeMaven.toAbsolutePath().toString();
         }
-        // 2. Native binary relative to state root's parent
+        // 2. Native runtime binary relative to state root's parent
         Path nativeState = Paths.get(stateRootPath).toAbsolutePath().resolve("..")
-                .resolve("quark-server").resolve("target")
-                .resolve("quark-server-0.1.0-SNAPSHOT-runner").normalize();
+                .resolve("runtime").resolve("quark-runtime").resolve("target")
+                .resolve("quark-runtime-runner-runner").normalize();
         if (Files.isExecutable(nativeState)) {
             return nativeState.toString();
         }
 
         // 3. JVM JAR at standard Maven target path
-        Path jarMaven = Paths.get("quark-server", "target",
-                "quark-server-0.1.0-SNAPSHOT-runner.jar");
+        Path jarMaven = Paths.get("runtime", "quark-runtime", "target",
+                "quark-runtime-runner.jar");
         if (Files.isRegularFile(jarMaven)) {
             return jarMaven.toAbsolutePath().toString();
         }
         // 4. JVM JAR relative to state root's parent
         Path jarState = Paths.get(stateRootPath).toAbsolutePath().resolve("..")
-                .resolve("quark-server").resolve("target")
-                .resolve("quark-server-0.1.0-SNAPSHOT-runner.jar").normalize();
+                .resolve("runtime").resolve("quark-runtime").resolve("target")
+                .resolve("quark-runtime-runner.jar").normalize();
         if (Files.isRegularFile(jarState)) {
             return jarState.toString();
         }
 
-        // 5. JVM JAR from java.class.path (IDE / fat classpath)
+        // 5. Fallback: legacy single-binary layout (quark-server in data mode)
+        Path legacyNative = Paths.get("quark-server", "target",
+                "quark-server-0.1.0-SNAPSHOT-runner");
+        if (Files.isExecutable(legacyNative)) {
+            log.warn("Using legacy quark-server binary as data plane — GraalJS will be missing in native mode. " +
+                    "Build runtime/quark-runtime instead.");
+            return legacyNative.toAbsolutePath().toString();
+        }
+        Path legacyJar = Paths.get("quark-server", "target",
+                "quark-server-0.1.0-SNAPSHOT-runner.jar");
+        if (Files.isRegularFile(legacyJar)) {
+            return legacyJar.toAbsolutePath().toString();
+        }
+
+        // 6. JVM JAR from java.class.path (IDE / fat classpath)
         String classPath = System.getProperty("java.class.path");
         if (classPath != null) {
             for (String entry : classPath.split(java.io.File.pathSeparator)) {
-                if (entry.contains("quark-server") && entry.endsWith("runner.jar")) {
+                if (entry.contains("quark-runtime-runner") && entry.endsWith(".jar")) {
                     return entry;
                 }
             }
         }
 
-        throw new IOException("Cannot find quark-server binary (native or JAR). " +
+        throw new IOException("Cannot find data-plane binary (native or JAR). " +
                 "Searched: " + nativeMaven + ", " + nativeState + ", " +
-                jarMaven + ", " + jarState);
+                jarMaven + ", " + jarState + ", " + legacyNative + ", " + legacyJar);
     }
 }

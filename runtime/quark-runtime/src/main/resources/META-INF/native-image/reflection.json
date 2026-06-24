@@ -1,0 +1,171 @@
+[
+  {
+    "name": "com.quarkloop.quark.core.domain.event.NodeEvent",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "com.quarkloop.quark.core.domain.event.NodeEventKind",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.quarkloop.quark.core.engine.store.SystemRecord",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "com.quarkloop.quark.core.engine.store.NodeRecord",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "com.quarkloop.quark.core.engine.store.RegistryRecord",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "com.quarkloop.quark.core.engine.store.SourceRepository$SourceEntry",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.quarkloop.quark.core.engine.metrics.NamespaceMetrics$Snapshot",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.quarkloop.quark.app.deploy.DeployService$DeployCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.quarkloop.quark.app.deploy.DeployService$UndeployCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.quarkloop.quark.app.deploy.DeployService$StatusResponse",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.quarkloop.quark.app.deploy.DeployService$NodeInfo",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.quarkloop.quark.runtime.DataPlaneCommandHandler$DeployCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allRecordComponents": true
+  },
+  {
+    "name": "com.quarkloop.quark.runtime.DataPlaneCommandHandler$UndeployCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allRecordComponents": true
+  },
+  {
+    "name": "com.quarkloop.quark.runtime.DataPlaneCommandHandler$StatusResponse",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allRecordComponents": true
+  },
+  {
+    "name": "com.quarkloop.quark.runtime.DataPlaneCommandHandler$NodeInfo",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allRecordComponents": true
+  },
+  {
+    "name": "com.quarkloop.quark.runtime.RuntimeDeployService",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.quarkloop.quark.core.domain.system.SystemDefinition",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allRecordComponents": true
+  },
+  {
+    "name": "com.quarkloop.quark.core.domain.system.NodeDefinition",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allRecordComponents": true
+  },
+  {
+    "name": "com.quarkloop.quark.core.domain.system.OnFailureConfig",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allRecordComponents": true
+  },
+  {
+    "name": "com.quarkloop.quark.core.domain.identity.Namespace",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allRecordComponents": true
+  },
+  {
+    "name": "com.quarkloop.quark.core.domain.identity.NodeUri",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allRecordComponents": true
+  },
+  {
+    "name": "com.quarkloop.quark.core.domain.config.NodeConfig",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.quarkloop.quark.core.domain.metadata.NodeMetadata",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.quarkloop.quark.core.domain.metadata.Labels",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.quarkloop.quark.core.domain.metadata.Annotations",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.quarkloop.quark.core.domain.category.NodeCategory",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.quarkloop.quark.core.domain.state.NodeState",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.quarkloop.quark.core.domain.state.HealthStatus",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.quarkloop.quark.core.domain.state.StateTransition",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allRecordComponents": true
+  },
+  {
+    "name": "com.quarkloop.quark.core.domain.spi.QuarkMessage",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.quarkloop.quark.core.engine.nats.NatsQuarkMessage",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  }
+]
