@@ -120,7 +120,7 @@ Two distinct subject taxonomies flow through NATS:
 - `registry.node.{push,pull,info,list,search,delete,exists}` — node package registry
 
 **Node-data subjects** (runtime-internal, between nodes):
-- `<system>.<namespace>.<node>.<event>` — node-to-node events (e.g. `monitor.alice.timer.tick`)
+- `<namespace>.<system>.<node>.<event>` — node-to-node events (e.g. `alice.monitor.timer.tick`)
 - Note: as of v8, NATS **Core** is used (not JetStream) — no message persistence, no automatic retries, no fallback routing. The `onFailure` field in `.quark.ts` is parsed but **not enforced** at runtime. See `docs/NODE.md` §6.
 
 ---

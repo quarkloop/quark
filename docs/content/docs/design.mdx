@@ -95,7 +95,7 @@ Two distinct subject taxonomies flow through NATS:
 
 **Node-data subjects** (runtime-internal, between nodes):
 
-- `<system>.<namespace>.<node>.<event>` (e.g. `monitor.alice.timer.tick`)
+- `<namespace>.<system>.<node>.<event>` (e.g. `alice.monitor.timer.tick`)
 
 ---
 
@@ -125,10 +125,10 @@ coupling — and it's a string, not a code-level dependency.
 ### Subject Naming
 
 ```
-<system>.<namespace>.<node>.<event>
+<namespace>.<system>.<node>.<event>
 ```
 
-Example: `monitor.alice.timer.tick`
+Example: `alice.monitor.timer.tick`
 
 This encodes:
 

@@ -6,7 +6,8 @@ import java.util.Map;
  * Publisher for sending messages to NATS.
  *
  * <p>Providers use this to publish events. The engine resolves the event name
- * to a full NATS subject: {@code <system>.<namespace>.<nodeName>.<event>}.
+ * to a full NATS subject: {@code <namespace>.<system>.<nodeName>.<event>}.
+ * The subject follows the container hierarchy (namespace → system → node → event).
  * ACLs are enforced — a provider can only publish events declared in its
  * {@code events: [...]} configuration.
  */

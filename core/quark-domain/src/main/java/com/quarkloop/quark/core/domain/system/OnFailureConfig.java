@@ -9,9 +9,14 @@ import java.util.Objects;
  * <ol>
  *   <li>NATS retries up to {@code retry} times with exponential backoff</li>
  *   <li>After max retries, the engine publishes the error payload to
- *       {@code <system>.<namespace>.fallback.<nodeName>}</li>
+ *       {@code <namespace>.<system>.fallback.<nodeName>}</li>
  *   <li>The node specified in {@code routeTo} must listen to that fallback subject</li>
  * </ol>
+ *
+ * <p>Subject ordering follows the container hierarchy: a namespace contains
+ * systems, a system contains nodes, a node produces events. The subject reads
+ * left-to-right from most-general (namespace) to most-specific (event), e.g.
+ * {@code alice.monitor.fallback.cpu}.
  */
 public record OnFailureConfig(
         int retry,

@@ -115,8 +115,8 @@ export default({
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `listens` | `string[]` | Subjects the node subscribes to (relative, prefixed with `<system>.<namespace>.`) |
-| `events` | `string[]` | Events the node may publish (becomes `<system>.<namespace>.<nodeName>.<event>`) |
+| `listens` | `string[]` | Subjects the node subscribes to (relative, prefixed with `<namespace>.<system>.`) |
+| `events` | `string[]` | Events the node may publish (becomes `<namespace>.<system>.<nodeName>.<event>`) |
 | `onFailure` | `{ retry: number, routeTo: string }` | Parsed but not enforced in v8 — see §6.2 |
 | `timeout` | string (e.g. `"200ms"`) | Per-message processing timeout |
 
@@ -125,10 +125,10 @@ export default({
 ## 4. Subject Naming
 
 ```
-<system>.<namespace>.<node>.<event>
+<namespace>.<system>.<node>.<event>
 ```
 
-Example: `monitor.alice.timer.tick`
+Example: `alice.monitor.timer.tick`
 
 Multi-tenancy is implicit — Alice's subjects can never overlap with Bob's.
 
@@ -221,10 +221,10 @@ files are forward-compatible with the JetStream upgrade.
 
 ### 7.1 Namespace Isolation
 
-NATS subjects encode the namespace: `monitor.alice.*` vs `monitor.bob.*`.
+NATS subjects encode the namespace: `alice.monitor.*` vs `bob.monitor.*`.
 Isolation is enforced at three levels:
 
-1. **Subject namespacing**: Alice's nodes can only publish/subscribe to `monitor.alice.*` subjects
+1. **Subject namespacing**: Alice's nodes can only publish/subscribe to `alice.monitor.*` subjects
 2. **NATS ACLs**: Publish permissions restrict each node to its own subjects
 3. **Engine validation**: The `listens` and `events` fields are validated to only reference subjects within the same system+namespace
 
@@ -234,9 +234,9 @@ A namespace can contain multiple independent systems:
 
 ```
 Namespace: alice
-  ├── System: monitor        (subjects: monitor.alice.*)
-  ├── System: log-processor  (subjects: log-processor.alice.*)
-  └── System: alerting       (subjects: alerting.alice.*)
+  ├── System: monitor        (subjects: alice.monitor.*)
+  ├── System: log-processor  (subjects: alice.log-processor.*)
+  └── System: alerting       (subjects: alice.alerting.*)
 ```
 
 Systems in the same namespace share the namespace for management purposes

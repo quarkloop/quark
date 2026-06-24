@@ -156,10 +156,10 @@ The engine creates a NATS subscription for each subject. The node receives
 messages from these subjects via `onMessage()`.
 
 Subjects are **relative** — the engine prefixes them with
-`<system>.<namespace>.`:
+`<namespace>.<system>.`:
 
-- `timer.tick` → `monitor.alice.timer.tick`
-- `fallback.cpu` → `monitor.alice.fallback.cpu`
+- `timer.tick` → `alice.monitor.timer.tick`
+- `fallback.cpu` → `alice.monitor.fallback.cpu`
 
 **Wildcards** are supported:
 
@@ -174,8 +174,8 @@ events: ["data", "updated"]
 
 The engine allows this node to publish to:
 
-- `monitor.alice.<nodeName>.data`
-- `monitor.alice.<nodeName>.updated`
+- `alice.monitor.<nodeName>.data`
+- `alice.monitor.<nodeName>.updated`
 
 <Callout type="info">
   As of v8, NATS Core is used rather than JetStream — see
@@ -201,7 +201,7 @@ onFailure: { retry: 3, routeTo: "writer" }
 When the JetStream upgrade lands, the intended behavior is:
 
 1. NATS retries up to `retry` times with exponential backoff
-2. After max retries, the engine publishes the error payload to `<system>.<namespace>.fallback.<nodeName>`
+2. After max retries, the engine publishes the error payload to `<namespace>.<system>.fallback.<nodeName>`
 3. The node specified in `routeTo` must `listens` to the fallback subject to receive it
 
 The error payload includes the original message data plus error metadata
@@ -265,7 +265,7 @@ export default({
 ### How data flows
 
 ```
-timer publishes "tick" → monitor.alice.timer.tick
+timer publishes "tick" → alice.monitor.timer.tick
     ↓ (NATS Core)
 cpu listens ["timer.tick"] → receives tick → reads CPU → publishes "data"
     ↓ (NATS Core)
@@ -276,7 +276,7 @@ cpu listens ["timer.tick"] → receives tick → reads CPU → publishes "data"
 ```
 
 <Callout type="warning">
-  As of v8, the `onFailure` fallback routing (`monitor.alice.fallback.cpu`)
+  As of v8, the `onFailure` fallback routing (`alice.monitor.fallback.cpu`)
   is parsed but not enforced. Failures propagate as exceptions to the
   data-plane log; the writer's `fallback.cpu` listener will not receive
   error payloads until the JetStream upgrade.

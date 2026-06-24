@@ -64,7 +64,7 @@ Both `alice` and `bob` deploy the **same** TypeScript file. The server runs them
 
 | Concern | Alice | Bob |
 |---------|-------|-----|
-| NATS subjects | `monitor.alice.*` | `monitor.bob.*` |
+| NATS subjects | `alice.monitor.*` | `bob.monitor.*` |
 | JetStream stream | `monitor-alice` | `monitor-bob` |
 | Streaming URL | `/stream/alice/monitor/stream` | `/stream/bob/monitor/stream` |
 | Event log | `systems/alice/monitor/events.jsonl` | `systems/bob/monitor/events.jsonl` |
