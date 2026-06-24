@@ -94,7 +94,6 @@ schema, and capabilities. It is a JSON object with the following fields:
 | `node` | string | The node name (e.g., `"watch"`) — must match the URI path |
 | `version` | string | Semver version (e.g., `"1.0.0"`) — must match the URI version |
 | `language` | string | `"java"` or `"typescript"` or `"python"` |
-| `category` | string | Behavioral category: `"source"`, `"transform"`, `"compute"`, `"sink"`, `"stream"`, or `"route"` |
 | `description` | string | One-line description of what the node does |
 
 ### 3.2 Optional fields
@@ -164,7 +163,6 @@ is for Java-only.
     "node": "watch",
     "version": "1.0.0",
     "language": "java",
-    "category": "source",
     "description": "Watch a file or directory for changes and emit events",
     "config": {
         "path": { "type": "string", "required": true, "description": "Path to watch" },
@@ -189,7 +187,6 @@ is for Java-only.
     "node": "inference",
     "version": "1.0.0",
     "language": "typescript",
-    "category": "transform",
     "description": "Call an OpenAI LLM and emit the response",
     "config": {
         "model": { "type": "string", "required": true, "description": "Model name (e.g. gpt-4)" },
@@ -321,23 +318,30 @@ export default {
 };
 ```
 
-### 4.3 Behavioral categories and their SPI methods
+### 4.3 SPI methods
 
-The `category` field in the manifest determines which SPI methods the node
-must implement:
+The node implements whatever methods it needs based on what it does.
+The engine detects which methods are present and calls them accordingly.
+There are no fixed behavioral categories — the domain (from the URI) is
+the only organizational axis.
 
-| Category | SPI interface | Required methods | Description |
-|----------|--------------|------------------|-------------|
-| `source` | `SourceProvider` | `init`, `start`, `close` | Produces data autonomously |
-| `transform` | `TransformProvider` | `init`, `onMessage`, `close` | Changes data shape, 1:1, stateless |
-| `compute` | `ComputeProvider` | `init`, `onMessage`, `close` | Long-running task, produces artifacts |
-| `sink` | `SinkProvider` | `init`, `onMessage`, `close` | Consumes data terminally |
-| `stream` | `StreamProvider` | `init`, `start`, `onMessage`, `close` | Pushes to connected clients |
-| `route` | `RouteProvider` | `init`, `onMessage`, `close` | Controls flow without transforming |
+Common methods a node may implement:
 
-All categories implement `init(NodeConfig)` and `close()` for lifecycle
-management. This fixes the previous asymmetry where only `Source` and
-`Endpoint` had lifecycle methods.
+| Method | When called | Purpose |
+|--------|-----------|--------|
+| `init(config)` | Once, before any other method | Initialize, validate config |
+| `start(publisher)` | After `init`, if present | Start producing data (autonomous nodes) |
+| `onMessage(msg, publisher)` | Per inbound NATS message | Process data |
+| `close()` | On undeploy | Cleanup resources — no leaks |
+
+A node doesn't need to implement all of these. The engine detects which
+are present:
+- A node with `start()` + `close()` (no `onMessage`) produces data
+  autonomously (e.g., a timer).
+- A node with `onMessage()` + `close()` (no `start`) processes inbound
+  messages (e.g., a JSON parser).
+- A node with all four is a hybrid (e.g., an SSE endpoint that both
+  receives NATS messages and maintains HTTP connections).
 
 ---
 
@@ -530,8 +534,7 @@ A node directory is valid if:
 3. It contains a `build.toml` at the root.
 4. The `manifest.json` fields (`domain`, `subdomain`, `node`, `version`) match the directory path.
 5. The `manifest.json` `language` field matches the source file extension(s) in `src/`.
-6. The `manifest.json` `category` field is one of the 6 valid behavioral categories.
-7. The source file implements the SPI interface corresponding to the declared `category`.
+6. The source file implements at least one SPI method (`init`, `start`, `onMessage`, or `close`).
 
 ---
 
