@@ -1,35 +1,26 @@
 # =============================================================================
 # Quark Platform — Makefile
 # =============================================================================
-# Build system supporting BOTH JVM and GraalVM Native Image modes.
+# Build system for the three-tier Quark Platform:
+#   core/    — shared code (no GraalJS, no Quarkus)
+#   server/  — control plane (no GraalJS, ~76 MB native binary)
+#   runtime/ — data plane (with GraalJS/Truffle, ~194 MB native binary)
 #
-# Default mode is JVM (java -jar). To build/run in native mode, prefix the
-# target with BUILD_MODE=native. The Makefile detects the build mode and
-# uses the correct binary for running and spawning data-plane processes.
+# The control plane and data plane are now SEPARATE binaries. The control
+# plane spawns the data plane as a child process via ProcessManager.
 #
 # Quick start:
-#   make build              # JVM build (default)
-#   make run-example        # Run example with JVM server
+#   make build                  # JVM build of all Java modules + Go CLI + Catalog
+#   make run-example            # Run example with JVM server
 #
-#   make build BUILD_MODE=native   # Native build
-#   make run-example BUILD_MODE=native  # Run example with native server
+#   make build-native-server    # Native control plane (~4 min, 3 GB RAM)
+#   make build-native-runtime   # Native data plane with GraalJS (~9 min, 6.5 GB RAM)
+#   make build-native           # Both native binaries
+#   make run-example-native     # Run example with both native binaries
 #
-# All targets accept BUILD_MODE=jvm|native. The mode controls:
-#   - Which Maven profile is activated (-Pnative for native)
-#   - Which binary is run (quark-server-*.jar vs quark-server native exe)
-#   - How data-plane processes are spawned (java -jar vs native binary)
+# Native builds require Oracle GraalVM 21+ with native-image on PATH
+# (or GRAALVM_HOME set).
 # =============================================================================
-
-# ----- Build mode -----
-# BUILD_MODE controls whether we build/run JVM or native. Default: jvm
-BUILD_MODE  ?= jvm
-
-# Validate BUILD_MODE
-ifneq ($(BUILD_MODE),jvm)
-ifneq ($(BUILD_MODE),native)
-$(error BUILD_MODE must be 'jvm' or 'native', got: $(BUILD_MODE))
-endif
-endif
 
 # ----- Tool overrides (user can override via env or make CLI) -----
 MAVEN       ?= ./mvnw
@@ -42,6 +33,7 @@ MAVEN_OPTS  ?= -B -q
 # If GRAALVM_HOME is set, use its java and native-image
 ifneq ($(GRAALVM_HOME),)
 JAVA := $(GRAALVM_HOME)/bin/java
+PATH := $(GRAALVM_HOME)/bin:$(PATH)
 endif
 
 # ----- Go options -----
@@ -55,36 +47,45 @@ CATALOG_BIN      := $(CATALOG_DIR)/quark-catalog
 EXAMPLE_DURATION ?= 15
 STATE_DIR        := quark-state
 
-# ----- Binary paths (mode-dependent) -----
-# JVM mode:   quark-server/target/quark-server-0.1.0-SNAPSHOT-runner.jar
-# Native mode: quark-server/target/quark-server-0.1.0-SNAPSHOT-runner (no extension)
-SERVER_JAR := quark-server/target/quark-server-0.1.0-SNAPSHOT-runner.jar
-SERVER_NATIVE := quark-server/target/quark-server-0.1.0-SNAPSHOT-runner
-ifeq ($(BUILD_MODE),native)
-SERVER_BIN := $(SERVER_NATIVE)
-RUN_CMD := $(SERVER_NATIVE)
+# ----- Binary paths -----
+# Control plane (server) — JVM and native variants
+SERVER_JAR    := server/quark-server/target/quark-server-0.1.0-SNAPSHOT-runner.jar
+SERVER_NATIVE := server/quark-server/target/quark-server-0.1.0-SNAPSHOT-runner
+
+# Data plane (runtime) — JVM and native variants
+# Note: Quarkus names native output as <finalName>-runner, and we set
+# finalName=quark-runtime-runner, so the binary is quark-runtime-runner-runner
+# (yes, double -runner suffix). The JVM jar is just <finalName>.jar.
+RUNTIME_JAR    := runtime/quark-runtime/target/quark-runtime-runner.jar
+RUNTIME_NATIVE := runtime/quark-runtime/target/quark-runtime-runner-runner
+
+# Default run mode = JVM (use RUN_MODE=native for native binaries)
+RUN_MODE ?= jvm
+ifeq ($(RUN_MODE),native)
+SERVER_RUN_CMD := $(SERVER_NATIVE)
 else
-SERVER_BIN := $(SERVER_JAR)
-RUN_CMD := $(JAVA) -jar $(SERVER_JAR)
+SERVER_RUN_CMD := $(JAVA) -jar $(SERVER_JAR)
 endif
 
 # ----- Color output -----
 ifneq (,$(filter $(TERM),xterm xterm-256color screen-256color))
-	C_RESET := \033[0m
-	C_BOLD  := \033[1m
-	C_GREEN := \033[32m
-	C_BLUE  := \033[34m
-	C_YELLOW:= \033[33m
+        C_RESET := \033[0m
+        C_BOLD  := \033[1m
+        C_GREEN := \033[32m
+        C_BLUE  := \033[34m
+        C_YELLOW:= \033[33m
+        C_RED   := \033[31m
 else
-	C_RESET :=
-	C_BOLD  :=
-	C_GREEN :=
-	C_BLUE  :=
-	C_YELLOW:=
+        C_RESET :=
+        C_BOLD  :=
+        C_GREEN :=
+        C_BLUE  :=
+        C_YELLOW:=
+        C_RED   :=
 endif
 
 # Mode label for log messages
-ifeq ($(BUILD_MODE),native)
+ifeq ($(RUN_MODE),native)
 MODE_LABEL := $(C_YELLOW)[native]$(C_RESET)
 else
 MODE_LABEL := $(C_BLUE)[jvm]$(C_RESET)
@@ -97,17 +98,15 @@ endif
 .PHONY: help
 help: ## Show this help
 	@printf "$(C_BOLD)Quark Platform — Makefile targets$(C_RESET)\n\n"
-	@printf "$(C_BOLD)Build mode:$(C_RESET) $(MODE_LABEL)\n"
-	@printf "$(C_BOLD)  BUILD_MODE=jvm      (default) java -jar runner.jar$(C_RESET)\n"
-	@printf "$(C_BOLD)  BUILD_MODE=native   GraalVM native executable$(C_RESET)\n\n"
+	@printf "$(C_BOLD)Run mode:$(C_RESET) $(MODE_LABEL)  (set RUN_MODE=native for native binaries)\n\n"
 	@printf "$(C_BOLD)Build & clean$(C_RESET)\n"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
-	        | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(C_GREEN)%-26s$(C_RESET) %s\n", $$1, $$2}'
+		| awk 'BEGIN {FS = ":.*?## "}; {printf "  $(C_GREEN)%-26s$(C_RESET) %s\n", $$1, $$2}'
 	@printf "\n$(C_BOLD)Examples$(C_RESET)\n"
-	@printf "  $(C_BLUE)make build$(C_RESET)                          # JVM build\n"
-	@printf "  $(C_BLUE)make build BUILD_MODE=native$(C_RESET)       # Native build\n"
-	@printf "  $(C_BLUE)make run-example$(C_RESET)                   # Run example (JVM)\n"
-	@printf "  $(C_BLUE)make run-example BUILD_MODE=native$(C_RESET) # Run example (native)\n"
+	@printf "  $(C_BLUE)make build$(C_RESET)                          # JVM build (all modules + CLI + Catalog)\n"
+	@printf "  $(C_BLUE)make build-native$(C_RESET)                   # Both native binaries (~13 min total)\n"
+	@printf "  $(C_BLUE)make run-example$(C_RESET)                    # Run example (JVM)\n"
+	@printf "  $(C_BLUE)make run-example RUN_MODE=native$(C_RESET)    # Run example (native)\n"
 
 # =============================================================================
 # Clean
@@ -123,7 +122,7 @@ clean-java: ## Remove Java target/ directories
 
 clean-go: ## Remove Go build artifacts
 	@printf "$(C_BLUE)> Cleaning Go build artifacts...$(C_RESET)\n"
-	@rm -f $(CLI_BIN)
+	@rm -f $(CLI_BIN) $(CATALOG_BIN)
 	@printf "$(C_GREEN)✓ Go cleaned$(C_RESET)\n"
 
 clean-state: ## Remove persisted platform state
@@ -132,18 +131,25 @@ clean-state: ## Remove persisted platform state
 	@rm -f example/simple-streaming/json/system-monitor.jsonl
 	@printf "$(C_GREEN)✓ State cleaned$(C_RESET)\n"
 
+clean-native: ## Remove native binary artifacts only
+	@printf "$(C_BLUE)> Cleaning native binaries...$(C_RESET)\n"
+	@rm -f $(SERVER_NATIVE) $(RUNTIME_NATIVE)
+	@printf "$(C_GREEN)✓ Native binaries cleaned$(C_RESET)\n"
+
 # =============================================================================
 # Build — JVM mode (default)
 # =============================================================================
 
-.PHONY: build build-java build-go build-native
+.PHONY: build build-java build-go build-catalog
 
-build: build-java build-go build-catalog ## Build everything (JVM jar + Go CLI + Catalog)
+build: build-java build-go build-catalog ## Build everything (JVM jars + Go CLI + Catalog)
 
 build-java: ## Build all Java modules (JVM mode, skip tests)
 	@printf "$(C_BLUE)$(MODE_LABEL) > Building Java modules (JVM mode)...$(C_RESET)\n"
 	@$(MAVEN) $(MAVEN_OPTS) clean install -DskipTests
-	@printf "$(C_GREEN)✓ Java build complete: $(SERVER_JAR)$(C_RESET)\n"
+	@printf "$(C_GREEN)✓ Java build complete$(C_RESET)\n"
+	@printf "    Server JAR:    $(SERVER_JAR)\n"
+	@printf "    Runtime JAR:   $(RUNTIME_JAR)\n"
 
 build-go: ## Build the Go CLI binary
 	@printf "$(C_BLUE)> Building Go CLI binary...$(C_RESET)\n"
@@ -156,26 +162,38 @@ build-catalog: ## Build the Catalog service (Go + SQLite)
 	@printf "$(C_GREEN)✓ Catalog build complete: $(CATALOG_BIN)$(C_RESET)\n"
 
 # =============================================================================
-# Build — Native mode
+# Build — Native mode (separate server + runtime binaries)
 # =============================================================================
 
-build-native: ## Build the native executable (requires GraalVM/Mandrel native-image)
-	@printf "$(C_BLUE)$(MODE_LABEL) > Building native executable...$(C_RESET)\n"
+# Check that native-image is available
+define check_native_image
 	@command -v native-image >/dev/null 2>&1 || { \
-	        printf "$(C_RED)✗ native-image not found. Install GraalVM/Mandrel and ensure native-image is on PATH$(C_RESET)\n"; \
-	        exit 1; \
+		printf "$(C_RED)✗ native-image not found. Install Oracle GraalVM 21+ and ensure native-image is on PATH$(C_RESET)\n"; \
+		printf "    Or set GRAALVM_HOME=/path/to/graalvm-jdk-21\n"; \
+		exit 1; \
 	}
-	@$(MAVEN) $(MAVEN_OPTS) -Pnative clean install
-	@printf "$(C_GREEN)✓ Native build complete: $(SERVER_NATIVE)$(C_RESET)\n"
+endef
+
+.PHONY: build-native build-native-server build-native-runtime
+
+build-native: build-native-server build-native-runtime ## Build BOTH native binaries (server + runtime)
+
+build-native-server: ## Build the control plane native binary (~4 min, 3 GB RAM, 76 MB output)
+	@printf "$(C_BLUE)[native] > Building control plane (server) native image...$(C_RESET)\n"
+	$(check_native_image)
+	@$(MAVEN) $(MAVEN_OPTS) -pl server/quark-server -am -Pnative install -DskipTests
+	@printf "$(C_GREEN)✓ Server native build complete$(C_RESET)\n"
 	@ls -lh $(SERVER_NATIVE)
 
-# Unified build target that respects BUILD_MODE
-build-mode: ## Build in the mode specified by BUILD_MODE (jvm or native)
-ifeq ($(BUILD_MODE),native)
-	$(MAKE) build-native
-else
-	$(MAKE) build
-endif
+build-native-runtime: ## Build the data plane native binary with GraalJS (~9 min, 6.5 GB RAM, 194 MB output)
+	@printf "$(C_BLUE)[native] > Building data plane (runtime) native image with GraalJS/Truffle...$(C_RESET)\n"
+	$(check_native_image)
+	@$(MAVEN) $(MAVEN_OPTS) -pl runtime/quark-runtime -am -Pnative install -DskipTests
+	@printf "$(C_GREEN)✓ Runtime native build complete$(C_RESET)\n"
+	@ls -lh $(RUNTIME_NATIVE)
+
+# Legacy alias — builds both native binaries
+build-mode-native: build-native ## Alias for build-native
 
 # =============================================================================
 # Test
@@ -201,35 +219,35 @@ test-go: ## Run Go tests (go vet + go test)
 .PHONY: verify verify-native
 verify: clean build test ## Clean → Build → Test (JVM mode, CI-friendly)
 
-verify-native: clean-native build-native ## Clean → Build → Test (native mode)
-	@printf "$(C_GREEN)✓ Native verify complete$(C_RESET)\n"
+verify-native: clean-native build-native ## Clean → Build both native binaries
+	@printf "$(C_GREEN)✓ Native verify complete (both binaries built)$(C_RESET)\n"
 
 # =============================================================================
 # Run
 # =============================================================================
 
-.PHONY: server-dev run-server run-example cli
+.PHONY: server-dev run-server run-server-native run-example cli
 
 server-dev: ## Start Quarkus dev mode (port 8080, hot reload)
 	@printf "$(C_BLUE)> Starting Quarkus dev mode (Ctrl+C to stop)...$(C_RESET)\n"
-	@cd quark-server && ../$(MAVEN) quarkus:dev
+	@cd server/quark-server && ../../$(MAVEN) quarkus:dev
 
-run-server: build-java ## Start the production server (JVM mode, port 8080)
+run-server: build-java ## Start the control plane server (JVM mode, port 8080)
 	@printf "$(C_BLUE)$(MODE_LABEL) > Starting Quark server...$(C_RESET)\n"
-	@$(RUN_CMD)
+	@$(SERVER_RUN_CMD)
 
-run-server-native: build-native ## Start the production server (native mode)
-	@printf "$(C_BLUE)$(MODE_LABEL) > Starting native Quark server...$(C_RESET)\n"
+run-server-native: build-native-server ## Start the control plane server (native mode)
+	@printf "$(C_BLUE)[native] > Starting native Quark server...$(C_RESET)\n"
 	@$(SERVER_NATIVE)
 
 run-example: ## Deploy and observe the streaming example (mode-dependent)
 	@printf "$(C_BLUE)$(MODE_LABEL) > Running streaming example ($(EXAMPLE_DURATION)s)...$(C_RESET)\n"
-ifeq ($(BUILD_MODE),native)
+ifeq ($(RUN_MODE),native)
 	@$(MAKE) build-native
-	@BUILD_MODE=native ./scripts/run-example.sh $(EXAMPLE_DURATION)
+	@RUN_MODE=native ./scripts/run-example.sh $(EXAMPLE_DURATION)
 else
 	@$(MAKE) build
-	@BUILD_MODE=jvm ./scripts/run-example.sh $(EXAMPLE_DURATION)
+	@RUN_MODE=jvm ./scripts/run-example.sh $(EXAMPLE_DURATION)
 endif
 
 cli: $(CLI_BIN) ## Build just the Go CLI binary
@@ -261,11 +279,11 @@ dist: build-go ## Build platform-specific CLI binaries into dist/
 	@printf "$(C_BLUE)> Building platform-specific CLI binaries...$(C_RESET)\n"
 	@mkdir -p dist
 	@cd $(CLI_DIR) && \
-	        GOOS=darwin  GOARCH=arm64 $(GO) build $(GOFLAGS) -o ../dist/quarkctl-darwin-arm64  . && \
-	        GOOS=darwin  GOARCH=amd64 $(GO) build $(GOFLAGS) -o ../dist/quarkctl-darwin-amd64  . && \
-	        GOOS=linux   GOARCH=amd64 $(GO) build $(GOFLAGS) -o ../dist/quarkctl-linux-amd64   . && \
-	        GOOS=linux   GOARCH=arm64 $(GO) build $(GOFLAGS) -o ../dist/quarkctl-linux-arm64   . && \
-	        GOOS=windows GOARCH=amd64 $(GO) build $(GOFLAGS) -o ../dist/quarkctl-windows-amd64.exe .
+		GOOS=darwin  GOARCH=arm64 $(GO) build $(GOFLAGS) -o ../dist/quarkctl-darwin-arm64  . && \
+		GOOS=darwin  GOARCH=amd64 $(GO) build $(GOFLAGS) -o ../dist/quarkctl-darwin-amd64  . && \
+		GOOS=linux   GOARCH=amd64 $(GO) build $(GOFLAGS) -o ../dist/quarkctl-linux-amd64   . && \
+		GOOS=linux   GOARCH=arm64 $(GO) build $(GOFLAGS) -o ../dist/quarkctl-linux-arm64   . && \
+		GOOS=windows GOARCH=amd64 $(GO) build $(GOFLAGS) -o ../dist/quarkctl-windows-amd64.exe .
 	@printf "$(C_GREEN)✓ Built 5 binaries in dist/$(C_RESET)\n"
 	@ls -lh dist/
 
@@ -277,27 +295,29 @@ dist: build-go ## Build platform-specific CLI binaries into dist/
 docker-build-java: ## Build Java project in a clean Docker container
 	@printf "$(C_BLUE)> Building Java in Docker (maven:3.9-eclipse-temurin-21)...$(C_RESET)\n"
 	docker run --rm -v "$$PWD":/app -w /app maven:3.9-eclipse-temurin-21 \
-	        mvn -B clean install -DskipTests
+		mvn -B clean install -DskipTests
 	@printf "$(C_GREEN)✓ Java Docker build complete$(C_RESET)\n"
 
-docker-build-native: ## Build native executable in Docker (Mandrel builder image)
+docker-build-native: ## Build both native executables in Docker (Mandrel builder image)
 	@printf "$(C_BLUE)> Building native in Docker (quay.io/quarkus/ubi-quarkus-mandrel-builder-image)...$(C_RESET)\n"
 	docker run --rm -v "$$PWD":/app -w /app maven:3.9-eclipse-temurin-21 \
-	        mvn -B -Pnative clean install
-	@printf "$(C_GREEN)✓ Native Docker build complete$(C_RESET)\n"
+		mvn -B -pl server/quark-server -am -Pnative clean install -DskipTests
+	docker run --rm -v "$$PWD":/app -w /app maven:3.9-eclipse-temurin-21 \
+		mvn -B -pl runtime/quark-runtime -am -Pnative clean install -DskipTests
+	@printf "$(C_GREEN)✓ Native Docker build complete (both binaries)$(C_RESET)\n"
 
 docker-build-go: ## Build Go CLI in a clean Docker container
 	@printf "$(C_BLUE)> Building Go in Docker (golang:1.24)...$(C_RESET)\n"
 	docker run --rm -v "$$PWD":/app -w /app/cli golang:1.24 \
-	        go build -trimpath -buildvcs=false -o /app/$(CLI_BIN) .
+		go build -trimpath -buildvcs=false -o /app/$(CLI_BIN) .
 	@printf "$(C_GREEN)✓ Go Docker build complete: $(CLI_BIN)$(C_RESET)\n"
 
 docker-verify: ## Full clean build + test in Docker (CI-friendly, no host deps)
 	@printf "$(C_BLUE)> Full verify in Docker...$(C_RESET)\n"
 	docker run --rm -v "$$PWD":/app -w /app maven:3.9-eclipse-temurin-21 \
-	        mvn -B clean verify
+		mvn -B clean verify
 	docker run --rm -v "$$PWD":/app -w /app/cli golang:1.24 \
-	        sh -c 'go vet ./... && go test ./... && go build -trimpath -buildvcs=false -o /app/$(CLI_BIN) .'
+		sh -c 'go vet ./... && go test ./... && go build -trimpath -buildvcs=false -o /app/$(CLI_BIN) .'
 	@printf "$(C_GREEN)✓ Docker verify complete$(C_RESET)\n"
 
 # =============================================================================
