@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+        Parent for all node provider modules.
+        Providers are intentionally kept OUTSIDE the quark-* framework tree
+        to enforce the separation between the runtime abstraction (framework)
+        and concrete node implementations (providers). The runtime must
+        never depend on a specific provider; providers depend on the runtime.
+    -->
+    <parent>
+        <groupId>com.quarkloop.quark</groupId>
+        <artifactId>quark-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>quark-providers-parent</artifactId>
+    <packaging>pom</packaging>
+    <name>Quark Providers Parent</name>
+    <description>
+        Parent POM for node provider modules. Each provider is a
+        self-contained module that registers one or more
+        NodeImplementationFactory beans via CDI.
+    </description>
+
+    <modules>
+        <module>provider-stubs</module>
+        <module>provider-timer</module>
+        <module>provider-cpu-profiler</module>
+        <module>provider-memory-profiler</module>
+        <module>provider-list</module>
+        <module>provider-json-writer</module>
+        <module>provider-streaming-endpoint</module>
+    </modules>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- Provider modules inherit version from parent BOM -->
+            <dependency>
+                <groupId>com.quarkloop.quark</groupId>
+                <artifactId>provider-stubs</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.quarkloop.quark</groupId>
+                <artifactId>provider-timer</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.quarkloop.quark</groupId>
+                <artifactId>provider-cpu-profiler</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.quarkloop.quark</groupId>
+                <artifactId>provider-memory-profiler</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.quarkloop.quark</groupId>
+                <artifactId>provider-list</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.quarkloop.quark</groupId>
+                <artifactId>provider-json-writer</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.quarkloop.quark</groupId>
+                <artifactId>provider-streaming-endpoint</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+</project>

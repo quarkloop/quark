@@ -44,19 +44,27 @@
     </properties>
 
     <modules>
-        <!-- Framework / runtime modules -->
-        <module>quark-core-domain</module>
-        <module>quark-core-event</module>
-        <module>quark-core-registry</module>
-        <module>quark-core-script</module>
-        <module>quark-core-engine</module>
-        <module>quark-engine</module>
-        <module>quark-observability</module>
-        <module>quark-app</module>
-        <module>quark-api</module>
-        <module>quark-server</module>
-        <!-- Node provider modules (kept separate from the framework) -->
-        <module>providers</module>
+        <!-- Core (shared, no GraalJS, no Quarkus) -->
+        <module>core/quark-domain</module>
+        <module>core/quark-event</module>
+        <module>core/quark-registry</module>
+        <module>core/quark-script</module>
+        <module>core/quark-engine</module>
+
+        <!-- Server (control plane, no GraalJS) -->
+        <module>server/quark-app</module>
+        <module>server/quark-api</module>
+        <module>server/quark-observability</module>
+        <module>server/quark-server</module>
+
+        <!-- Runtime (data plane, with GraalJS) -->
+        <module>runtime/quark-script</module>
+        <module>runtime/quark-polyglot</module>
+        <module>runtime/quark-app</module>
+        <module>runtime/quark-runtime</module>
+        <module>runtime/providers</module>
+
+        <!-- Standalone services -->
     </modules>
 
     <dependencyManagement>
@@ -73,12 +81,12 @@
             <!-- Internal modules -->
             <dependency>
                 <groupId>com.quarkloop.quark</groupId>
-                <artifactId>quark-core-domain</artifactId>
+                <artifactId>quark-domain</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.quarkloop.quark</groupId>
-                <artifactId>quark-core-script</artifactId>
+                <artifactId>quark-script</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -88,19 +96,15 @@
             </dependency>
             <dependency>
                 <groupId>com.quarkloop.quark</groupId>
-                <artifactId>quark-core-event</artifactId>
+                <artifactId>quark-event</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.quarkloop.quark</groupId>
-                <artifactId>quark-core-registry</artifactId>
+                <artifactId>quark-registry</artifactId>
                 <version>${project.version}</version>
             </dependency>
-            <dependency>
-                <groupId>com.quarkloop.quark</groupId>
-                <artifactId>quark-core-engine</artifactId>
-                <version>${project.version}</version>
-            </dependency>
+            
             <dependency>
                 <groupId>com.quarkloop.quark</groupId>
                 <artifactId>quark-observability</artifactId>
@@ -114,6 +118,26 @@
             <dependency>
                 <groupId>com.quarkloop.quark</groupId>
                 <artifactId>quark-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.quarkloop.quark</groupId>
+                <artifactId>quark-runtime-script</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.quarkloop.quark</groupId>
+                <artifactId>quark-runtime-polyglot</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.quarkloop.quark</groupId>
+                <artifactId>quark-runtime-app</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.quarkloop.quark</groupId>
+                <artifactId>quark-runtime-runner</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
