@@ -13,9 +13,18 @@ import { Tab, Tabs } from "fumadocs-ui/components/tabs";
 
 You are working on the **Quark Platform** — a three-service system built on
 Java 21 + Quarkus 3.x (control plane and data plane), Go (Catalog service +
-CLI), NATS for messaging, and GraalJS for TypeScript node evaluation. The
-project lives at `/home/z/my-project/workspace/` and is managed via a git
-repository with conventional commits.
+CLI), NATS for messaging, and GraalJS for TypeScript node evaluation.
+
+<Callout type="info">
+  Throughout this guide, `$PROJECT_ROOT` refers to the directory containing
+  the Quark Platform source tree (the folder with `pom.xml`, `Makefile`,
+  `core/`, `server/`, `runtime/`, `cli/`, `quark-catalog/`). Set it once:
+
+  ```bash
+  export PROJECT_ROOT=/path/to/quark-platform
+  cd "$PROJECT_ROOT"
+  ```
+</Callout>
 
 **Architecture (post-v8):**
 
@@ -35,37 +44,31 @@ spawned on demand by the control plane's `ProcessManager`.
 ## 1. Install JDK 21 (or use GraalVM JDK 21)
 
 <Callout type="info">
-  If GraalVM is already at `/home/z/graalvm-jdk-21.0.11+9.1/`, skip this step —
-  GraalVM JDK 21 includes `javac` and `native-image` and is preferred over
-  plain OpenJDK for this project (required for native builds).
+  GraalVM JDK 21 is preferred over plain OpenJDK for this project because it
+  includes `native-image` (required for native builds). If you already have
+  GraalVM JDK 21 installed, skip this step — just set `JAVA_HOME` to its
+  install location.
 </Callout>
 
-Otherwise, install OpenJDK 21:
+Install OpenJDK 21 using your system package manager (`apt`, `brew`,
+`dnf`, etc.), or download a tarball from
+[https://www.graalvm.org/downloads/](https://www.graalvm.org/downloads/) and
+extract it to a directory of your choice.
 
-```bash
-cd /home/z/my-project
-apt-get download openjdk-21-jdk-headless openjdk-21-jre-headless openjdk-21-jre openjdk-21-jdk
-mkdir -p /home/z/jdk21
-for deb in openjdk-21-jre-headless_*.deb openjdk-21-jre_*.deb openjdk-21-jdk-headless_*.deb openjdk-21-jdk_*.deb; do
-    [ -f "$deb" ] && dpkg-deb -x "$deb" /home/z/jdk21/
-done
-rm -f openjdk-21-*.deb
-```
-
-Set environment (add to `~/.bashrc`):
+Set environment (add to your shell profile — `~/.bashrc`, `~/.zshrc`, etc.):
 
 <Tabs items={["GraalVM (preferred)", "OpenJDK (JVM only)"]}>
   <Tab value="GraalVM (preferred)">
     ```bash
     # GraalVM JDK 21 — includes native-image, required for native builds
-    export JAVA_HOME=/home/z/graalvm-jdk-21.0.11+9.1
+    export JAVA_HOME=/path/to/graalvm-jdk-21
     export PATH=$JAVA_HOME/bin:$PATH
     ```
   </Tab>
   <Tab value="OpenJDK (JVM only)">
     ```bash
     # Plain OpenJDK 21 — JVM mode only, native builds will not work
-    export JAVA_HOME=/home/z/jdk21/usr/lib/jvm/java-21-openjdk-amd64
+    export JAVA_HOME=/path/to/jdk-21
     export PATH=$JAVA_HOME/bin:$PATH
     ```
   </Tab>
@@ -84,21 +87,22 @@ native-image --version
 
 ## 2. Install Go 1.24
 
+Download from [https://go.dev/dl/](https://go.dev/dl/) and extract:
+
 ```bash
-cd /home/z/my-project
-curl -fsSL https://go.dev/dl/go1.24.4.linux-amd64.tar.gz -o go.tar.gz
-mkdir -p /home/z/go
-tar -C /home/z/go -xzf go.tar.gz --strip-components=1
-rm -f go.tar.gz
+curl -fsSL https://go.dev/dl/go1.24.4.linux-amd64.tar.gz -o /tmp/go.tar.gz
+mkdir -p /path/to/go
+tar -C /path/to/go -xzf /tmp/go.tar.gz --strip-components=1
+rm /tmp/go.tar.gz
 ```
 
-Set environment (add to `~/.bashrc`):
+Set environment (add to your shell profile):
 
 ```bash
-export GOROOT=/home/z/go
-export GOPATH=/home/z/gopath
+export GOROOT=/path/to/go
+export GOPATH=$HOME/go
 export PATH=$GOROOT/bin:$GOPATH/bin:$PATH
-mkdir -p /home/z/gopath
+mkdir -p "$GOPATH"
 ```
 
 Verify:
@@ -115,8 +119,9 @@ go version  # must show go1.24.x
 cd /tmp
 curl -fsSL https://github.com/nats-io/nats-server/releases/download/v2.10.25/nats-server-v2.10.25-linux-amd64.tar.gz -o nats.tar.gz
 tar xzf nats.tar.gz
-cp nats-server-v2.10.25-linux-amd64/nats-server /home/z/go/bin/nats-server
-chmod +x /home/z/go/bin/nats-server
+mkdir -p "$GOPATH/bin"
+cp nats-server-v2.10.25-linux-amd64/nats-server "$GOPATH/bin/nats-server"
+chmod +x "$GOPATH/bin/nats-server"
 rm -rf nats.tar.gz nats-server-v2.10.25-linux-amd64
 ```
 
@@ -130,13 +135,13 @@ nats-server --version  # must show v2.10.x
 
 ## 4. Extract Project
 
-If starting from a zip file in `/home/z/my-project/upload/`:
+If starting from a downloaded zip:
 
 ```bash
-mkdir -p /home/z/my-project/workspace
-cd /home/z/my-project/workspace
-unzip -q /home/z/my-project/upload/quark-platform-v*.zip
-# The zip extracts to workspace/ — move contents up if needed
+mkdir -p "$PROJECT_ROOT"
+cd "$PROJECT_ROOT"
+unzip -q /path/to/quark-platform-v*.zip
+# The zip extracts to a workspace/ folder — move contents up if needed
 git log --oneline | head -3
 git rev-list --count HEAD
 ```
@@ -146,12 +151,7 @@ git rev-list --count HEAD
 ## 5. Build (JVM mode — default)
 
 ```bash
-cd /home/z/my-project/workspace
-export JAVA_HOME=/home/z/graalvm-jdk-21.0.11+9.1
-export PATH=$JAVA_HOME/bin:$PATH
-export GOROOT=/home/z/go
-export GOPATH=/home/z/gopath
-export PATH=$GOROOT/bin:$GOPATH/bin:$PATH
+cd "$PROJECT_ROOT"
 make build
 ```
 
@@ -197,12 +197,13 @@ grep "Server is ready" /tmp/nats.log
 ## 7. Start the Catalog Service (Background)
 
 ```bash
-cd /home/z/my-project/workspace
-rm -rf /home/z/my-project/quark-state
-mkdir -p /home/z/my-project/quark-state
+cd "$PROJECT_ROOT"
+# Pick a state root directory — this is where catalog.db and dataplane-logs/ live
+export QUARK_STATE_ROOT="$PROJECT_ROOT/quark-state"
+mkdir -p "$QUARK_STATE_ROOT"
 ./quark-catalog/quark-catalog \
   -nats nats://localhost:4222 \
-  -state /home/z/my-project/quark-state > /tmp/catalog.log 2>&1 &
+  -state "$QUARK_STATE_ROOT" > /tmp/catalog.log 2>&1 &
 sleep 2
 # Verify
 grep "Catalog service ready" /tmp/catalog.log
@@ -215,8 +216,8 @@ grep "Catalog service ready" /tmp/catalog.log
 <Tabs items={["JVM mode", "Native mode"]}>
   <Tab value="JVM mode">
     ```bash
-    cd /home/z/my-project/workspace
-    java -Dquark.state.root=/home/z/my-project/quark-state \
+    cd "$PROJECT_ROOT"
+    java -Dquark.state.root="$QUARK_STATE_ROOT" \
          -Dquark.nats.url=nats://localhost:4222 \
          -jar server/quark-server/target/quark-server-0.1.0-SNAPSHOT-runner.jar \
          > /tmp/server.log 2>&1 &
@@ -224,9 +225,9 @@ grep "Catalog service ready" /tmp/catalog.log
   </Tab>
   <Tab value="Native mode">
     ```bash
-    cd /home/z/my-project/workspace
+    cd "$PROJECT_ROOT"
     ./server/quark-server/target/quark-server-0.1.0-SNAPSHOT-runner \
-      -Dquark.state.root=/home/z/my-project/quark-state \
+      -Dquark.state.root="$QUARK_STATE_ROOT" \
       -Dquark.nats.url=nats://localhost:4222 > /tmp/server.log 2>&1 &
     ```
   </Tab>
@@ -245,7 +246,7 @@ The control plane will auto-spawn a data-plane process when a system is deployed
 ## 9. Run End-to-End Smoke Test
 
 ```bash
-cd /home/z/my-project/workspace
+cd "$PROJECT_ROOT"
 ./cli/quarkctl apply -f example/simple-streaming/system.quark.ts -n alice
 sleep 3
 ./cli/quarkctl get namespaces
@@ -256,19 +257,8 @@ sleep 3
 
 Expected: System deploys, 6 nodes ACTIVE/HEALTHY, the control plane spawns the
 data plane (visible in `/tmp/server.log` and
-`/home/z/my-project/quark-state/dataplane-logs/dataplane-shared.log`), events
-flow, clean undeploy.
-
----
-
-## 10. Start Download Page (if needed)
-
-```bash
-curl -s https://z-cdn.chatglm.cn/fullstack/init-fullstack.sh | bash
-sleep 8
-# Copy zip files to public dir
-cp /home/z/my-project/download/quark-platform-v*.zip /home/z/my-project/public/
-```
+`$QUARK_STATE_ROOT/dataplane-logs/dataplane-shared.log`), events flow, clean
+undeploy.
 
 ---
 
@@ -276,22 +266,19 @@ cp /home/z/my-project/download/quark-platform-v*.zip /home/z/my-project/public/
 
 | Item | Path |
 | --- | --- |
-| Project root | `/home/z/my-project/workspace/` |
-| GraalVM JDK 21 (pref) | `/home/z/graalvm-jdk-21.0.11+9.1/` |
-| OpenJDK 21 (fallback) | `/home/z/jdk21/usr/lib/jvm/java-21-openjdk-amd64/` |
-| Go 1.24 | `/home/z/go/` |
-| NATS server binary | `/home/z/go/bin/nats-server` |
-| Maven wrapper | `/home/z/my-project/workspace/mvnw` (DO NOT delete `.mvn/wrapper/`) |
-| CLI binary | `/home/z/my-project/workspace/cli/quarkctl` |
-| Catalog binary | `/home/z/my-project/workspace/quark-catalog/quark-catalog` |
-| Server JAR (JVM) | `/home/z/my-project/workspace/server/quark-server/target/quark-server-0.1.0-SNAPSHOT-runner.jar` |
-| Server native binary | `/home/z/my-project/workspace/server/quark-server/target/quark-server-0.1.0-SNAPSHOT-runner` |
-| Runtime JAR (JVM) | `/home/z/my-project/workspace/runtime/quark-runtime/target/quark-runtime-runner-runner.jar` |
-| Runtime native binary | `/home/z/my-project/workspace/runtime/quark-runtime/target/quark-runtime-runner-runner` |
-| State root (default) | `/home/z/my-project/quark-state/` (contains `catalog.db` + `dataplane-logs/`) |
-| Download zips | `/home/z/my-project/download/` |
-| Download page public dir | `/home/z/my-project/public/` |
-| Preview URL | `https://preview-<bot-id>.space-z.ai/` |
+| Project root | `$PROJECT_ROOT` (the folder with `pom.xml` and `Makefile`) |
+| GraalVM JDK 21 (preferred) | wherever you extracted it — set `JAVA_HOME` |
+| OpenJDK 21 (fallback) | wherever you extracted it — set `JAVA_HOME` |
+| Go 1.24 | wherever you extracted it — set `GOROOT` |
+| NATS server binary | `$GOPATH/bin/nats-server` |
+| Maven wrapper | `$PROJECT_ROOT/mvnw` (DO NOT delete `.mvn/wrapper/`) |
+| CLI binary | `$PROJECT_ROOT/cli/quarkctl` |
+| Catalog binary | `$PROJECT_ROOT/quark-catalog/quark-catalog` |
+| Server JAR (JVM) | `$PROJECT_ROOT/server/quark-server/target/quark-server-0.1.0-SNAPSHOT-runner.jar` |
+| Server native binary | `$PROJECT_ROOT/server/quark-server/target/quark-server-0.1.0-SNAPSHOT-runner` |
+| Runtime JAR (JVM) | `$PROJECT_ROOT/runtime/quark-runtime/target/quark-runtime-runner-runner.jar` |
+| Runtime native binary | `$PROJECT_ROOT/runtime/quark-runtime/target/quark-runtime-runner-runner` |
+| State root | `$QUARK_STATE_ROOT` (contains `catalog.db` + `dataplane-logs/`) |
 
 ---
 
@@ -312,18 +299,21 @@ cp /home/z/my-project/download/quark-platform-v*.zip /home/z/my-project/public/
 
 ## Environment Variables Summary
 
+Add these to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.):
+
 ```bash
-# Preferred: GraalVM JDK 21 (enables native builds)
-export JAVA_HOME=/home/z/graalvm-jdk-21.0.11+9.1
+# Java (GraalVM preferred for native builds)
+export JAVA_HOME=/path/to/graalvm-jdk-21
 export PATH=$JAVA_HOME/bin:$PATH
 
 # Go
-export GOROOT=/home/z/go
-export GOPATH=/home/z/gopath
+export GOROOT=/path/to/go
+export GOPATH=$HOME/go
 export PATH=$GOROOT/bin:$GOPATH/bin:$PATH
 
 # Quark platform
-export QUARK_STATE_ROOT=/home/z/my-project/quark-state
+export PROJECT_ROOT=/path/to/quark-platform
+export QUARK_STATE_ROOT="$PROJECT_ROOT/quark-state"
 ```
 
 ---
@@ -338,9 +328,9 @@ pkill -f "quark-catalog/quark-catalog" 2>/dev/null
 pkill nats-server 2>/dev/null
 
 # Remove build artifacts (optional — keeps disk usage low)
-cd /home/z/my-project/workspace && find . -type d -name target -prune -exec rm -rf {} + 2>/dev/null
+cd "$PROJECT_ROOT" && find . -type d -name target -prune -exec rm -rf {} + 2>/dev/null
 rm -f cli/quarkctl quark-catalog/quark-catalog
 
 # Remove state (CAUTION: deletes catalog.db and all persisted systems)
-rm -rf /home/z/my-project/quark-state
+rm -rf "$QUARK_STATE_ROOT"
 ```
