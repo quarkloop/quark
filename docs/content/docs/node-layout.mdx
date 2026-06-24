@@ -1,0 +1,542 @@
+---
+title: "Node Layout Specification"
+description: "How a Quark node is structured on disk — the directory layout, source organization, manifest format, build configuration, and the packaging flow into the Catalog service."
+status: "v1 — Draft"
+date: "2026-06-25"
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+import { Steps, Step } from "fumadocs-ui/components/steps";
+
+## 1. Overview
+
+Every Quark node is a self-contained module that lives at a directory path
+matching its URI. This document specifies the internal structure of that
+directory — where source code goes, where configuration goes, how the
+manifest describes the node, and how the build system packages everything
+into a single blob for the Catalog service.
+
+**Principle: code and configuration are strictly separated.** Source code
+lives under `src/`. Configuration files (`manifest.json`, `build.toml`,
+`README.md`) live at the root. Nothing is mixed.
+
+---
+
+## 2. Directory Structure
+
+### 2.1 The node tree
+
+Nodes live under a top-level `nodes/` directory. The path mirrors the URI
+exactly:
+
+```
+nodes/
+└── quark/                           ← namespace
+    └── io/                          ← domain
+        └── file/                    ← subdomain
+            └── watch/               ← node
+                └── v1/              ← version
+                    └── ...          ← node contents (see §2.2)
+```
+
+The URI `quark/io/file/watch:v1` maps to the path
+`nodes/quark/io/file/watch/v1/`. No ambiguity — the path IS the URI.
+
+### 2.2 Internal layout
+
+Every node directory has the same structure:
+
+```
+quark/io/file/watch/v1/
+├── manifest.json          ← node identity + metadata (§3)
+├── src/                   ← ALL source code (§4)
+│   ├── node.java          ← the implementation
+│   ├── config.java        ← typed config record (optional)
+│   └── node.test.java     ← unit tests (optional)
+├── build.toml             ← build + package configuration (§5)
+└── README.md              ← developer documentation (§6)
+```
+
+For a TypeScript node:
+
+```
+quark/ai/openai/inference/v1/
+├── manifest.json
+├── src/
+│   ├── node.ts
+│   └── node.test.ts
+├── build.toml
+└── README.md
+```
+
+**Rules:**
+
+1. **`src/` is mandatory.** All source files — `.java`, `.ts`, `.py` — live under `src/`. No source files at the root.
+2. **`manifest.json` is mandatory.** It is the node's identity card, read by the build tool, the Catalog, and the engine.
+3. **`build.toml` is mandatory.** It tells the build tool how to compile and package the node.
+4. **`README.md` is optional but recommended.** Short developer-facing documentation.
+5. **No other files at the root.** The root contains only `manifest.json`, `build.toml`, `README.md`, and `src/`.
+
+---
+
+## 3. `manifest.json` — Node Identity
+
+The manifest is the single source of truth for the node's identity, config
+schema, and capabilities. It is a JSON object with the following fields:
+
+### 3.1 Required fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `uri` | string | The full node URI (e.g., `"quark/io/file/watch:v1"`) |
+| `domain` | string | The domain (e.g., `"io"`) — must match the URI path |
+| `subdomain` | string | The subdomain (e.g., `"file"`) — must match the URI path |
+| `node` | string | The node name (e.g., `"watch"`) — must match the URI path |
+| `version` | string | Semver version (e.g., `"1.0.0"`) — must match the URI version |
+| `language` | string | `"java"` or `"typescript"` or `"python"` |
+| `category` | string | Behavioral category: `"source"`, `"transform"`, `"compute"`, `"sink"`, `"stream"`, or `"route"` |
+| `description` | string | One-line description of what the node does |
+
+### 3.2 Optional fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `config` | object | Config field schema (see §3.3) |
+| `events` | string[] | Events this node may publish |
+| `dependencies` | object | Per-language dependencies (see §3.4) |
+| `supportedRuntimes` | string[] | `["jvm", "native"]` for Java; `["jvm", "native"]` for TypeScript (runs via GraalJS in both) |
+
+### 3.3 Config schema
+
+The `config` object maps field names to field descriptors:
+
+```json
+"config": {
+    "path": {
+        "type": "string",
+        "required": true,
+        "description": "Path to the file or directory to watch"
+    },
+    "pattern": {
+        "type": "string",
+        "default": "*",
+        "description": "Glob pattern to filter files"
+    },
+    "recursive": {
+        "type": "boolean",
+        "default": false,
+        "description": "Watch subdirectories recursively"
+    }
+}
+```
+
+| Field property | Type | Description |
+|----------------|------|-------------|
+| `type` | string | `"string"`, `"integer"`, `"number"`, `"boolean"`, `"array"`, `"object"` |
+| `required` | boolean | If `true`, the node will fail to start without this field |
+| `default` | any | Default value if the field is not provided |
+| `description` | string | Human-readable description |
+| `secret` | boolean | If `true`, the value is masked in logs and API responses |
+| `enum` | any[] | Allowed values (for validation) |
+
+### 3.4 Dependencies
+
+```json
+"dependencies": {
+    "java": [
+        "com.quarkloop.quark:quark-domain:0.1.0-SNAPSHOT",
+        "org.postgresql:postgresql:42.7.0"
+    ]
+}
+```
+
+For TypeScript nodes, dependencies are listed in `src/package.json` (if
+needed) and installed at build time. The manifest's `dependencies` field
+is for Java-only.
+
+### 3.5 Full example (Java)
+
+```json
+{
+    "uri": "quark/io/file/watch:v1",
+    "domain": "io",
+    "subdomain": "file",
+    "node": "watch",
+    "version": "1.0.0",
+    "language": "java",
+    "category": "source",
+    "description": "Watch a file or directory for changes and emit events",
+    "config": {
+        "path": { "type": "string", "required": true, "description": "Path to watch" },
+        "pattern": { "type": "string", "default": "*", "description": "Glob pattern" },
+        "recursive": { "type": "boolean", "default": false, "description": "Watch subdirectories" }
+    },
+    "events": ["changed", "created", "deleted"],
+    "dependencies": {
+        "java": ["com.quarkloop.quark:quark-domain:0.1.0-SNAPSHOT"]
+    },
+    "supportedRuntimes": ["jvm", "native"]
+}
+```
+
+### 3.6 Full example (TypeScript)
+
+```json
+{
+    "uri": "quark/ai/openai/inference:v1",
+    "domain": "ai",
+    "subdomain": "openai",
+    "node": "inference",
+    "version": "1.0.0",
+    "language": "typescript",
+    "category": "transform",
+    "description": "Call an OpenAI LLM and emit the response",
+    "config": {
+        "model": { "type": "string", "required": true, "description": "Model name (e.g. gpt-4)" },
+        "apiKey": { "type": "string", "required": true, "secret": true, "description": "OpenAI API key" },
+        "prompt": { "type": "string", "required": true, "description": "Prompt text" }
+    },
+    "events": ["response"],
+    "dependencies": {},
+    "supportedRuntimes": ["jvm", "native"]
+}
+```
+
+---
+
+## 4. `src/` — Source Code
+
+All source files live under `src/`. The package/module path is derived
+from the URI.
+
+### 4.1 Java nodes
+
+For `quark/io/file/watch:v1`:
+
+```
+src/
+├── node.java              ← package quark.io.file.watch;
+├── config.java            ← package quark.io.file.watch; (optional)
+└── node.test.java         ← package quark.io.file.watch; (optional)
+```
+
+**`node.java`** — the implementation. Implements one of the behavioral SPI
+interfaces (`SourceProvider`, `TransformProvider`, `SinkProvider`,
+`RouteProvider`, `StreamProvider`, `ComputeProvider`). The package is
+derived from the URI: `quark/io/file/watch:v1` → `package quark.io.file.watch;`
+
+```java
+package quark.io.file.watch;
+
+import com.quarkloop.quark.domain.config.NodeConfig;
+import com.quarkloop.quark.domain.spi.SourceProvider;
+import com.quarkloop.quark.domain.spi.QuarkPublisher;
+
+public class FileWatchNode implements SourceProvider {
+
+    private FileWatchConfig config;
+    private WatchService watchService;
+
+    @Override
+    public void init(NodeConfig cfg) {
+        this.config = FileWatchConfig.from(cfg);
+    }
+
+    @Override
+    public void start(QuarkPublisher publisher) {
+        // ... watch logic, call publisher.publish("changed", payload)
+    }
+
+    @Override
+    public void close() {
+        if (watchService != null) watchService.close();
+    }
+}
+```
+
+**`config.java`** — typed config record (optional). Provides a typed
+view of the config instead of raw `NodeConfig.getString()` calls:
+
+```java
+package quark.io.file.watch;
+
+import com.quarkloop.quark.domain.config.NodeConfig;
+
+public record FileWatchConfig(
+    String path,
+    String pattern,
+    boolean recursive
+) {
+    public static FileWatchConfig from(NodeConfig config) {
+        return new FileWatchConfig(
+            config.getString("path", "."),
+            config.getString("pattern", "*"),
+            config.getBoolean("recursive", false)
+        );
+    }
+}
+```
+
+**`node.test.java`** — unit tests (optional). Tests the node in isolation
+with a mock publisher and stub messages.
+
+### 4.2 TypeScript nodes
+
+For `quark/ai/openai/inference:v1`:
+
+```
+src/
+├── node.ts                ← the implementation
+└── node.test.ts           ← tests (optional)
+```
+
+**`node.ts`** — exports an object with the SPI methods. The available
+methods depend on the `category` declared in the manifest:
+
+```typescript
+// category: "transform" → implements onMessage
+export default {
+    onMessage(message: NodeMessage, publisher: NodePublisher) {
+        const model = config.getString("model", "gpt-4");
+        const apiKey = config.getString("apiKey", "");
+        const prompt = config.getString("prompt", "");
+
+        // ... call OpenAI API
+
+        publisher.publish("response", { result: response });
+    }
+};
+```
+
+For `category: "source"` → implements `onStart` + `onStop`:
+
+```typescript
+export default {
+    onStart(publisher: NodePublisher) {
+        // ... start producing
+    },
+    onStop() {
+        // ... cleanup
+    }
+};
+```
+
+### 4.3 Behavioral categories and their SPI methods
+
+The `category` field in the manifest determines which SPI methods the node
+must implement:
+
+| Category | SPI interface | Required methods | Description |
+|----------|--------------|------------------|-------------|
+| `source` | `SourceProvider` | `init`, `start`, `close` | Produces data autonomously |
+| `transform` | `TransformProvider` | `init`, `onMessage`, `close` | Changes data shape, 1:1, stateless |
+| `compute` | `ComputeProvider` | `init`, `onMessage`, `close` | Long-running task, produces artifacts |
+| `sink` | `SinkProvider` | `init`, `onMessage`, `close` | Consumes data terminally |
+| `stream` | `StreamProvider` | `init`, `start`, `onMessage`, `close` | Pushes to connected clients |
+| `route` | `RouteProvider` | `init`, `onMessage`, `close` | Controls flow without transforming |
+
+All categories implement `init(NodeConfig)` and `close()` for lifecycle
+management. This fixes the previous asymmetry where only `Source` and
+`Endpoint` had lifecycle methods.
+
+---
+
+## 5. `build.toml` — Build Configuration
+
+Tells the build tool how to compile the source and package it into a
+single blob for the Catalog.
+
+### 5.1 Full example (Java)
+
+```toml
+[package]
+format = "zip"
+contentType = "shared-library"
+
+[build.jvm]
+output = "target/watch-v1.jar"
+# Compiles src/*.java with the dependencies from manifest.json
+# Produces a .jar
+
+[build.native]
+output = "target/watch-v1.so"
+flags = ["--shared", "--no-fallback"]
+# Compiles src/*.java via GraalVM native-image --shared
+# Produces a .so shared library
+```
+
+### 5.2 Full example (TypeScript)
+
+```toml
+[package]
+format = "zip"
+contentType = "typescript"
+
+[build.typescript]
+# No compilation — src/ is zipped as-is
+output = "src/"
+```
+
+### 5.3 Fields
+
+| Section | Field | Description |
+|---------|-------|-------------|
+| `[package]` | `format` | How to package: `"zip"` (zip the output + manifest into one blob) |
+| `[package]` | `contentType` | What the Catalog stores as the content type: `"shared-library"` (Java), `"typescript"` (TS), `"python"` (Python) |
+| `[build.jvm]` | `output` | Path to the compiled .jar (relative to node dir) |
+| `[build.native]` | `output` | Path to the compiled .so (relative to node dir) |
+| `[build.native]` | `flags` | Flags passed to `native-image` |
+| `[build.typescript]` | `output` | Path to the source directory (usually `"src/"`) |
+
+---
+
+## 6. `README.md` — Developer Documentation
+
+Short, focused documentation for developers browsing the node tree. The
+full user-facing documentation lives in the docs site.
+
+```markdown
+# quark/io/file/watch:v1
+
+Watch a file or directory for changes and emit events.
+
+## Config
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `path` | string | yes | — | Path to watch |
+| `pattern` | string | no | `*` | Glob pattern |
+| `recursive` | boolean | no | `false` | Watch subdirectories |
+
+## Events
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `changed` | `{ path, kind }` | File content changed |
+| `created` | `{ path }` | New file created |
+| `deleted` | `{ path }` | File deleted |
+
+## Example
+
+\`\`\`typescript
+nodes: {
+    watcher: {
+        uses: "quark/io/file/watch:v1",
+        path: "/var/log/nginx",
+        pattern: "*.log",
+        events: ["changed", "created"],
+    }
+}
+\`\`\`
+```
+
+---
+
+## 7. Build → Package → Push Flow
+
+### 7.1 Build
+
+```bash
+quarkctl node build quark/io/file/watch:v1
+```
+
+The build tool:
+
+1. Reads `manifest.json` to determine language and dependencies.
+2. Reads `build.toml` to determine build steps.
+3. For Java JVM: compiles `src/*.java` → `target/watch-v1.jar`.
+4. For Java native: compiles `src/*.java` → `target/watch-v1.so` via GraalVM `native-image --shared`.
+5. For TypeScript: no compilation — `src/` is used as-is.
+
+### 7.2 Package
+
+After building, the build tool packages the node into a single zip blob:
+
+1. Creates a zip containing:
+   - `manifest.json` (copied from the node root)
+   - The build output (the `.jar`, `.so`, or `.ts` files)
+2. The zip is the `content` blob that gets sent to the Catalog.
+
+### 7.3 Push
+
+```bash
+quarkctl node push quark/io/file/watch:v1
+```
+
+The CLI:
+
+1. Reads the packaged zip blob.
+2. Sends a `registry.node.push` NATS request to the Catalog with:
+   - `uri`: `"quark/io/file/watch:v1"`
+   - `manifest`: the manifest JSON string
+   - `content`: the zip blob bytes
+   - `contentType`: `"shared-library"` (Java) or `"typescript"` (TS)
+3. The Catalog stores the blob in the `node_packages` table.
+
+### 7.4 Pull (data plane)
+
+When a `.quark.ts` file references a URI not in the built-in registry:
+
+1. The data plane sends `registry.node.pull` to the Catalog.
+2. The Catalog returns `{ manifest, content, contentType }`.
+3. The data plane unzips `content`:
+   - JVM mode + `contentType=shared-library` → loads the `.jar` via a classloader.
+   - Native mode + `contentType=shared-library` → loads the `.so` via `System.load()`.
+   - `contentType=typescript` → evaluates the `.ts` source via GraalJS.
+4. The data plane creates a `NodeImplementationFactory` from the loaded code and the manifest's `category` field.
+
+<Steps>
+  <Step>**Developer writes** `nodes/quark/io/file/watch/v1/` with `manifest.json`, `src/node.java`, `build.toml`.</Step>
+  <Step>**`quarkctl node build`** compiles `src/*.java` → `target/watch-v1.jar` (JVM) and/or `target/watch-v1.so` (native).</Step>
+  <Step>**`quarkctl node build`** packages `manifest.json` + build output into a single zip blob.</Step>
+  <Step>**`quarkctl node push`** sends the zip blob to the Catalog via `registry.node.push` NATS request.</Step>
+  <Step>**Catalog stores** `{ uri, manifest, content (zip), contentType }` in the `node_packages` table.</Step>
+  <Step>**Data plane** (on deploy) sends `registry.node.pull` → gets the zip blob back → unzips → loads the `.jar` / `.so` / `.ts`.</Step>
+</Steps>
+
+---
+
+## 8. Multi-language support
+
+A single node directory can contain both Java and TypeScript source if the
+node ships implementations for both languages:
+
+```
+quark/io/file/watch/v1/
+├── manifest.json
+├── src/
+│   ├── node.java          ← Java implementation
+│   ├── config.java
+│   ├── node.ts            ← TypeScript implementation (alternative)
+│   └── node.test.java
+├── build.toml
+└── README.md
+```
+
+The `manifest.json` declares `"language": "java"` as the primary. The
+build tool produces separate artifacts for each language. The Catalog
+stores them as separate content blobs (or the zip contains both, and the
+data plane picks the appropriate one at load time based on the runtime
+mode).
+
+---
+
+## 9. Validation rules
+
+A node directory is valid if:
+
+1. It contains a `manifest.json` at the root.
+2. It contains a `src/` directory with at least one source file.
+3. It contains a `build.toml` at the root.
+4. The `manifest.json` fields (`domain`, `subdomain`, `node`, `version`) match the directory path.
+5. The `manifest.json` `language` field matches the source file extension(s) in `src/`.
+6. The `manifest.json` `category` field is one of the 6 valid behavioral categories.
+7. The source file implements the SPI interface corresponding to the declared `category`.
+
+---
+
+## 10. Reference
+
+- [Node URI Specification](./node-uri) — the 4-segment URI format
+- [Node Catalog](./node-catalog) — the full standard library
+- [Declaration Format](./declaration) — how nodes are referenced in `.quark.ts` files
