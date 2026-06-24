@@ -2,7 +2,7 @@
 title: "Environment Bootstrap"
 description: "Step-by-step environment setup for the Quark Platform — JDK 21, Go 1.24, NATS, project extraction, build, and end-to-end smoke test."
 status: "v0.1.0-SNAPSHOT"
-date: "2026-06-24"
+date: "2026-06-25"
 ---
 
 import { Callout } from "fumadocs-ui/components/callout";
@@ -12,8 +12,9 @@ import { Tab, Tabs } from "fumadocs-ui/components/tabs";
 ## Context
 
 You are working on the **Quark Platform** — a three-service system built on
-Java 21 + Quarkus 3.x (control plane and data plane), Go (Catalog service +
-CLI), NATS for messaging, and GraalJS for TypeScript node evaluation.
+Java 21 + Quarkus 3.17.8 (control plane and data plane), Go 1.25 (Catalog
+service + CLI), NATS for messaging, and GraalJS 24.1.2 for TypeScript node
+evaluation.
 
 <Callout type="info">
   Throughout this guide, `$PROJECT_ROOT` refers to the directory containing
@@ -26,28 +27,34 @@ CLI), NATS for messaging, and GraalJS for TypeScript node evaluation.
   ```
 </Callout>
 
-**Architecture (post-v8):**
+**Architecture:**
 
 | Service | Language | Includes GraalJS? | Role |
 |---------|----------|-------------------|------|
-| Control plane (`server/`) | Java/Native | ❌ No | REST API, deploy orchestration, spawns data-plane processes |
-| Catalog (`quark-catalog/`) | Go + SQLite (pure Go, no CGO) | n/a | Metadata store (systems, nodes, events, sources, registry) |
-| Data plane (`runtime/`) | Java/Native | ✅ Yes (via `--macro:truffle-svm`) | Executes nodes, hosts GraalJS, runs providers |
+| Control plane (`server/`) | Java/Native | No | REST API, deploy orchestration, spawns data-plane processes |
+| Catalog (`quark-catalog/`) | Go 1.25 + SQLite (pure Go, no CGO) | n/a | Metadata store (systems, nodes, events, sources, registry) |
+| Data plane (`runtime/`) | Java/Native | Yes (via `--macro:truffle-svm`) | Executes nodes, hosts GraalJS, runs providers |
 | NATS broker | Go (external) | n/a | Message bus for all inter-service communication |
 
-Persistence is delegated to the Catalog (Go + SQLite via
-`modernc.org/sqlite`). DuckDB has been removed entirely. The data plane is
-spawned on demand by the control plane's `ProcessManager`.
+**Key versions:**
+
+| Component | Version |
+|-----------|---------|
+| JDK | 21 (OpenJDK or GraalVM JDK 21) |
+| Quarkus | 3.17.8 |
+| GraalJS | 24.1.2 (community edition — `org.graalvm.js:js-community`) |
+| Go | 1.25 |
+| NATS Server | 2.10.25 |
+| Maven | 3.9+ (via `./mvnw` wrapper — no system install needed) |
 
 ---
 
-## 1. Install JDK 21 (or use GraalVM JDK 21)
+## 1. Install JDK 21
 
 <Callout type="info">
   GraalVM JDK 21 is preferred over plain OpenJDK for this project because it
-  includes `native-image` (required for native builds). If you already have
-  GraalVM JDK 21 installed, skip this step — just set `JAVA_HOME` to its
-  install location.
+  includes `native-image` (required for native builds). If you only need JVM
+  mode, plain OpenJDK 21 is sufficient.
 </Callout>
 
 Install OpenJDK 21 using your system package manager (`apt`, `brew`,
@@ -85,12 +92,12 @@ native-image --version
 
 ---
 
-## 2. Install Go 1.24
+## 2. Install Go 1.25
 
 Download from [https://go.dev/dl/](https://go.dev/dl/) and extract:
 
 ```bash
-curl -fsSL https://go.dev/dl/go1.24.4.linux-amd64.tar.gz -o /tmp/go.tar.gz
+curl -fsSL https://go.dev/dl/go1.25.0.linux-amd64.tar.gz -o /tmp/go.tar.gz
 mkdir -p /path/to/go
 tar -C /path/to/go -xzf /tmp/go.tar.gz --strip-components=1
 rm /tmp/go.tar.gz
@@ -108,7 +115,7 @@ mkdir -p "$GOPATH"
 Verify:
 
 ```bash
-go version  # must show go1.24.x
+go version  # must show go1.25.x
 ```
 
 ---
@@ -255,10 +262,8 @@ sleep 3
 ./cli/quarkctl delete system monitor -n alice
 ```
 
-Expected: System deploys, 6 nodes ACTIVE/HEALTHY, the control plane spawns the
-data plane (visible in `/tmp/server.log` and
-`$QUARK_STATE_ROOT/dataplane-logs/dataplane-shared.log`), events flow, clean
-undeploy.
+Expected: System deploys, nodes ACTIVE/HEALTHY, the control plane spawns the
+data plane, events flow, clean undeploy.
 
 ---
 
@@ -266,7 +271,7 @@ undeploy.
 
 | Item | Path |
 | --- | --- |
-| Project root | `$PROJECT_ROOT` (the folder with `pom.xml` and `Makefile`) |
+| Project root | `$PROJECT_ROOT` (the folder containing `pom.xml` and `Makefile`) |
 | GraalVM JDK 21 (preferred) | wherever you extracted it — set `JAVA_HOME` |
 | OpenJDK 21 (fallback) | wherever you extracted it — set `JAVA_HOME` |
 | Go 1.24 | wherever you extracted it — set `GOROOT` |
@@ -285,15 +290,15 @@ undeploy.
 ## Important Rules
 
 1. **NATS is required** — the platform uses fail-fast, no fallbacks. If NATS is not running, the server refuses to start.
-2. **No fallbacks** — see `AGENTS.md` pitfall #6. Code-level silent fallbacks (in-memory bus when NATS is down, file persistence when Catalog fails, default values when config is missing) are forbidden. Throw, don't degrade.
+2. **No fallbacks** — code-level silent fallbacks are forbidden. Throw, don't degrade.
 3. **Build tools must be on PATH** — `java`, `javac`, `go`, `nats-server` must all be available. For native builds, `native-image` is also required (GraalVM only).
 4. **Maven wrapper** — use `./mvnw` not `mvn` (Maven is not installed system-wide). The wrapper needs `.mvn/wrapper/maven-wrapper.jar` — never delete this directory.
 5. **Legacy jar packaging** — `quarkus.package.jar.type=legacy-jar` in `application.properties` (required for GraalJS classloader in the runtime module).
 6. **Go build flag** — `GOFLAGS=-trimpath -buildvcs=false` in Makefile (required for VCS stamping).
 7. **State root** — set `quark.state.root` system property (or `QUARK_STATE_ROOT` env var) to control where the Catalog stores `catalog.db` and where data-plane logs are written.
-8. **Native image: server ≠ runtime** — the server native build must NOT include `--macro:truffle-svm` (keeps it at 76 MB, 3 GB peak RAM). The runtime native build MUST include it (194 MB, 6.5 GB peak RAM). See `AGENTS.md` pitfall #9.
-9. **GraalJS enterprise is broken** — use `org.graalvm.js:js-community` (community edition), not `org.graalvm.polyglot:js` (enterprise). The enterprise variant pulls in `truffle-enterprise`, whose `HSPathGen$EndPoint` has a known native-image incompatibility with GraalVM 21.0.11 + Truffle 24.1.x. See `AGENTS.md` pitfall #10.
-10. **Runtime jar naming quirk** — Quarkus produces `<finalName>-runner.jar` as the runnable fat jar. With `finalName=quark-runtime-runner`, the runnable jar is `quark-runtime-runner-runner.jar` (double `-runner` suffix). The thin `quark-runtime-runner.jar` has no main manifest and is NOT runnable.
+8. **Native image: server excludes GraalJS** — the server native build must NOT include `--macro:truffle-svm`. The runtime native build MUST include it.
+9. **GraalJS community edition** — use `org.graalvm.js:js-community` (community), not `org.graalvm.polyglot:js` (enterprise). The enterprise variant has a native-image incompatibility.
+10. **Runtime jar naming** — Quarkus produces `<finalName>-runner.jar`. With `finalName=quark-runtime-runner`, the runnable jar is `quark-runtime-runner-runner.jar` (double `-runner`).
 
 ---
 

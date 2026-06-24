@@ -107,7 +107,7 @@ func (p *PrettyPrinter) PrintSystemDetail(system interface{}) error {
         fmt.Fprintf(p.w, "Nodes (%d):\n", len(td.Nodes))
         rt := newTable(p.w, []string{"NAME", "URI", "CATEGORY", "STATE", "HEALTH"})
         for _, r := range td.Nodes {
-                rt.Append([]string{r.Name, r.URI, r.Category, stateColored(r.State), healthColored(r.Health)})
+                rt.Append([]string{r.Name, r.URI, stateColored(r.State), healthColored(r.Health)})
         }
         rt.Render()
         return nil
@@ -137,7 +137,6 @@ func (p *PrettyPrinter) PrintNodeDetail(node interface{}) error {
         }
         fmt.Fprintf(p.w, "Node: %s/%s/%s\n", rd.Namespace, rd.SystemName, rd.Name)
         fmt.Fprintf(p.w, "URI:      %s\n", rd.URI)
-        fmt.Fprintf(p.w, "Category: %s\n", rd.Category)
         fmt.Fprintf(p.w, "State:    %s\n", stateColored(rd.State))
         fmt.Fprintf(p.w, "Health:   %s\n", healthColored(rd.Health))
         fmt.Fprintf(p.w, "Version:  %d\n", rd.Version)
@@ -253,13 +252,9 @@ func (p *PrettyPrinter) PrintRegistryList(entries interface{}) error {
                 fmt.Fprintln(p.w, "No registry entries found.")
                 return nil
         }
-        t := newTable(p.w, []string{"URI", "CATEGORY", "ACTIVE", "DESCRIPTION"})
+        t := newTable(p.w, []string{"URI", "DESCRIPTION"})
         for _, e := range list {
-                active := "no"
-                if e.Active {
-                        active = color.GreenString("yes")
-                }
-                t.Append([]string{e.URI, e.Category, active, truncateDescription(e.Description, 60)})
+                t.Append([]string{e.URI, truncateDescription(e.Description, 60)})
         }
         t.Render()
         return nil
@@ -271,8 +266,6 @@ func (p *PrettyPrinter) PrintRegistryEntry(entry interface{}) error {
                 return fmt.Errorf("expected *RegistryEntry, got %T", entry)
         }
         fmt.Fprintf(p.w, "URI:         %s\n", e.URI)
-        fmt.Fprintf(p.w, "Category:    %s\n", e.Category)
-        fmt.Fprintf(p.w, "Active:      %t\n", e.Active)
         fmt.Fprintf(p.w, "Description: %s\n", e.Description)
         return nil
 }

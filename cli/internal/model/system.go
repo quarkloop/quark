@@ -61,7 +61,6 @@ type SystemSummary struct {
 type NodeState struct {
         Name         string    `json:"name"`
         URI          string    `json:"uri"`
-        Category     string    `json:"category"`
         State        string    `json:"state"`
         Health       string    `json:"health"`
         CreatedAt    time.Time `json:"createdAt,omitempty"`
