@@ -115,7 +115,7 @@ public class NatsCatalogClient implements SystemRepository, NodeRepository,
     private Map<String,Object> nodeToReq(NodeRecord n) {
         Map<String,Object> r = new LinkedHashMap<>();
         r.put("namespace",n.namespace()); r.put("systemName",n.systemName()); r.put("name",n.name());
-        r.put("uri",n.uri()); r.put("category",n.category()); r.put("state",n.state()); r.put("health",n.health());
+        r.put("uri",n.uri());  r.put("state",n.state()); r.put("health",n.health());
         r.put("version",n.version()); r.put("listens",n.listens()); r.put("events",n.events());
         if (n.onFailureRetry()!=null) r.put("onFailureRetry",n.onFailureRetry());
         if (n.onFailureRouteTo()!=null) r.put("onFailureRouteTo",n.onFailureRouteTo());
@@ -135,7 +135,7 @@ public class NatsCatalogClient implements SystemRepository, NodeRepository,
     }
     private List<NodeRecord> parseNodes(NodeResp[] nodes) {
         List<NodeRecord> out = new ArrayList<>();
-        for (var n : nodes) out.add(new NodeRecord(n.namespace,n.systemName,n.name,n.uri,n.category,
+        for (var n : nodes) out.add(new NodeRecord(n.namespace,n.systemName,n.name,n.uri,
             n.state,n.health,n.version,n.errorMessage,
             n.listens!=null?n.listens:List.of(), n.events!=null?n.events:List.of(),
             n.config!=null?n.config:Map.of(), n.labels!=null?n.labels:Map.of(), n.annotations!=null?n.annotations:Map.of(),
@@ -145,7 +145,7 @@ public class NatsCatalogClient implements SystemRepository, NodeRepository,
     @Override public void delete(String ns, String sys, String node) { log.warn("Individual node delete not yet supported"); }
     @Override public void deleteBySystem(String ns, String sys) { natsRequest("catalog.node.delete", Map.of("namespace",ns,"systemName",sys)); }
     @Override public void updateState(String ns, String sys, String node, String state, String health, long version, String errMsg) {
-        find(ns,sys,node).ifPresent(n -> save(new NodeRecord(n.namespace(),n.systemName(),n.name(),n.uri(),n.category(),
+        find(ns,sys,node).ifPresent(n -> save(new NodeRecord(n.namespace(),n.systemName(),n.name(),n.uri(),
             state,health,version,errMsg,n.listens(),n.events(),n.config(),n.labels(),n.annotations(),
             n.onFailureRetry(),n.onFailureRouteTo(),n.timeout(),n.createdAt(),Instant.now())));
     }
@@ -206,23 +206,22 @@ public class NatsCatalogClient implements SystemRepository, NodeRepository,
     // --- RegistryRepository ---
     @Override public void save(RegistryRecord rec) {
         Map<String,Object> r = new LinkedHashMap<>();
-        r.put("uri",rec.uri()); r.put("pattern",rec.pattern()); r.put("category",rec.category());
-        r.put("active",rec.active()); r.put("description",rec.description());
+        r.put("uri",rec.uri()); r.put("pattern",rec.pattern()); 
+        r.put("description",rec.description());
         natsRequest("catalog.registry.save", r);
     }
     @Override public Optional<RegistryRecord> findByUri(String uri) {
         try { byte[] d = natsRequest("catalog.registry.find", Map.of("uri",uri));
             var n = mapper.readTree(d); if (n.has("error")) return Optional.empty();
             var r = mapper.readValue(d, RegResp.class);
-            return Optional.of(new RegistryRecord(r.uri,r.pattern,r.category,r.active,r.description)); } catch (Exception e) { return Optional.empty(); }
+            return Optional.of(new RegistryRecord(r.uri,r.pattern,r.description)); } catch (Exception e) { return Optional.empty(); }
     }
     @Override public List<RegistryRecord> findAllRegistry() {
         try { var r = natsRequestAndParse("catalog.registry.list", Map.of(), RegListResp.class);
             List<RegistryRecord> out = new ArrayList<>(); for (var rec : r.records)
-                out.add(new RegistryRecord(rec.uri,rec.pattern,rec.category,rec.active,rec.description));
+                out.add(new RegistryRecord(rec.uri,rec.pattern,rec.description));
             return out; } catch (Exception e) { return List.of(); }
     }
-    @Override public List<RegistryRecord> findByCategory(String cat) { return findAllRegistry().stream().filter(r->r.category().equals(cat)).toList(); }
     @Override public List<RegistryRecord> search(String kw) { return findAllRegistry().stream().filter(r->r.uri().contains(kw)||r.description().contains(kw)).toList(); }
     @Override public boolean existsByUri(String uri) {
         try { return natsRequestAndParse("catalog.registry.exists", Map.of("uri",uri), ExistsResp.class).exists; } catch (Exception e) { return false; }
@@ -231,7 +230,7 @@ public class NatsCatalogClient implements SystemRepository, NodeRepository,
     // --- Response DTOs ---
     private record SysResp(String namespace,String name,String source,String state,String health,long version,String createdAt,String updatedAt) {}
     private record SysListResp(SysResp[] systems) {}
-    private record NodeResp(String namespace,String systemName,String name,String uri,String category,String state,String health,long version,String errorMessage,List<String> listens,List<String> events,Map<String,Object> config,Map<String,String> labels,Map<String,String> annotations,String onFailureRetry,String onFailureRouteTo,String timeout,String createdAt,String updatedAt) {}
+    private record NodeResp(String namespace,String systemName,String name,String uri,String state,String health,long version,String errorMessage,List<String> listens,List<String> events,Map<String,Object> config,Map<String,String> labels,Map<String,String> annotations,String onFailureRetry,String onFailureRouteTo,String timeout,String createdAt,String updatedAt) {}
     private record NodeListResp(NodeResp[] nodes) {}
     private record EventResp(String id,String kind,String nodeName,String systemName,String namespace,String timestamp,Map<String,Object> payload) {}
     private record EventListResp(EventResp[] events) {}
@@ -239,7 +238,7 @@ public class NatsCatalogClient implements SystemRepository, NodeRepository,
     private record SrcResp(String source) {}
     private record SrcEntry(String namespace,String name) {}
     private record SrcListResp(SrcEntry[] sources) {}
-    private record RegResp(String uri,String pattern,String category,boolean active,String description) {}
+    private record RegResp(String uri,String pattern,String description) {}
     private record RegListResp(RegResp[] records) {}
     private record ExistsResp(boolean exists) {}
 }

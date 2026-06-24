@@ -26,9 +26,9 @@ public class RegistryEndpoint {
     }
 
     @GET
-    public Response list(@QueryParam("category") String category,
+    public Response list(
                          @QueryParam("q") String query) {
-        return Response.ok(registryService.list(category, query)).build();
+        return Response.ok(registryService.list(query)).build();
     }
 
     @GET

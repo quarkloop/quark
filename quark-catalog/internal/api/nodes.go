@@ -8,7 +8,6 @@ type SaveNodeRequest struct {
 	SystemName       string                 `json:"systemName"`
 	Name             string                 `json:"name"`
 	URI              string                 `json:"uri"`
-	Category         string                 `json:"category"`
 	State            string                 `json:"state"`
 	Health           string                 `json:"health"`
 	Version          int64                  `json:"version"`
@@ -46,7 +45,6 @@ type NodeResponse struct {
 	SystemName       string                 `json:"systemName"`
 	Name             string                 `json:"name"`
 	URI              string                 `json:"uri"`
-	Category         string                 `json:"category"`
 	State            string                 `json:"state"`
 	Health           string                 `json:"health"`
 	Version          int64                  `json:"version"`

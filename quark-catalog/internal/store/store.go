@@ -94,7 +94,7 @@ CREATE TABLE IF NOT EXISTS nodes (
     system_name         TEXT NOT NULL,
     name                TEXT NOT NULL,
     uri                 TEXT NOT NULL,
-    category            TEXT NOT NULL,
+     NOT NULL,
     state               TEXT NOT NULL DEFAULT 'CREATING',
     health              TEXT NOT NULL DEFAULT 'UNKNOWN',
     version             INTEGER NOT NULL DEFAULT 1,
@@ -131,7 +131,7 @@ CREATE INDEX IF NOT EXISTS idx_events_ts      ON events(timestamp DESC);
 
 CREATE TABLE IF NOT EXISTS node_packages (
     uri          TEXT PRIMARY KEY,
-    category     TEXT NOT NULL,
+     NOT NULL,
     version      TEXT NOT NULL,
     manifest     TEXT NOT NULL,
     content      BLOB NOT NULL,
@@ -145,8 +145,8 @@ CREATE INDEX IF NOT EXISTS idx_packages_category ON node_packages(category);
 CREATE TABLE IF NOT EXISTS registry (
     uri         TEXT PRIMARY KEY,
     pattern     TEXT NOT NULL,
-    category    TEXT NOT NULL,
-    active      INTEGER NOT NULL DEFAULT 1,
+     NOT NULL,
+    ,
     description TEXT NOT NULL
 );
 

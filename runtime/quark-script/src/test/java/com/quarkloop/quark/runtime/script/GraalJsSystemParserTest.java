@@ -24,18 +24,18 @@ class GraalJsSystemParserTest {
 
                 nodes: {
                     timer: {
-                        uses: "source/timer:v1",
+                        uses: "quark/time/schedule/timer:v1",
                         interval: "1s",
                         events: ["tick"],
                     },
                     cpu: {
-                        uses: "function/cpu-profiler:v1",
+                        uses: "quark/system/cpu/profile:v1",
                         listens: ["timer.tick"],
                         events: ["data"],
                         onFailure: { retry: 3, routeTo: "writer" },
                     },
                     writer: {
-                        uses: "store/json-writer:v1",
+                        uses: "quark/io/file/write:v1",
                         path: "./out.jsonl",
                         mode: "append",
                         listens: ["cpu.data", "fallback.cpu"],
@@ -51,7 +51,7 @@ class GraalJsSystemParserTest {
         assertThat(def.name()).isEqualTo("monitor");
         assertThat(def.namespace().value()).isEqualTo("alice");
         assertThat(def.nodes()).containsKeys("timer", "cpu", "writer");
-        assertThat(def.nodes().get("timer").uri().implementation()).isEqualTo("timer");
+        assertThat(def.nodes().get("timer").uri().node()).isEqualTo("timer");
         assertThat(def.nodes().get("timer").events()).containsExactly("tick");
         assertThat(def.nodes().get("cpu").listens()).containsExactly("timer.tick");
         assertThat(def.nodes().get("cpu").onFailure().retry()).isEqualTo(3);

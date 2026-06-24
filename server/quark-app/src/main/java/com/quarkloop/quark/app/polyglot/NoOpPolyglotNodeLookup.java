@@ -19,7 +19,7 @@ import java.util.Optional;
 public class NoOpPolyglotNodeLookup implements PolyglotNodeLookup {
 
     @Override
-    public Optional<NodeImplementationFactory<?>> lookupFactory(NodeUri uri) {
+    public Optional<NodeImplementationFactory> lookupFactory(NodeUri uri) {
         return Optional.empty();
     }
 }

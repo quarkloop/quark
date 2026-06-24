@@ -103,7 +103,7 @@ public class QueryService {
         List<NodeSummary> out = new ArrayList<>();
         for (NodeRecord nr : nodeRepository.findBySystem(namespace, systemName)) {
             out.add(new NodeSummary(
-                    nr.name(), systemName, namespace, nr.uri(), nr.category(),
+                    nr.name(), systemName, namespace, nr.uri(), 
                     nr.state(), nr.health(), nr.version()));
         }
         out.sort(Comparator.comparing(NodeSummary::name));
@@ -127,7 +127,7 @@ public class QueryService {
         List<NodeSummary> out = new ArrayList<>();
         for (NodeRecord nr : nodeRepository.findNodesByNamespace(namespace)) {
             out.add(new NodeSummary(
-                    nr.name(), nr.systemName(), namespace, nr.uri(), nr.category(),
+                    nr.name(), nr.systemName(), namespace, nr.uri(), 
                     nr.state(), nr.health(), nr.version()));
         }
         out.sort(Comparator.comparing(NodeSummary::name));
@@ -194,7 +194,7 @@ public class QueryService {
                 rs.name(),
                 rs.namespace().value(),
                 def.uri().toString(),
-                def.category().label(),
+                
                 rn.state().name(),
                 rn.health().name(),
                 rn.version()
@@ -223,7 +223,7 @@ public class QueryService {
                 rs.name(),
                 rs.namespace().value(),
                 def.uri().toString(),
-                def.category().label(),
+                
                 rn.state().name(),
                 rn.health().name(),
                 rn.version(),
@@ -278,7 +278,6 @@ public class QueryService {
             String systemName,
             String namespace,
             String uri,
-            String category,
             String state,
             String health,
             long version
@@ -289,7 +288,6 @@ public class QueryService {
             String systemName,
             String namespace,
             String uri,
-            String category,
             String state,
             String health,
             long version,

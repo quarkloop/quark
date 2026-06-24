@@ -12,17 +12,17 @@ import (
 // SaveNode upserts a node row.
 func (s *Store) SaveNode(req api.SaveNodeRequest) error {
 	_, err := s.db.Exec(
-		`INSERT INTO nodes (namespace, system_name, name, uri, category, state, health, version,
+		`INSERT INTO nodes (namespace, system_name, name, uri, state, health, version,
 		   error_message, listens, events, config, labels, annotations,
 		   on_failure_retry, on_failure_route_to, timeout, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(namespace, system_name, name) DO UPDATE SET
-		   uri=excluded.uri, category=excluded.category, state=excluded.state, health=excluded.health,
+		   uri=excluded.uri=excluded.category, state=excluded.state, health=excluded.health,
 		   version=excluded.version, listens=excluded.listens, events=excluded.events,
 		   config=excluded.config, labels=excluded.labels, annotations=excluded.annotations,
 		   on_failure_retry=excluded.on_failure_retry, on_failure_route_to=excluded.on_failure_route_to,
 		   timeout=excluded.timeout, updated_at=excluded.updated_at`,
-		req.Namespace, req.SystemName, req.Name, req.URI, req.Category, req.State, req.Health, req.Version,
+		req.Namespace, req.SystemName, req.Name, req.URI, req.State, req.Health, req.Version,
 		toJSON(req.Listens), toJSON(req.Events), toJSON(req.Config), toJSON(req.Labels), toJSON(req.Annotations),
 		req.OnFailureRetry, req.OnFailureRouteTo, req.Timeout, now(), now(),
 	)
@@ -37,12 +37,12 @@ func (s *Store) SaveNodes(reqs []api.SaveNodeRequest) error {
 	}
 	defer tx.Rollback()
 	stmt, err := tx.Prepare(
-		`INSERT INTO nodes (namespace, system_name, name, uri, category, state, health, version,
+		`INSERT INTO nodes (namespace, system_name, name, uri, state, health, version,
 		   error_message, listens, events, config, labels, annotations,
 		   on_failure_retry, on_failure_route_to, timeout, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(namespace, system_name, name) DO UPDATE SET
-		   uri=excluded.uri, category=excluded.category, state=excluded.state, health=excluded.health,
+		   uri=excluded.uri=excluded.category, state=excluded.state, health=excluded.health,
 		   version=excluded.version, listens=excluded.listens, events=excluded.events,
 		   config=excluded.config, labels=excluded.labels, annotations=excluded.annotations,
 		   on_failure_retry=excluded.on_failure_retry, on_failure_route_to=excluded.on_failure_route_to,
@@ -52,7 +52,7 @@ func (s *Store) SaveNodes(reqs []api.SaveNodeRequest) error {
 	}
 	defer stmt.Close()
 	for _, req := range reqs {
-		_, err = stmt.Exec(req.Namespace, req.SystemName, req.Name, req.URI, req.Category,
+		_, err = stmt.Exec(req.Namespace, req.SystemName, req.Name, req.URI,
 			req.State, req.Health, req.Version, toJSON(req.Listens), toJSON(req.Events),
 			toJSON(req.Config), toJSON(req.Labels), toJSON(req.Annotations),
 			req.OnFailureRetry, req.OnFailureRouteTo, req.Timeout, now(), now())
@@ -66,7 +66,7 @@ func (s *Store) SaveNodes(reqs []api.SaveNodeRequest) error {
 // ListNodes returns all nodes for a (namespace, systemName).
 func (s *Store) ListNodes(ns, sysName string) ([]api.NodeResponse, error) {
 	rows, err := s.db.Query(
-		`SELECT namespace, system_name, name, uri, category, state, health, version,
+		`SELECT namespace, system_name, name, uri, state, health, version,
 		   error_message, listens, events, config, labels, annotations,
 		   on_failure_retry, on_failure_route_to, timeout, created_at, updated_at
 		 FROM nodes WHERE namespace=? AND system_name=? ORDER BY name`, ns, sysName,
@@ -81,7 +81,7 @@ func (s *Store) ListNodes(ns, sysName string) ([]api.NodeResponse, error) {
 // ListNodesByNamespace returns all nodes in a namespace, across all systems.
 func (s *Store) ListNodesByNamespace(ns string) ([]api.NodeResponse, error) {
 	rows, err := s.db.Query(
-		`SELECT namespace, system_name, name, uri, category, state, health, version,
+		`SELECT namespace, system_name, name, uri, state, health, version,
 		   error_message, listens, events, config, labels, annotations,
 		   on_failure_retry, on_failure_route_to, timeout, created_at, updated_at
 		 FROM nodes WHERE namespace=? ORDER BY system_name, name`, ns,
@@ -107,7 +107,7 @@ func scanNodes(rows *sql.Rows) ([]api.NodeResponse, error) {
 	for rows.Next() {
 		var n api.NodeResponse
 		var listens, events, config, labels, annotations, errMsg sql.NullString
-		if err := rows.Scan(&n.Namespace, &n.SystemName, &n.Name, &n.URI, &n.Category,
+		if err := rows.Scan(&n.Namespace, &n.SystemName, &n.Name, &n.URI,
 			&n.State, &n.Health, &n.Version, &errMsg, &listens, &events,
 			&config, &labels, &annotations, &n.OnFailureRetry, &n.OnFailureRouteTo,
 			&n.Timeout, &n.CreatedAt, &n.UpdatedAt); err != nil {

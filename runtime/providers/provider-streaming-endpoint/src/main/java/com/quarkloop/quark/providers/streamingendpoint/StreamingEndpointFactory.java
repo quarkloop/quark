@@ -2,10 +2,9 @@ package com.quarkloop.quark.providers.streamingendpoint;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.quarkloop.quark.core.domain.category.NodeCategory;
 import com.quarkloop.quark.core.domain.config.NodeConfig;
 import com.quarkloop.quark.core.domain.identity.NodeUri;
-import com.quarkloop.quark.core.domain.spi.EndpointProvider;
+import com.quarkloop.quark.core.domain.spi.NodeProvider;
 import com.quarkloop.quark.core.domain.spi.QuarkMessage;
 import com.quarkloop.quark.core.domain.spi.QuarkPublisher;
 import com.quarkloop.quark.core.registry.NodeDescriptor;
@@ -27,87 +26,59 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * Endpoint node that runs a small HTTP server and exposes per-node SSE
- * streams. Each connected client receives a {@code data: <json>\n\n} line
- * for every NATS message delivered to the endpoint.
+ * SSE broadcast node — runs an HTTP server and exposes per-node SSE streams.
  *
- * <p>URI: {@code endpoint/stream:v1}. The engine injects the runtime
- * identity (the engine's config key injection, {@code _quark_namespace},
- * {@code _quark_node}) into the config so the provider knows its own
- * subject-tuple.
- *
- * <p>HTTP server configuration (read from MicroProfile Config):
- * <ul>
- *   <li>{@code quark.streaming.host} (default {@code 0.0.0.0})</li>
- *   <li>{@code quark.streaming.port} (default {@code 8081})</li>
- *   <li>{@code quark.streaming.path-prefix} (default {@code stream})</li>
- * </ul>
- *
- * <p>URL pattern: {@code /<prefix>/<namespace>/<system>/<node>}.
- * Multiple endpoints in the same JVM share the same HTTP server — the
- * route is keyed by (namespace, system, node).
+ * <p>URI: {@code quark/stream/sse/broadcast:v1}
  */
 @ApplicationScoped
-public class StreamingEndpointFactory implements NodeImplementationFactory<EndpointProvider> {
+public class StreamingEndpointFactory implements NodeImplementationFactory {
 
     private static final Logger log = LoggerFactory.getLogger(StreamingEndpointFactory.class);
 
-    /**
-     * Engine-injected config keys (mirrors the engine's config keys).
-     * Kept as string literals here so provider modules don't need to depend
-     * on {@code quark-engine}.
-     */
     private static final String CONFIG_KEY_SYSTEM    = "_quark_system";
     private static final String CONFIG_KEY_NAMESPACE = "_quark_namespace";
     private static final String CONFIG_KEY_NODE      = "_quark_node";
 
     @Override
     public String uriPattern() {
-        return "endpoint/stream";
+        return "quark/stream/sse/broadcast";
     }
 
     @Override
-    public EndpointProvider create(NodeConfig config) {
-        return new StreamingEndpoint(config);
+    public NodeProvider create(NodeConfig config) {
+        return new SseBroadcastNode(config);
     }
 
     @Override
     public NodeDescriptor descriptor() {
         return new NodeDescriptor(
-                NodeUri.parse("endpoint/stream:v1"),
-                NodeCategory.ENDPOINT,
-                false,
+                NodeUri.parse("quark/stream/sse/broadcast:v1"),
                 "Exposes an HTTP SSE endpoint that streams incoming NATS messages."
         );
     }
 
-    @Override
-    public NodeCategory category() {
-        return NodeCategory.ENDPOINT;
-    }
-
-    /**
-     * Shared HTTP server registry — one server per (host, port) pair,
-     * shared across all endpoint instances in this JVM.
-     */
     private static final Map<String, SharedServer> SHARED_SERVERS = new ConcurrentHashMap<>();
 
-    static final class StreamingEndpoint implements EndpointProvider {
+    static final class SseBroadcastNode implements NodeProvider {
 
         private static final ObjectMapper MAPPER = new ObjectMapper();
-        static {
-            MAPPER.registerModule(new JavaTimeModule());
-        }
+        static { MAPPER.registerModule(new JavaTimeModule()); }
 
-        private final String namespace;
-        private final String systemName;
-        private final String nodeName;
-
+        private String namespace;
+        private String systemName;
+        private String nodeName;
         private final List<OutputStream> clients = new CopyOnWriteArrayList<>();
         private final Map<OutputStream, Object> clientLocks = new ConcurrentHashMap<>();
         private SharedServer sharedServer;
 
-        StreamingEndpoint(NodeConfig config) {
+        SseBroadcastNode(NodeConfig config) {
+            this.namespace = config.getString(CONFIG_KEY_NAMESPACE, "default");
+            this.systemName = config.getString(CONFIG_KEY_SYSTEM, "system");
+            this.nodeName = config.getString(CONFIG_KEY_NODE, "endpoint");
+        }
+
+        @Override
+        public void init(NodeConfig config) {
             this.namespace = config.getString(CONFIG_KEY_NAMESPACE, "default");
             this.systemName = config.getString(CONFIG_KEY_SYSTEM, "system");
             this.nodeName = config.getString(CONFIG_KEY_NODE, "endpoint");
@@ -133,10 +104,9 @@ public class StreamingEndpointFactory implements NodeImplementationFactory<Endpo
             });
             this.sharedServer = server;
 
-            // Register this endpoint's route: /<prefix>/<ns>/<sys>/<node>
             String route = "/" + prefix + "/" + namespace + "/" + systemName + "/" + nodeName;
             server.register(route, this);
-            log.info("Streaming endpoint registered: {} -> node {}/{}/{}", route, namespace, systemName, nodeName);
+            log.info("SSE endpoint registered: {} -> node {}/{}/{}", route, namespace, systemName, nodeName);
         }
 
         @Override
@@ -167,7 +137,6 @@ public class StreamingEndpointFactory implements NodeImplementationFactory<Endpo
                         os.flush();
                     }
                 } catch (IOException e) {
-                    // Client disconnected
                     clients.remove(os);
                     clientLocks.remove(os);
                     log.debug("SSE client disconnected (node {}/{}/{})", namespace, systemName, nodeName);
@@ -176,7 +145,7 @@ public class StreamingEndpointFactory implements NodeImplementationFactory<Endpo
         }
 
         @Override
-        public void stop() {
+        public void close() {
             if (sharedServer != null) {
                 sharedServer.unregister(this);
             }
@@ -185,7 +154,7 @@ public class StreamingEndpointFactory implements NodeImplementationFactory<Endpo
             }
             clients.clear();
             clientLocks.clear();
-            log.info("Streaming endpoint stopped: node {}/{}/{}", namespace, systemName, nodeName);
+            log.info("SSE endpoint stopped: node {}/{}/{}", namespace, systemName, nodeName);
         }
 
         void addClient(OutputStream os) {
@@ -209,28 +178,21 @@ public class StreamingEndpointFactory implements NodeImplementationFactory<Endpo
         String nodeName() { return nodeName; }
     }
 
-    /**
-     * Wraps a single {@link com.sun.net.httpserver.HttpServer} so multiple
-     * endpoint instances can register routes on it.
-     */
     static final class SharedServer {
         private final com.sun.net.httpserver.HttpServer server;
-        private final Map<String, StreamingEndpoint> routes = new ConcurrentHashMap<>();
+        private final Map<String, SseBroadcastNode> routes = new ConcurrentHashMap<>();
 
         SharedServer(InetSocketAddress addr) throws IOException {
             this.server = com.sun.net.httpserver.HttpServer.create(addr, 0);
-            // Use platform threads in native image (Truffle JIT doesn't support
-            // virtual threads). Use virtual threads in JVM mode for efficiency.
             boolean isNative = System.getProperty("org.graalvm.nativeimage.imagecodekey") != null
                     || "true".equals(System.getProperty("quark.native"));
             java.util.concurrent.ThreadFactory factory = isNative
                     ? Thread.ofPlatform().name("quark-sse-", 0).factory()
                     : Thread.ofVirtual().name("quark-sse-", 0).factory();
             this.server.setExecutor(java.util.concurrent.Executors.newThreadPerTaskExecutor(factory));
-            // Catch-all handler — we inspect the path and dispatch.
             this.server.createContext("/", exchange -> {
                 String path = exchange.getRequestURI().getPath();
-                StreamingEndpoint endpoint = routes.get(path);
+                SseBroadcastNode endpoint = routes.get(path);
                 if (endpoint == null) {
                     String body = "Not Found: " + path + "\n";
                     exchange.sendResponseHeaders(404, body.length());
@@ -239,30 +201,22 @@ public class StreamingEndpointFactory implements NodeImplementationFactory<Endpo
                     }
                     return;
                 }
-                // SSE handshake
                 exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
                 exchange.getResponseHeaders().set("Cache-Control", "no-cache");
                 exchange.getResponseHeaders().set("Connection", "keep-alive");
                 exchange.sendResponseHeaders(200, 0);
                 OutputStream os = exchange.getResponseBody();
                 endpoint.addClient(os);
-                // Keep the connection open. For GET requests, getRequestBody()
-                // returns -1 immediately (no body), so we can't rely on it to
-                // detect client disconnect. Instead, we sleep in a loop and
-                // periodically write SSE comments as keepalive. When the client
-                // disconnects, the write throws IOException.
                 try {
                     while (!Thread.currentThread().isInterrupted()) {
                         Thread.sleep(2000);
-                        // Write a keepalive comment — SSE clients ignore lines
-                        // starting with ':'. This also detects disconnects.
                         synchronized (endpoint.getClientLock(os)) {
                             os.write(": keepalive\n\n".getBytes(StandardCharsets.UTF_8));
                             os.flush();
                         }
                     }
                 } catch (IOException e) {
-                    // Client closed the connection
+                    // Client closed
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 } finally {
@@ -273,21 +227,17 @@ public class StreamingEndpointFactory implements NodeImplementationFactory<Endpo
             });
         }
 
-        void start() {
-            server.start();
-        }
+        void start() { server.start(); }
 
-        void register(String route, StreamingEndpoint endpoint) {
+        void register(String route, SseBroadcastNode endpoint) {
             routes.put(route, endpoint);
         }
 
-        synchronized void unregister(StreamingEndpoint endpoint) {
+        synchronized void unregister(SseBroadcastNode endpoint) {
             String route = "/" + ConfigProvider.getConfig()
                     .getOptionalValue("quark.streaming.path-prefix", String.class).orElse("stream")
                     + "/" + endpoint.namespace() + "/" + endpoint.systemName() + "/" + endpoint.nodeName();
             routes.remove(route);
-            // If no more routes are registered, stop the HTTP server and
-            // remove it from the shared map so the port is released.
             if (routes.isEmpty()) {
                 server.stop(0);
                 String key = server.getAddress().getHostString() + ":" + server.getAddress().getPort();

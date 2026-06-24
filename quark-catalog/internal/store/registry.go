@@ -9,7 +9,7 @@ import (
 // --- Registry record operations (built-in node descriptors) ---
 //
 // The "registry" table holds descriptors for built-in nodes (uri,
-// pattern, category, active flag, description). This is distinct from
+// pattern flag, description). This is distinct from
 // the "node_packages" table (see packages.go) which stores pushed
 // .ts/.so payloads.
 
@@ -20,12 +20,12 @@ func (s *Store) SaveRegistryRecord(req api.SaveRegistryRequest) error {
 		active = 1
 	}
 	_, err := s.db.Exec(
-		`INSERT INTO registry (uri, pattern, category, active, description)
+		`INSERT INTO registry (uri, pattern, description)
 		 VALUES (?, ?, ?, ?, ?)
 		 ON CONFLICT(uri) DO UPDATE SET
-		   pattern=excluded.pattern, category=excluded.category, active=excluded.active,
+		   pattern=excluded.pattern, category=excluded.category=excluded.active,
 		   description=excluded.description`,
-		req.URI, req.Pattern, req.Category, active, req.Description,
+		req.URI, req.Pattern, req.Description,
 	)
 	return err
 }
@@ -34,11 +34,11 @@ func (s *Store) SaveRegistryRecord(req api.SaveRegistryRequest) error {
 // (nil, nil) when no row matches.
 func (s *Store) FindRegistryRecord(uri string) (*api.RegistryResponse, error) {
 	row := s.db.QueryRow(
-		`SELECT uri, pattern, category, active, description FROM registry WHERE uri=?`, uri,
+		`SELECT uri, pattern, description FROM registry WHERE uri=?`, uri,
 	)
 	var r api.RegistryResponse
 	var activeInt int
-	err := row.Scan(&r.URI, &r.Pattern, &r.Category, &activeInt, &r.Description)
+	err := row.Scan(&r.URI, &r.Pattern, &activeInt, &r.Description)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -48,7 +48,7 @@ func (s *Store) FindRegistryRecord(uri string) (*api.RegistryResponse, error) {
 
 // ListRegistryRecords returns all registry rows, ordered by URI.
 func (s *Store) ListRegistryRecords() ([]api.RegistryResponse, error) {
-	rows, err := s.db.Query(`SELECT uri, pattern, category, active, description FROM registry ORDER BY uri`)
+	rows, err := s.db.Query(`SELECT uri, pattern, description FROM registry ORDER BY uri`)
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +57,7 @@ func (s *Store) ListRegistryRecords() ([]api.RegistryResponse, error) {
 	for rows.Next() {
 		var r api.RegistryResponse
 		var activeInt int
-		if err := rows.Scan(&r.URI, &r.Pattern, &r.Category, &activeInt, &r.Description); err != nil {
+		if err := rows.Scan(&r.URI, &r.Pattern, &activeInt, &r.Description); err != nil {
 			return nil, err
 		}
 		r.Active = activeInt != 0

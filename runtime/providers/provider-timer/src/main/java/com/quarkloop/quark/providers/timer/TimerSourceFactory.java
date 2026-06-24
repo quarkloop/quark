@@ -1,10 +1,9 @@
 package com.quarkloop.quark.providers.timer;
 
-import com.quarkloop.quark.core.domain.category.NodeCategory;
 import com.quarkloop.quark.core.domain.config.NodeConfig;
 import com.quarkloop.quark.core.domain.identity.NodeUri;
+import com.quarkloop.quark.core.domain.spi.NodeProvider;
 import com.quarkloop.quark.core.domain.spi.QuarkPublisher;
-import com.quarkloop.quark.core.domain.spi.SourceProvider;
 import com.quarkloop.quark.core.registry.NodeDescriptor;
 import com.quarkloop.quark.core.registry.NodeImplementationFactory;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -22,71 +21,55 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Source node that emits a {@code tick} envelope at a fixed interval.
+ * Timer node — emits a {@code tick} event at a fixed interval.
  *
- * <p>URI: {@code source/timer:v1}. Config:
- * <ul>
- *   <li>{@code interval} (string, default {@code "1s"}) — duration like "1s", "500ms", "10s"</li>
- * </ul>
- *
- * <p>The provider publishes a {@code tick} event whose payload contains the
- * tick number (monotonic per-instance counter) and an ISO-8601 timestamp.
+ * <p>URI: {@code quark/time/schedule/timer:v1}
+ * Config: {@code interval} (string, default "1s")
  */
 @ApplicationScoped
-public class TimerSourceFactory implements NodeImplementationFactory<SourceProvider> {
+public class TimerSourceFactory implements NodeImplementationFactory {
 
     private static final Logger log = LoggerFactory.getLogger(TimerSourceFactory.class);
 
     @Override
     public String uriPattern() {
-        return "source/timer";
+        return "quark/time/schedule/timer";
     }
 
     @Override
-    public SourceProvider create(NodeConfig config) {
-        return new TimerSource(config);
+    public NodeProvider create(NodeConfig config) {
+        return new TimerNode();
     }
 
     @Override
     public NodeDescriptor descriptor() {
         return new NodeDescriptor(
-                NodeUri.parse("source/timer:v1"),
-                NodeCategory.SOURCE,
-                false,
-                "Emits a tick envelope at a fixed interval (default 1s)."
+                NodeUri.parse("quark/time/schedule/timer:v1"),
+                "Emits a tick event at a fixed interval (default 1s)."
         );
     }
 
-    @Override
-    public NodeCategory category() {
-        return NodeCategory.SOURCE;
-    }
+    static final class TimerNode implements NodeProvider {
 
-    static final class TimerSource implements SourceProvider {
-
-        private final Duration interval;
+        private Duration interval;
         private ScheduledExecutorService scheduler;
         private final AtomicLong tickCounter = new AtomicLong(0);
 
-        TimerSource(NodeConfig config) {
+        @Override
+        public void init(NodeConfig config) {
             String intervalStr = config.getString("interval", "1s");
             this.interval = parseDuration(intervalStr);
         }
 
         @Override
         public void start(QuarkPublisher publisher, NodeConfig config) {
-            // Use platform threads in native image (Truffle JIT doesn't support
-            // virtual threads). Use virtual threads in JVM mode for efficiency.
-            // Detection: check if running inside a native image by testing
-            // whether the imagecodekey system property is set (GraalVM sets it
-            // at build time). Also check quark.native as a fallback.
             boolean isNative = System.getProperty("org.graalvm.nativeimage.imagecodekey") != null
                     || "true".equals(System.getProperty("quark.native"));
             ThreadFactory factory = isNative
                     ? Thread.ofPlatform().name("quark-timer-", 0).factory()
                     : Thread.ofVirtual().name("quark-timer-", 0).factory();
             scheduler = Executors.newSingleThreadScheduledExecutor(factory);
-            log.info("Starting timer source (interval={}, threads={})", interval, isNative ? "platform" : "virtual");
+            log.info("Starting timer (interval={}, threads={})", interval, isNative ? "platform" : "virtual");
             scheduler.scheduleAtFixedRate(() -> {
                 try {
                     long n = tickCounter.incrementAndGet();
@@ -101,15 +84,14 @@ public class TimerSourceFactory implements NodeImplementationFactory<SourceProvi
         }
 
         @Override
-        public void stop() {
+        public void close() {
             if (scheduler != null) {
-                log.info("Stopping timer source (emitted {} ticks)", tickCounter.get());
+                log.info("Stopping timer (emitted {} ticks)", tickCounter.get());
                 scheduler.shutdownNow();
                 scheduler = null;
             }
         }
 
-        /** Parse simple duration strings: "1s", "500ms", "10s", "1m". */
         private static Duration parseDuration(String s) {
             if (s == null || s.isBlank()) return Duration.ofSeconds(1);
             String t = s.trim().toLowerCase();
@@ -118,7 +100,6 @@ public class TimerSourceFactory implements NodeImplementationFactory<SourceProvi
                 if (t.endsWith("s"))  return Duration.ofSeconds(Long.parseLong(t.substring(0, t.length() - 1)));
                 if (t.endsWith("m"))  return Duration.ofMinutes(Long.parseLong(t.substring(0, t.length() - 1)));
                 if (t.endsWith("h"))  return Duration.ofHours(Long.parseLong(t.substring(0, t.length() - 1)));
-                // Plain number → seconds
                 return Duration.ofSeconds(Long.parseLong(t));
             } catch (NumberFormatException e) {
                 log.warn("Invalid duration '{}', defaulting to 1s", s);

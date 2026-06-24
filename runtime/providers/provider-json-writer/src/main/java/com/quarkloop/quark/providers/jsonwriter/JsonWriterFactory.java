@@ -2,12 +2,11 @@ package com.quarkloop.quark.providers.jsonwriter;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.quarkloop.quark.core.domain.category.NodeCategory;
 import com.quarkloop.quark.core.domain.config.NodeConfig;
 import com.quarkloop.quark.core.domain.identity.NodeUri;
+import com.quarkloop.quark.core.domain.spi.NodeProvider;
 import com.quarkloop.quark.core.domain.spi.QuarkMessage;
 import com.quarkloop.quark.core.domain.spi.QuarkPublisher;
-import com.quarkloop.quark.core.domain.spi.StoreProvider;
 import com.quarkloop.quark.core.registry.NodeDescriptor;
 import com.quarkloop.quark.core.registry.NodeImplementationFactory;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -26,64 +25,46 @@ import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * Store node that appends each incoming QuarkMessage as a single JSON line
- * to a file on disk (JSON Lines / JSONL format).
+ * File writer node — appends incoming messages as JSON Lines to a file.
  *
- * <p>URI: {@code store/json-writer:v1}. Config:
- * <ul>
- *   <li>{@code path} (string, required) — file path; parent directories are created</li>
- *   <li>{@code mode} (string, default "append") — only "append" is supported</li>
- * </ul>
- *
- * <p>Each line in the output file is a JSON object of the shape:
- * <pre>
- *   { "subject": "...", "systemName": "...", "namespace": "...", "nodeName": "...",
- *     "timestamp": "...", "payload": { ... } }
- * </pre>
+ * <p>URI: {@code quark/io/file/write:v1}
+ * Config: {@code path} (string, required), {@code mode} (default "append")
  */
 @ApplicationScoped
-public class JsonWriterFactory implements NodeImplementationFactory<StoreProvider> {
+public class JsonWriterFactory implements NodeImplementationFactory {
 
     private static final Logger log = LoggerFactory.getLogger(JsonWriterFactory.class);
 
     @Override
     public String uriPattern() {
-        return "store/json-writer";
+        return "quark/io/file/write";
     }
 
     @Override
-    public StoreProvider create(NodeConfig config) {
-        return new JsonWriter(config);
+    public NodeProvider create(NodeConfig config) {
+        return new FileWriteNode();
     }
 
     @Override
     public NodeDescriptor descriptor() {
         return new NodeDescriptor(
-                NodeUri.parse("store/json-writer:v1"),
-                NodeCategory.STORE,
-                false,
+                NodeUri.parse("quark/io/file/write:v1"),
                 "Appends incoming messages as JSON Lines to a file on disk."
         );
     }
 
-    @Override
-    public NodeCategory category() {
-        return NodeCategory.STORE;
-    }
-
-    static final class JsonWriter implements StoreProvider {
+    static final class FileWriteNode implements NodeProvider {
 
         private static final ObjectMapper MAPPER = new ObjectMapper();
-        static {
-            MAPPER.registerModule(new JavaTimeModule());
-        }
+        static { MAPPER.registerModule(new JavaTimeModule()); }
 
-        private final Path path;
-        private final String mode;
+        private Path path;
+        private String mode;
         private final ReentrantLock lock = new ReentrantLock();
         private volatile boolean initialized = false;
 
-        JsonWriter(NodeConfig config) {
+        @Override
+        public void init(NodeConfig config) {
             String p = config.getString("path", "./quark-output.jsonl");
             this.path = Paths.get(p).toAbsolutePath().normalize();
             this.mode = config.getString("mode", "append");
@@ -103,10 +84,10 @@ public class JsonWriterFactory implements NodeImplementationFactory<StoreProvide
                         Files.createFile(path);
                     }
                 } catch (IOException e) {
-                    log.error("Failed to open json-writer file: {}", path, e);
+                    log.error("Failed to open file: {}", path, e);
                 }
                 initialized = true;
-                log.info("json-writer initialized at {} (mode={})", path, mode);
+                log.info("File writer initialized at {} (mode={})", path, mode);
             } finally {
                 lock.unlock();
             }
@@ -127,9 +108,7 @@ public class JsonWriterFactory implements NodeImplementationFactory<StoreProvide
             try {
                 byte[] line = (MAPPER.writeValueAsString(record) + "\n").getBytes(StandardCharsets.UTF_8);
                 Files.write(path, line,
-                        StandardOpenOption.CREATE,
-                        StandardOpenOption.APPEND,
-                        StandardOpenOption.SYNC);
+                        StandardOpenOption.CREATE, StandardOpenOption.APPEND, StandardOpenOption.SYNC);
                 log.debug("Appended 1 record to {}", path);
             } catch (IOException e) {
                 log.error("Failed to append to {}", path, e);

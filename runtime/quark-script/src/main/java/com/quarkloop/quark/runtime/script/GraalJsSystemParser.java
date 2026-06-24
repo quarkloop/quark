@@ -1,6 +1,5 @@
 package com.quarkloop.quark.runtime.script;
 
-import com.quarkloop.quark.core.domain.category.NodeCategory;
 import com.quarkloop.quark.core.domain.config.NodeConfig;
 import com.quarkloop.quark.core.domain.identity.Namespace;
 import com.quarkloop.quark.core.domain.identity.NodeUri;

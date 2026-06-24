@@ -55,10 +55,10 @@ public class NodeRegistryEndpoint {
     }
 
     @GET
-    public Response listNodes(@QueryParam("category") String category) {
+    public Response listNodes() {
         try {
             Map<String, Object> req = new LinkedHashMap<>();
-            if (category != null && !category.isBlank()) req.put("category", category);
+
             byte[] resp = natsRequest("registry.node.list", req);
             return Response.ok(new String(resp, StandardCharsets.UTF_8)).build();
         } catch (Exception e) {

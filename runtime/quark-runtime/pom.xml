@@ -32,10 +32,6 @@
         <!-- All node providers — the data plane loads these via the registry -->
         <dependency>
             <groupId>com.quarkloop.quark</groupId>
-            <artifactId>provider-stubs</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.quarkloop.quark</groupId>
             <artifactId>provider-timer</artifactId>
         </dependency>
         <dependency>
@@ -45,10 +41,6 @@
         <dependency>
             <groupId>com.quarkloop.quark</groupId>
             <artifactId>provider-memory-profiler</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.quarkloop.quark</groupId>
-            <artifactId>provider-list</artifactId>
         </dependency>
         <dependency>
             <groupId>com.quarkloop.quark</groupId>

@@ -11,8 +11,6 @@ package api
 type SaveRegistryRequest struct {
 	URI         string `json:"uri"`
 	Pattern     string `json:"pattern"`
-	Category    string `json:"category"`
-	Active      bool   `json:"active"`
 	Description string `json:"description"`
 }
 
@@ -25,8 +23,6 @@ type FindRegistryRequest struct {
 type RegistryResponse struct {
 	URI         string `json:"uri"`
 	Pattern     string `json:"pattern"`
-	Category    string `json:"category"`
-	Active      bool   `json:"active"`
 	Description string `json:"description"`
 }
 

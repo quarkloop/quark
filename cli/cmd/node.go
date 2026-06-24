@@ -30,7 +30,6 @@ Examples:
 }
 
 var nodePushURI string
-var nodePushCategory string
 var nodePushVersion string
 var nodePushType string
 
@@ -43,7 +42,6 @@ func init() {
         nodeCmd.AddCommand(nodePullCmd)
 
         nodePushCmd.Flags().StringVar(&nodePushURI, "uri", "", "Node URI (e.g., function/my-node:v1)")
-        nodePushCmd.Flags().StringVar(&nodePushCategory, "category", "function", "Node category (source|function|store|endpoint|policy)")
         nodePushCmd.Flags().StringVar(&nodePushVersion, "version", "1.0.0", "Node version")
         nodePushCmd.Flags().StringVar(&nodePushType, "type", "typescript", "Content type (typescript|shared-library)")
         _ = nodePushCmd.MarkFlagRequired("uri")
@@ -210,7 +208,6 @@ func runNodePush(cmd *cobra.Command, args []string) error {
         // Build manifest
         manifest := map[string]interface{}{
                 "uri":         nodePushURI,
-                "category":    nodePushCategory,
                 "version":     nodePushVersion,
                 "description": fmt.Sprintf("Node %s", nodePushURI),
         }
@@ -219,7 +216,6 @@ func runNodePush(cmd *cobra.Command, args []string) error {
         // Build push request
         pushReq := map[string]interface{}{
                 "uri":         nodePushURI,
-                "category":    nodePushCategory,
                 "version":     nodePushVersion,
                 "manifest":    string(manifestJson),
                 "content":     content,

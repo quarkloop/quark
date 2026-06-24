@@ -7,7 +7,6 @@ type NodeSummary struct {
         SystemName string `json:"systemName"`
         Namespace  string `json:"namespace"`
         URI        string `json:"uri"`
-        Category   string `json:"category"`
         State      string `json:"state"`
         Health     string `json:"health"`
         Version    int64  `json:"version"`
@@ -18,7 +17,6 @@ type NodeDetail struct {
         SystemName   string                 `json:"systemName"`
         Namespace    string                 `json:"namespace"`
         URI          string                 `json:"uri"`
-        Category     string                 `json:"category"`
         State        string                 `json:"state"`
         Health       string                 `json:"health"`
         Version      int64                  `json:"version"`

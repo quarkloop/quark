@@ -226,7 +226,7 @@ public class DeployService {
                     int saved = 0;
                     for (NodeInfo ni : resp.nodes()) {
                         NodeRecord record = new NodeRecord(
-                                ns, name, ni.name(), ni.uri(), ni.category(),
+                                ns, name, ni.name(), ni.uri(), 
                                 ni.state(), ni.health(), 1L, null,
                                 ni.listens(), ni.events(),
                                 Map.of(), Map.of(), Map.of(),
@@ -472,7 +472,7 @@ public class DeployService {
      * data for the control plane to persist a NodeRecord.
      */
     public record NodeInfo(
-            String name, String uri, String category,
+            String name, String uri,
             String state, String health,
             List<String> listens, List<String> events
     ) {}

@@ -1,9 +1,8 @@
 package com.quarkloop.quark.providers.memoryprofiler;
 
-import com.quarkloop.quark.core.domain.category.NodeCategory;
 import com.quarkloop.quark.core.domain.config.NodeConfig;
 import com.quarkloop.quark.core.domain.identity.NodeUri;
-import com.quarkloop.quark.core.domain.spi.FunctionProvider;
+import com.quarkloop.quark.core.domain.spi.NodeProvider;
 import com.quarkloop.quark.core.domain.spi.QuarkMessage;
 import com.quarkloop.quark.core.domain.spi.QuarkPublisher;
 import com.quarkloop.quark.core.registry.NodeDescriptor;
@@ -20,51 +19,34 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Function node that reads JVM heap/non-heap memory usage on receipt of a
- * trigger message and publishes a {@code data} event.
+ * Memory profiler node — reads JVM heap/non-heap memory usage on receipt of a trigger.
  *
- * <p>URI: {@code function/memory-profiler:v1}. No config required.
- *
- * <p>Payload shape:
- * <pre>
- *   {
- *     "heapUsed": 12345678, "heapCommitted": 33554432, "heapMax": 536870912,
- *     "nonHeapUsed": 9876543, "nonHeapCommitted": 16777216,
- *     "timestamp": "2026-...", "trigger": "timer.tick"
- *   }
- * </pre>
+ * <p>URI: {@code quark/system/memory/profile:v1}
  */
 @ApplicationScoped
-public class MemoryProfilerFactory implements NodeImplementationFactory<FunctionProvider> {
+public class MemoryProfilerFactory implements NodeImplementationFactory {
 
     private static final Logger log = LoggerFactory.getLogger(MemoryProfilerFactory.class);
 
     @Override
     public String uriPattern() {
-        return "function/memory-profiler";
+        return "quark/system/memory/profile";
     }
 
     @Override
-    public FunctionProvider create(NodeConfig config) {
-        return new MemoryProfiler();
+    public NodeProvider create(NodeConfig config) {
+        return new MemoryProfilerNode();
     }
 
     @Override
     public NodeDescriptor descriptor() {
         return new NodeDescriptor(
-                NodeUri.parse("function/memory-profiler:v1"),
-                NodeCategory.FUNCTION,
-                true,
+                NodeUri.parse("quark/system/memory/profile:v1"),
                 "Reads JVM heap/non-heap memory usage on receipt of a trigger."
         );
     }
 
-    @Override
-    public NodeCategory category() {
-        return NodeCategory.FUNCTION;
-    }
-
-    static final class MemoryProfiler implements FunctionProvider {
+    static final class MemoryProfilerNode implements NodeProvider {
 
         private final MemoryMXBean memory = ManagementFactory.getMemoryMXBean();
 

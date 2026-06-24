@@ -148,7 +148,7 @@ public class DataPlaneCommandHandler {
                 nodeInfos.add(new NodeInfo(
                         rn.definition().name(),
                         rn.definition().uri().toString(),
-                        rn.definition().category().label(),
+                        
                         rn.state().name(),
                         rn.health().name(),
                         listens,
@@ -217,7 +217,7 @@ public class DataPlaneCommandHandler {
         }
     }
     public record NodeInfo(
-            String name, String uri, String category,
+            String name, String uri,
             String state, String health,
             List<String> listens, List<String> events
     ) {}

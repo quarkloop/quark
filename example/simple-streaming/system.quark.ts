@@ -20,14 +20,14 @@ export default {
     nodes: {
         // A 1-second timer that publishes "tick" events.
         timer: {
-            uses: "source/timer:v1",
+            uses: "quark/time/schedule/timer:v1",
             interval: "1s",
             events: ["tick"],
         },
 
         // CPU profiler — triggered by timer ticks.
         cpu: {
-            uses: "function/cpu-profiler:v1",
+            uses: "quark/system/cpu/profile:v1",
             timeout: "200ms",
             listens: ["timer.tick"],
             events: ["data"],
@@ -36,7 +36,7 @@ export default {
 
         // Memory profiler — triggered by timer ticks.
         memory: {
-            uses: "function/memory-profiler:v1",
+            uses: "quark/system/memory/profile:v1",
             timeout: "200ms",
             listens: ["timer.tick"],
             events: ["data"],
@@ -45,7 +45,7 @@ export default {
 
         // JSON file writer — appends each sample as a JSON Line.
         writer: {
-            uses: "store/json-writer:v1",
+            uses: "quark/io/file/write:v1",
             path: "./example/simple-streaming/json/system-monitor.jsonl",
             mode: "append",
             listens: ["cpu.data", "memory.data", "fallback.cpu", "fallback.memory"],
@@ -53,7 +53,7 @@ export default {
 
         // In-memory list — accumulates data, publishes "updated" events.
         list: {
-            uses: "store/list:v1",
+            uses: "quark/data/shape/map:v1",
             maxSize: 100,
             listens: ["cpu.data", "memory.data"],
             events: ["updated"],
@@ -61,7 +61,7 @@ export default {
 
         // Streaming endpoint — SSE server.
         stream: {
-            uses: "endpoint/stream:v1",
+            uses: "quark/stream/sse/broadcast:v1",
             listens: ["list.updated"],
         },
     },

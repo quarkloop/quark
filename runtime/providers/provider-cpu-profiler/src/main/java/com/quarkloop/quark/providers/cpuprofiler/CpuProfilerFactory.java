@@ -1,9 +1,8 @@
 package com.quarkloop.quark.providers.cpuprofiler;
 
-import com.quarkloop.quark.core.domain.category.NodeCategory;
 import com.quarkloop.quark.core.domain.config.NodeConfig;
 import com.quarkloop.quark.core.domain.identity.NodeUri;
-import com.quarkloop.quark.core.domain.spi.FunctionProvider;
+import com.quarkloop.quark.core.domain.spi.NodeProvider;
 import com.quarkloop.quark.core.domain.spi.QuarkMessage;
 import com.quarkloop.quark.core.domain.spi.QuarkPublisher;
 import com.quarkloop.quark.core.registry.NodeDescriptor;
@@ -19,50 +18,34 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Function node that reads CPU usage on receipt of a trigger message and
- * publishes a {@code data} event with the current CPU load.
+ * CPU profiler node — reads CPU usage on receipt of a trigger message.
  *
- * <p>URI: {@code function/cpu-profiler:v1}. No config required.
- *
- * <p>Payload shape:
- * <pre>
- *   { "cpu": 0.42, "processCpu": 0.18, "timestamp": "2026-...", "trigger": "timer.tick" }
- * </pre>
- *
- * <p>Values are fractions in {@code [0.0, 1.0]} (or negative if unavailable
- * on the current JVM/OS).
+ * <p>URI: {@code quark/system/cpu/profile:v1}
  */
 @ApplicationScoped
-public class CpuProfilerFactory implements NodeImplementationFactory<FunctionProvider> {
+public class CpuProfilerFactory implements NodeImplementationFactory {
 
     private static final Logger log = LoggerFactory.getLogger(CpuProfilerFactory.class);
 
     @Override
     public String uriPattern() {
-        return "function/cpu-profiler";
+        return "quark/system/cpu/profile";
     }
 
     @Override
-    public FunctionProvider create(NodeConfig config) {
-        return new CpuProfiler();
+    public NodeProvider create(NodeConfig config) {
+        return new CpuProfilerNode();
     }
 
     @Override
     public NodeDescriptor descriptor() {
         return new NodeDescriptor(
-                NodeUri.parse("function/cpu-profiler:v1"),
-                NodeCategory.FUNCTION,
-                true,
+                NodeUri.parse("quark/system/cpu/profile:v1"),
                 "Reads CPU usage (system + process) on receipt of a trigger."
         );
     }
 
-    @Override
-    public NodeCategory category() {
-        return NodeCategory.FUNCTION;
-    }
-
-    static final class CpuProfiler implements FunctionProvider {
+    static final class CpuProfilerNode implements NodeProvider {
 
         @Override
         public void onMessage(QuarkMessage message, QuarkPublisher publisher) {
@@ -70,7 +53,6 @@ public class CpuProfilerFactory implements NodeImplementationFactory<FunctionPro
             double systemCpu = os.getSystemLoadAverage();
             double processCpu = -1.0;
 
-            // com.sun.management.OperatingSystemMXBean exposes richer metrics
             if (os instanceof com.sun.management.OperatingSystemMXBean sunOs) {
                 systemCpu = sunOs.getCpuLoad();
                 processCpu = sunOs.getProcessCpuLoad();

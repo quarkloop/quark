@@ -144,11 +144,6 @@
             <!-- Provider modules (artifact = provider-*) -->
             <dependency>
                 <groupId>com.quarkloop.quark</groupId>
-                <artifactId>provider-stubs</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.quarkloop.quark</groupId>
                 <artifactId>provider-timer</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -160,11 +155,6 @@
             <dependency>
                 <groupId>com.quarkloop.quark</groupId>
                 <artifactId>provider-memory-profiler</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.quarkloop.quark</groupId>
-                <artifactId>provider-list</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
