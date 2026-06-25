@@ -1,0 +1,79 @@
+package com.quarkloop.quark.runtime.registry.inmemory;
+
+import com.quarkloop.quark.runtime.domain.identity.NodeUri;
+import com.quarkloop.quark.runtime.registry.NodeDescriptor;
+import com.quarkloop.quark.runtime.registry.NodeImplementationFactory;
+import com.quarkloop.quark.runtime.registry.NodeRegistry;
+import jakarta.enterprise.context.ApplicationScoped;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+
+@ApplicationScoped
+public class InMemoryNodeRegistry implements NodeRegistry {
+
+    private record RegistryEntry(NodeImplementationFactory factory, NodeDescriptor descriptor) {}
+
+    private final ConcurrentHashMap<String, RegistryEntry> entries = new ConcurrentHashMap<>();
+
+    /**
+     * The lookup key is the URI pattern: namespace/domain/subdomain/node
+     * (without version). This matches what factories return from uriPattern().
+     */
+    private String getPatternKey(NodeUri uri) {
+        return uri.pattern();
+    }
+
+    @Override
+    public Optional<NodeDescriptor> lookup(NodeUri uri) {
+        if (uri == null) return Optional.empty();
+        RegistryEntry entry = entries.get(getPatternKey(uri));
+        return Optional.ofNullable(entry).map(RegistryEntry::descriptor);
+    }
+
+    @Override
+    public Optional<NodeImplementationFactory> lookupFactory(NodeUri uri) {
+        if (uri == null) return Optional.empty();
+        RegistryEntry entry = entries.get(getPatternKey(uri));
+        return Optional.ofNullable(entry).map(RegistryEntry::factory);
+    }
+
+    @Override
+    public void register(NodeImplementationFactory factory) {
+        if (factory == null) {
+            throw new IllegalArgumentException("Factory cannot be null");
+        }
+        String key = factory.uriPattern();
+        if (entries.containsKey(key)) {
+            throw new com.quarkloop.quark.runtime.registry.RegistryException("Factory already registered for pattern: " + key);
+        }
+        entries.put(key, new RegistryEntry(factory, factory.descriptor()));
+    }
+
+    @Override
+    public List<NodeDescriptor> search(String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return listAll();
+        }
+        String lowerKeyword = keyword.toLowerCase();
+        return entries.values().stream()
+                .map(RegistryEntry::descriptor)
+                .filter(desc -> desc.uri().rawUri().toLowerCase().contains(lowerKeyword) ||
+                        desc.description().toLowerCase().contains(lowerKeyword))
+                .toList();
+    }
+
+    @Override
+    public List<NodeDescriptor> listAll() {
+        return entries.values().stream()
+                .map(RegistryEntry::descriptor)
+                .toList();
+    }
+
+    @Override
+    public boolean isRegistered(NodeUri uri) {
+        if (uri == null) return false;
+        return entries.containsKey(getPatternKey(uri));
+    }
+}
