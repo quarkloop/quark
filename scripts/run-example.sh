@@ -36,26 +36,14 @@ CLI_BIN="cli/quarkctl"
 # Use RUN_MODE if set (the Makefile uses RUN_MODE=jvm|native). Backwards-compat with BUILD_MODE.
 RUN_MODE="${RUN_MODE:-${BUILD_MODE:-jvm}}"
 
-if [ "$RUN_MODE" = "native" ]; then
-    SERVER_BIN="server/quark-server/target/quark-server-0.1.0-SNAPSHOT-runner"
-    if [ ! -x "$SERVER_BIN" ]; then
-        echo "❌ Native binary not found at $SERVER_BIN — run 'make build-native-server' first." >&2
-        exit 1
-    fi
-    RUN_CMD=("$SERVER_BIN" "-Dquark.native=true")
-else
-    SERVER_BIN="server/quark-server/target/quark-server-0.1.0-SNAPSHOT-runner.jar"
-    if [ ! -f "$SERVER_BIN" ]; then
-        echo "❌ Server jar not found at $SERVER_BIN — run 'make build' first." >&2
-        exit 1
-    fi
-    # Use JAVA_HOME if set, otherwise fall back to PATH
-    if [ -n "$JAVA_HOME" ] && [ -x "$JAVA_HOME/bin/java" ]; then
-        RUN_CMD=("$JAVA_HOME/bin/java" -jar "$SERVER_BIN")
-    else
-        RUN_CMD=("java" -jar "$SERVER_BIN")
-    fi
+# The server is always a Go binary now. RUN_MODE only affects the runtime
+# (which the server spawns as a child process).
+SERVER_BIN="server/quark-server"
+if [ ! -x "$SERVER_BIN" ]; then
+    echo "❌ Go server binary not found at $SERVER_BIN — run 'make build' first." >&2
+    exit 1
 fi
+RUN_CMD=("$SERVER_BIN")
 
 if [ ! -x "$CLI_BIN" ]; then
     echo "❌ CLI binary not found at $CLI_BIN — run 'make build' first." >&2
@@ -104,7 +92,7 @@ sleep 1
 echo "  ✓ Catalog ready"
 
 # ---- Start the server ------------------------------------------------------
-echo "▶ Starting Quark server ($RUN_MODE mode, background)..."
+echo "▶ Starting Quark Go server (background)..."
 
 # Use a dedicated port to avoid clashes with any running instance.
 export QUARK_STATE_ROOT="$STATE_DIR"
@@ -113,7 +101,6 @@ export BUILD_MODE="$RUN_MODE"   # backwards-compat for any downstream readers
 
 
 "${RUN_CMD[@]}" \
-    -Dquarkus.http.port=8080 \
     > /tmp/quark-server.log 2>&1 &
 SERVER_PID=$!
 
@@ -132,10 +119,8 @@ cleanup() {
 trap cleanup EXIT
 
 # ---- Wait for readiness ----------------------------------------------------
-# The control plane exposes two health surfaces:
-#   - /health/live    (HealthEndpoint @Path("/health") — plain JSON, always 200 once Quarkus is up)
-#   - /q/health/live  (SmallRye Health — runs PlatformLivenessCheck)
-# Both are valid; we poll /health/live (the simpler one).
+# The Go control plane exposes /health/live (same path as the Java server
+# for CLI/script compat).
 echo "⏳ Waiting for server to be ready..."
 READY=0
 for i in $(seq 1 30); do
