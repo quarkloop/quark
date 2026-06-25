@@ -1,12 +1,12 @@
 package com.quarkloop.quark.providers.cpuprofiler;
 
-import com.quarkloop.quark.core.domain.config.NodeConfig;
-import com.quarkloop.quark.core.domain.identity.NodeUri;
-import com.quarkloop.quark.core.domain.spi.NodeProvider;
-import com.quarkloop.quark.core.domain.spi.QuarkMessage;
-import com.quarkloop.quark.core.domain.spi.QuarkPublisher;
-import com.quarkloop.quark.core.registry.NodeDescriptor;
-import com.quarkloop.quark.core.registry.NodeImplementationFactory;
+import com.quarkloop.quark.runtime.domain.config.NodeConfig;
+import com.quarkloop.quark.runtime.domain.identity.NodeUri;
+import com.quarkloop.quark.runtime.domain.spi.NodeProvider;
+import com.quarkloop.quark.runtime.domain.spi.QuarkMessage;
+import com.quarkloop.quark.runtime.domain.spi.QuarkPublisher;
+import com.quarkloop.quark.runtime.registry.NodeDescriptor;
+import com.quarkloop.quark.runtime.registry.NodeImplementationFactory;
 import jakarta.enterprise.context.ApplicationScoped;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

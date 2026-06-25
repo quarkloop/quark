@@ -141,9 +141,9 @@ polyglot Quark node. Followed exactly — no shortcuts.
   ```java
   package quark.io.file.watch;
 
-  import com.quarkloop.quark.core.domain.config.NodeConfig;
-  import com.quarkloop.quark.core.domain.spi.NodeProvider;
-  import com.quarkloop.quark.core.domain.spi.QuarkPublisher;
+  import com.quarkloop.quark.runtime.domain.config.NodeConfig;
+  import com.quarkloop.quark.runtime.domain.spi.NodeProvider;
+  import com.quarkloop.quark.runtime.domain.spi.QuarkPublisher;
 
   public class FileWatchNode implements NodeProvider {
 
@@ -180,7 +180,7 @@ polyglot Quark node. Followed exactly — no shortcuts.
   ```java
   package quark.io.file.watch;
 
-  import com.quarkloop.quark.core.domain.config.NodeConfig;
+  import com.quarkloop.quark.runtime.domain.config.NodeConfig;
 
   public record FileWatchConfig(
       String path,

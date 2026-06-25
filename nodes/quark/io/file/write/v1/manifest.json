@@ -21,8 +21,7 @@
     "events": [],
     "dependencies": {
         "java": [
-            "com.quarkloop.quark:quark-domain:0.1.0-SNAPSHOT",
-            "com.quarkloop.quark:quark-registry:0.1.0-SNAPSHOT",
+            "com.quarkloop.quark:quark-core:0.1.0-SNAPSHOT",
             "org.slf4j:slf4j-api:2.0.6",
             "jakarta.enterprise:jakarta.enterprise.cdi-api:4.1.0",
             "com.fasterxml.jackson.core:jackson-databind:2.18.2",

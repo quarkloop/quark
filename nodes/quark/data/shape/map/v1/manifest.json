@@ -18,7 +18,16 @@
             "description": "If true, include unmapped fields from the source payload in the output"
         }
     },
-    "events": ["mapped"],
-    "dependencies": {},
-    "supportedRuntimes": ["jvm", "native"]
+    "events": [
+        "mapped"
+    ],
+    "dependencies": {
+        "java": [
+            "com.quarkloop.quark:quark-core:0.1.0-SNAPSHOT"
+        ]
+    },
+    "supportedRuntimes": [
+        "jvm",
+        "native"
+    ]
 }

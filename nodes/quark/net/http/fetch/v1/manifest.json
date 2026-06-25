@@ -28,7 +28,17 @@
             "description": "Request timeout in milliseconds"
         }
     },
-    "events": ["response", "error"],
-    "dependencies": {},
-    "supportedRuntimes": ["jvm", "native"]
+    "events": [
+        "response",
+        "error"
+    ],
+    "dependencies": {
+        "java": [
+            "com.quarkloop.quark:quark-core:0.1.0-SNAPSHOT"
+        ]
+    },
+    "supportedRuntimes": [
+        "jvm",
+        "native"
+    ]
 }

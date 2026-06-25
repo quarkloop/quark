@@ -18,7 +18,17 @@
             "description": "If true, throw on parse errors instead of publishing an error event"
         }
     },
-    "events": ["parsed", "error"],
-    "dependencies": {},
-    "supportedRuntimes": ["jvm", "native"]
+    "events": [
+        "parsed",
+        "error"
+    ],
+    "dependencies": {
+        "java": [
+            "com.quarkloop.quark:quark-core:0.1.0-SNAPSHOT"
+        ]
+    },
+    "supportedRuntimes": [
+        "jvm",
+        "native"
+    ]
 }

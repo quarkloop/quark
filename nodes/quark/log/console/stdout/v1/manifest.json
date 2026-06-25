@@ -14,6 +14,13 @@
         }
     },
     "events": [],
-    "dependencies": {},
-    "supportedRuntimes": ["jvm", "native"]
+    "dependencies": {
+        "java": [
+            "com.quarkloop.quark:quark-core:0.1.0-SNAPSHOT"
+        ]
+    },
+    "supportedRuntimes": [
+        "jvm",
+        "native"
+    ]
 }
