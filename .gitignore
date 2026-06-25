@@ -39,3 +39,4 @@ worklog.md
 .env
 quark-catalog/quark-catalog
 cli/cli
+server/quark-server
