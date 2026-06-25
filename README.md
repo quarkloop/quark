@@ -2,7 +2,7 @@
 
 A universal runtime for programmable nodes, built on a **three-service architecture**: a Java/Native control plane (no GraalJS), a Go + SQLite Catalog service, and a Java/Native data plane (with GraalJS for TypeScript execution). All services communicate via an external NATS broker.
 
-Everything in Quark — sources, functions, stores, endpoints, policies — is a **Node** identified by a Docker-style URI (`category/implementation:version`). Users declare nodes and their communication patterns in `.quark.ts` files. The control plane parses these declarations (via a regex-based `SimpleSystemParser`) and forwards them to the data plane, where GraalJS evaluates TypeScript node logic over NATS.
+Everything in Quark — sources, functions, stores, endpoints, policies — is a **Node** identified by a Docker-style URI (`category/implementation:version`). Users declare nodes and their communication patterns in `.quark.ts` files. The control plane parses these declarations (via a comment-aware `SimpleSystemParser`, no GraalJS) and forwards them to the data plane, where GraalJS's native ESM module support evaluates TypeScript node logic over NATS.
 
 **Multi-tenant by construction**: NATS subjects encode the namespace. Two tenants can deploy same-named systems simultaneously with zero data leakage.
 
@@ -28,7 +28,7 @@ Everything in Quark — sources, functions, stores, endpoints, policies — is a
         └────────────────── NATS broker (external, nats://localhost:4222) ──────────────┘
 ```
 
-- **Control Plane** (`server/`): REST API, process management, deploy orchestration. Uses `SimpleSystemParser` (regex-based, no GraalJS) to parse `.quark.ts`. Sends all persistence requests to the Catalog via NATS. Spawns data-plane processes on demand.
+- **Control Plane** (`server/`): REST API, process management, deploy orchestration. Uses `SimpleSystemParser` (comment-aware, no GraalJS) to parse `.quark.ts`. Sends all persistence requests to the Catalog via NATS. Spawns data-plane processes on demand.
 - **Catalog Service** (`quark-catalog/`): Standalone Go process with SQLite storage. Pure Go (`modernc.org/sqlite`, no CGO), no JNI, no GraalVM issues. Stores systems, nodes, events, source, and node packages (`.ts`/`.so` files). Performs JSONL migration on first startup.
 - **Data Plane** (`runtime/`): Executes node systems. Spawned by the control plane. Includes GraalJS/Truffle for TypeScript node execution. Forwards events and metrics back via NATS.
 
@@ -118,7 +118,7 @@ RUN_MODE=native make run-example        # Run example with native binaries
 - Mandrel is sufficient for the **control plane** (no GraalJS), but the **data plane** requires Oracle GraalVM (Truffle support)
 
 **Native mode notes:**
-- **GraalJS in data plane only**: The data plane native binary includes GraalJS via `--macro:truffle-svm`. The control plane native binary excludes GraalJS entirely (uses `SimpleSystemParser`). This is what keeps the server image small.
+- **GraalJS in data plane only**: The data plane native binary includes GraalJS via `--macro:truffle-svm`. The control plane native binary excludes GraalJS entirely (uses `SimpleSystemParser`). This is what keeps the server image small. GraalJS evaluates `.ts` files via native ESM module support (`js.esm-eval-returns-exports=true`) — the platform's `.ts` files are valid ECMAScript modules with no actual TypeScript type annotations.
 - **Virtual threads**: Truffle JIT compilation doesn't support virtual threads. Providers automatically use platform threads in native mode (detected via `quark.native` system property).
 - **Catalog persistence**: Works in both JVM and native modes (Go + SQLite, no JNI).
 
@@ -151,7 +151,7 @@ quark-platform/
 │   ├── quark-domain/                    ← Pure domain model (records, sealed interfaces)
 │   ├── quark-event/                     ← Event bus + per-tenant event store SPI
 │   ├── quark-registry/                  ← SPI registry for node implementations
-│   ├── quark-script/                    ← SystemParser interface + SimpleSystemParser (regex)
+│   ├── quark-script/                    ← SystemParser interface + SimpleSystemParser (comment-aware, no GraalJS)
 │   └── quark-engine/                    ← Lifecycle, NATS wiring, DataPlaneProcess, ProcessManager
 │
 ├── server/                              ← CONTROL PLANE — no GraalJS
@@ -161,12 +161,11 @@ quark-platform/
 │   └── quark-server/                    ← Quarkus runner (QuarkServer.java, native-image config)
 │
 ├── runtime/                             ← DATA PLANE — includes GraalJS/Truffle
-│   ├── quark-script/                    ← GraalJsSystemParser (GraalJS-based parser)
-│   ├── quark-polyglot/                  ← TypeScriptNodeFactory + GraalJS providers
+│   ├── quark-script/                    ← GraalJsSystemParser (GraalJS ESM-based parser)
+│   ├── quark-polyglot/                  ← TypeScriptNodeFactory + JsConsole/JsConfig/JsMessage/JsPublisher bridges
 │   ├── quark-app/                       ← RuntimeDeployService, DataPlaneCommandHandler
 │   ├── quark-runtime/                   ← Quarkus runner (QuarkRuntime.java, --macro:truffle-svm)
 │   └── providers/                       ← Node implementations
-│       ├── provider-stubs/              ← Noop/memory stubs (testing)
 │       ├── provider-timer/              ← quark/time/schedule/timer:v1
 │       ├── provider-cpu-profiler/       ← quark/system/cpu/profile:v1
 │       ├── provider-memory-profiler/    ← quark/system/memory/profile:v1
@@ -183,7 +182,9 @@ quark-platform/
 │       └── server/                      ← NATS handlers
 │
 ├── example/                             ← Runnable examples
-│   └── simple-streaming/                ← Multi-tenant streaming monitor example
+│   ├── simple-streaming/                ← Multi-tenant streaming monitor
+│   ├── json-pipeline/                   ← Timer → JSON parse → map → stdout
+│   └── conditional-routing/             ← Conditional router with two sinks
 │
 └── cli/                                 ← Go-based CLI (quarkctl, with --json flag)
 ```
