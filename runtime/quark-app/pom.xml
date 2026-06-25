@@ -13,25 +13,14 @@
     <name>Quark Runtime App</name>
     <description>Data-plane application services (runtime only).</description>
     <dependencies>
+        <!-- quark-core consolidates the pre-v6 core/* modules (domain, engine, event, registry, script). -->
         <dependency>
             <groupId>com.quarkloop.quark</groupId>
-            <artifactId>quark-domain</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.quarkloop.quark</groupId>
-            <artifactId>quark-engine</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.quarkloop.quark</groupId>
-            <artifactId>quark-event</artifactId>
+            <artifactId>quark-core</artifactId>
         </dependency>
         <dependency>
             <groupId>com.quarkloop.quark</groupId>
             <artifactId>quark-runtime-script</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.quarkloop.quark</groupId>
-            <artifactId>quark-script</artifactId>
         </dependency>
         <dependency>
             <groupId>com.quarkloop.quark</groupId>

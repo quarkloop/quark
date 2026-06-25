@@ -13,17 +13,10 @@
     <name>Quark Runtime Polyglot</name>
     <description>TypeScript node execution engine (runtime only, uses GraalJS).</description>
     <dependencies>
+        <!-- quark-core replaces the old quark-domain + quark-registry + quark-engine modules. -->
         <dependency>
             <groupId>com.quarkloop.quark</groupId>
-            <artifactId>quark-domain</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.quarkloop.quark</groupId>
-            <artifactId>quark-registry</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.quarkloop.quark</groupId>
-            <artifactId>quark-engine</artifactId>
+            <artifactId>quark-core</artifactId>
         </dependency>
         <dependency>
             <groupId>org.graalvm.polyglot</groupId>

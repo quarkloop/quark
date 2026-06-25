@@ -13,13 +13,10 @@
     <name>Quark Runtime Script</name>
     <description>GraalJS-based .quark.ts parser (runtime only).</description>
     <dependencies>
+        <!-- quark-core replaces the old quark-domain + quark-script modules. -->
         <dependency>
             <groupId>com.quarkloop.quark</groupId>
-            <artifactId>quark-domain</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.quarkloop.quark</groupId>
-            <artifactId>quark-script</artifactId>
+            <artifactId>quark-core</artifactId>
         </dependency>
         <dependency>
             <groupId>org.graalvm.polyglot</groupId>
