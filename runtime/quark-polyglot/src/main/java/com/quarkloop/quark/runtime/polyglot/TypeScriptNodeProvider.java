@@ -12,10 +12,30 @@ import org.slf4j.LoggerFactory;
 /**
  * Unified TypeScript node provider — implements {@link NodeProvider}.
  *
- * <p>Wraps a GraalJS {@link Value} (the exported object from the TS module)
- * and delegates to its methods if they exist. The engine calls
- * {@code init}, {@code start}, {@code onMessage}, {@code close} — this class
- * checks whether the JS export has the corresponding method and calls it.
+ * <p>Wraps a GraalJS {@link Value} (the default-exported object from the
+ * TS module) and delegates to its {@code onStart}, {@code onMessage},
+ * {@code onStop} methods if present.
+ *
+ * <h2>Method invocation</h2>
+ *
+ * <p>GraalJS provides two ways to call a member function:
+ * <ul>
+ *   <li>{@code exported.getMember("onMessage").execute(args...)} — calls
+ *       the function with the given args, but does <strong>not</strong>
+ *       bind {@code this} to {@code exported}. In strict mode (which ESM
+ *       modules use), {@code this} is {@code undefined}.</li>
+ *   <li>{@code exported.invokeMember("onMessage", args...)} — calls the
+ *       method <em>on</em> {@code exported}, so {@code this === exported}.
+ *       This is what node authors expect when they write
+ *       {@code export default { onMessage(msg, pub) { this... } }}.</li>
+ * </ul>
+ *
+ * <p>We use {@link Value#invokeMember} so that node code which references
+ * {@code this} works correctly, and so that the function's formal
+ * parameters receive the actual arguments in the right order. (The
+ * previous implementation called {@code execute(exported, jsMsg, jsPub)}
+ * which incorrectly passed {@code exported} as the first argument,
+ * shifting every other argument by one position.)
  *
  * <p>Exceptions in {@code onMessage} are rethrown (not swallowed) so the
  * engine's metrics and NATS nak semantics work correctly.
@@ -37,7 +57,8 @@ class TypeScriptNodeProvider implements NodeProvider {
         this.hasOnMessage = exported.hasMember("onMessage");
         this.hasStop = exported.hasMember("onStop") || exported.hasMember("stop");
 
-        // Inject config into JS context
+        // Inject config into JS context as a global, so module code can
+        // reference `config` via the global scope chain.
         ctx.getBindings("js").putMember("config", new JsConfig(config));
     }
 
@@ -54,11 +75,11 @@ class TypeScriptNodeProvider implements NodeProvider {
         var jsPub = new JsPublisher(publisher);
         ctx.getBindings("js").putMember("publisher", jsPub);
 
-        Value startFn = exported.hasMember("onStart") ? exported.getMember("onStart") : exported.getMember("start");
+        String methodName = exported.hasMember("onStart") ? "onStart" : "start";
         try {
-            startFn.execute(exported, jsPub, new JsConfig(config));
+            exported.invokeMember(methodName, jsPub, new JsConfig(config));
         } catch (Exception e) {
-            throw new RuntimeException("TypeScript onStart failed: " + e.getMessage(), e);
+            throw new RuntimeException("TypeScript " + methodName + " failed: " + e.getMessage(), e);
         }
     }
 
@@ -71,7 +92,7 @@ class TypeScriptNodeProvider implements NodeProvider {
         ctx.getBindings("js").putMember("publisher", jsPub);
 
         try {
-            exported.getMember("onMessage").execute(exported, jsMsg, jsPub);
+            exported.invokeMember("onMessage", jsMsg, jsPub);
         } catch (Exception e) {
             throw new RuntimeException("TypeScript onMessage failed: " + e.getMessage(), e);
         }
@@ -80,11 +101,11 @@ class TypeScriptNodeProvider implements NodeProvider {
     @Override
     public void close() {
         if (hasStop) {
+            String methodName = exported.hasMember("onStop") ? "onStop" : "stop";
             try {
-                Value stopFn = exported.hasMember("onStop") ? exported.getMember("onStop") : exported.getMember("stop");
-                stopFn.execute(exported);
+                exported.invokeMember(methodName);
             } catch (Exception e) {
-                log.warn("TypeScript onStop failed: {}", e.getMessage());
+                log.warn("TypeScript {} failed: {}", methodName, e.getMessage());
             }
         }
         try {

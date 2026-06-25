@@ -29,6 +29,32 @@
             <groupId>org.graalvm.polyglot</groupId>
             <artifactId>polyglot</artifactId>
         </dependency>
+        <!--
+            Use js-community (not js) to avoid pulling in truffle-enterprise,
+            which has a known native-image incompatibility with GraalVM
+            21.0.11 + Truffle 24.1.x (HSPathGen$EndPoint calls a
+            non-existent Path.resolve overload).
+
+            Declared here (not just in quark-runtime-script) so that the
+            TypeScriptNodeFactory can be unit-tested in isolation, and so
+            that downstream consumers of quark-runtime-polyglot get the
+            JS language runtime transitively without having to redeclare
+            it.
+        -->
+        <dependency>
+            <groupId>org.graalvm.js</groupId>
+            <artifactId>js-community</artifactId>
+            <version>${graaljs.version}</version>
+            <type>pom</type>
+        </dependency>
+        <dependency>
+            <groupId>org.graalvm.truffle</groupId>
+            <artifactId>truffle-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.graalvm.regex</groupId>
+            <artifactId>regex</artifactId>
+        </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
@@ -48,6 +74,16 @@
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
+        </dependency>
+        <!-- Test dependencies -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
         </dependency>
     </dependencies>
 </project>
