@@ -14,6 +14,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.Engine;
 import org.graalvm.polyglot.HostAccess;
+import org.graalvm.polyglot.Source;
 import org.graalvm.polyglot.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,31 +25,52 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * GraalJS-based parser for .quark.ts files.
+ * GraalJS-based parser for {@code .quark.ts} files.
  *
- * <p>Evaluates the user's TypeScript/JavaScript source code in a sandboxed
- * GraalJS context. The user's code exports a default object (the system
- * configuration). The parser extracts this object via GraalJS's polyglot
- * API and converts it to a Java {@link SystemDefinition}.
+ * <p>Evaluates the user's TypeScript/JavaScript source code as an
+ * <em>ECMAScript Module</em> in a sandboxed GraalJS context. The user's
+ * code uses {@code export default { ... }} to expose the system
+ * configuration object. The parser extracts this object via GraalJS's
+ * polyglot API and converts it to a Java {@link SystemDefinition}.
  *
  * <p>This parser is the default in JVM mode. In native-image mode, the
- * {@link SimpleSystemParser} is used instead because GraalJS/Truffle is
- * not compatible with GraalVM native-image's closed-world analysis.
+ * {@code SimpleSystemParser} (in {@code core/quark-script}) is used
+ * instead because GraalJS/Truffle is not compatible with GraalVM
+ * native-image's closed-world analysis.
+ *
+ * <h2>TypeScript handling</h2>
+ *
+ * <p>GraalJS Community Edition (24.1.x) does not natively parse
+ * TypeScript — there is no {@code js.typescript} option (see
+ * <a href="https://github.com/oracle/graaljs/issues/784">graaljs#784</a>).
+ * The previous hand-rolled regex-based {@code stripTypeScript()} was
+ * fundamentally broken (it would, e.g., eat the words {@code "as JSON"}
+ * from comments, and clobber {@code export default} inside
+ * {@code __quark_export}). See {@link TypeScriptNodeFactory} for full
+ * background.
+ *
+ * <p>The current approach evaluates the source directly as an ESM module
+ * using GraalJS's native module parser. This works because the
+ * {@code .quark.ts} files used in this platform are valid ECMAScript
+ * modules — they use {@code export default { ... }} without any actual
+ * TypeScript type annotations.
  *
  * <p>The sandbox:
  * <ul>
  *   <li>No host access (can't call Java methods)</li>
  *   <li>No file I/O, no threads, no processes, no native access</li>
+ *   <li>No environment variable access</li>
  * </ul>
- *
- * <p>TypeScript transpilation: the parser strips TypeScript syntax (type
- * annotations, interfaces, imports, exports) using a simple regex-based
- * transpiler. The stripped JS is then evaluated by GraalJS.
  */
 @ApplicationScoped
 public class GraalJsSystemParser implements SystemParser {
 
     private static final Logger log = LoggerFactory.getLogger(GraalJsSystemParser.class);
+
+    /**
+     * MIME type that triggers GraalJS's ECMAScript Module parser.
+     */
+    static final String ESM_MIME_TYPE = "application/javascript+module";
 
     /**
      * Force Quarkus's build-time bytecode analysis to detect direct references
@@ -57,13 +79,6 @@ public class GraalJsSystemParser implements SystemParser {
      * {@code NoClassDefFoundError: org/graalvm/polyglot/impl/AbstractPolyglotImpl}
      * when {@link Engine#newBuilder()} tries to load the polyglot implementation
      * via ServiceLoader.
-     *
-     * <p>This method is called lazily from {@link #getEngine()} (at runtime,
-     * on first parse) rather than from a static initializer. This is critical
-     * for GraalVM native-image compatibility: a static initializer would
-     * trigger class loading of Truffle/GraalJS classes at build time, which
-     * fails because the polyglot implementation JAR is not on the
-     * native-image builder's classpath.
      */
     private static void ensureGraalReferences() {
         //noinspection ResultOfMethodCallIgnored
@@ -74,29 +89,6 @@ public class GraalJsSystemParser implements SystemParser {
         GraalRuntimeReferences.REGEX_LANGUAGE.getName();
     }
 
-    /**
-     * The GraalJS {@link Engine} is created lazily (not in a field initializer)
-     * to control the thread's context classloader at creation time.
-     *
-     * <p>Quarkus's fast-jar layout splits GraalVM jars across two classloaders:
-     * <ul>
-     *   <li>{@code lib/boot/} (system classloader) — {@code truffle-api.jar}
-     *       containing {@code com.oracle.truffle.polyglot.PolyglotImpl}</li>
-     *   <li>{@code lib/main/} (Quarkus classloader) — {@code graal-sdk.jar}
-     *       containing {@code org.graalvm.polyglot.impl.AbstractPolyglotImpl}
-     *       (the superclass of {@code PolyglotImpl})</li>
-     * </ul>
-     *
-     * <p>When {@link Engine#newBuilder()}.build() uses {@link java.util.ServiceLoader}
-     * to discover the polyglot implementation, it may use a classloader that
-     * can see {@code PolyglotImpl} but NOT its superclass {@code AbstractPolyglotImpl},
-     * causing {@code NoClassDefFoundError}.
-     *
-     * <p>Setting the thread's context classloader to the Quarkus application
-     * classloader (which can see BOTH {@code lib/main/} directly AND
-     * {@code lib/boot/} via parent delegation) before creating the Engine
-     * resolves the split-classloader issue.
-     */
     private volatile Engine engine;
 
     private Engine getEngine() {
@@ -106,12 +98,9 @@ public class GraalJsSystemParser implements SystemParser {
         }
         synchronized (this) {
             if (engine == null) {
-                // Force GraalJS jar references (lazy, not static — for native-image)
                 ensureGraalReferences();
                 Thread current = Thread.currentThread();
                 ClassLoader original = current.getContextClassLoader();
-                // Use this class's classloader (Quarkus app classloader) which
-                // can see both lib/main/ (graal-sdk) and lib/boot/ (truffle-api).
                 current.setContextClassLoader(GraalJsSystemParser.class.getClassLoader());
                 try {
                     engine = Engine.newBuilder()
@@ -134,10 +123,10 @@ public class GraalJsSystemParser implements SystemParser {
 
         List<String> errors = new ArrayList<>();
 
-        // 1. Strip TypeScript syntax
-        String jsCode = stripTypeScript(sourceCode);
-
-        // 2. Create sandboxed GraalJS context
+        // Create sandboxed GraalJS context.
+        // js.esm-eval-returns-exports=true causes Context.eval(Source) of an
+        // ESM Source to return the module namespace object, whose 'default'
+        // member is the value of `export default { ... }`.
         try (Context ctx = Context.newBuilder("js")
                 .engine(getEngine())
                 .allowHostAccess(HostAccess.NONE)
@@ -147,40 +136,44 @@ public class GraalJsSystemParser implements SystemParser {
                 .allowCreateProcess(false)
                 .allowNativeAccess(false)
                 .allowEnvironmentAccess(org.graalvm.polyglot.EnvironmentAccess.NONE)
+                .allowExperimentalOptions(true)
+                .option("js.esm-eval-returns-exports", "true")
                 .build()) {
 
-            // 3. Evaluate the user's code — capture the exported default object
-            // We wrap the code to capture `module.exports` or `export default` result
-            String wrappedCode = """
-                var __exported = null;
-                var module = { exports: null };
-                """ + jsCode + """
-                ;if (module.exports !== null) { __exported = module.exports; }
-                ;if (typeof __exported === 'undefined' || __exported === null) {
-                    // Try to find the last expression
-                    __exported = eval('(function() { ' + arguments[0] + ' })()');
-                }
-                """;
+            // Evaluate as an ECMAScript Module. The Source's MIME type tells
+            // GraalJS to use the module parser, which natively understands
+            // `export default { ... }`. No regex stripping needed.
+            Source src = Source.newBuilder("js", sourceCode, "system.quark.mjs")
+                    .mimeType(ESM_MIME_TYPE)
+                    .buildLiteral();
 
-            // Simpler approach: just eval the stripped JS, which should end with
-            // an expression (the exported object). The stripTypeScript function
-            // converts `export default {...}` to just `{...}` which is a valid
-            // JS expression.
-            Value result = ctx.eval("js", jsCode);
-
-            // 4. If result is an object, use it directly
-            Value captured;
-            if (result != null && !result.isNull() && result.hasMembers()) {
-                captured = result;
-            } else {
-                errors.add("The .quark.ts file must export a default object with name, namespace, and nodes fields.");
+            Value moduleNamespace;
+            try {
+                moduleNamespace = ctx.eval(src);
+            } catch (org.graalvm.polyglot.PolyglotException pe) {
+                log.error("Failed to evaluate .quark.ts file as ESM module", pe);
+                errors.add("Evaluation error: " + pe.getMessage());
                 return new SystemParseResult.Failure(errors);
             }
 
-            // 5. Convert the GraalJS Value to a Java Map
+            if (moduleNamespace == null || moduleNamespace.isNull()) {
+                errors.add("GraalJS returned a null module namespace. "
+                        + "The .quark.ts file must end with `export default { ... };`.");
+                return new SystemParseResult.Failure(errors);
+            }
+
+            Value captured = moduleNamespace.getMember("default");
+            if (captured == null || captured.isNull() || !captured.hasMembers()) {
+                errors.add("The .quark.ts file must export a default object with "
+                        + "name, namespace, and nodes fields, e.g. "
+                        + "`export default { name: \"...\", namespace: \"...\", nodes: { ... } };`.");
+                return new SystemParseResult.Failure(errors);
+            }
+
+            // Convert the GraalJS Value to a Java Map
             Map<String, Object> systemMap = valueToMap(captured);
 
-            // 6. Validate and build SystemDefinition
+            // Validate and build SystemDefinition
             return buildSystemDefinition(systemMap, errors);
 
         } catch (Exception e) {
@@ -225,10 +218,6 @@ public class GraalJsSystemParser implements SystemParser {
             return value.asString();
         }
         if (value.isNumber()) {
-            // Preserve integer values when they fit, otherwise use double.
-            // GraalJS returns long/double based on the source literal; we
-            // try int first because Jackson/the SPI expects ints for
-            // things like retry counts and maxSize.
             try {
                 return value.asInt();
             } catch (Exception ignored) {
@@ -348,64 +337,5 @@ public class GraalJsSystemParser implements SystemParser {
         }
 
         return new SystemParseResult.Success(new SystemDefinition(name, namespace, nodes, runtime));
-    }
-
-    /**
-     * Strip TypeScript-specific syntax to produce valid JavaScript.
-     *
-     * <p>Handles: import removal, export removal, type annotation stripping,
-     * interface/type declaration removal, `as` assertions, generics.
-     *
-     * <p>The key transformation: {@code export default {...};} becomes
-     * {@code ({...})} — a parenthesized object literal, which is a valid
-     * JS expression that evaluates to the object. Without the parens, a
-     * leading `{` at statement position would be parsed as a block
-     * statement (syntax error). Also handles the variant
-     * {@code export default({...});} where the object is wrapped in
-     * parens (common in TS codebases).
-     */
-    private String stripTypeScript(String ts) {
-        String js = ts;
-
-        // Remove import statements
-        js = js.replaceAll("(?m)^import\\s+.*?;$", "");
-
-        // Remove `export default ` — leaves the object literal expression.
-        // Matches `export default ` (the canonical form) and
-        // `export default(` (the wrapped form). We strip just the
-        // `export default` keyword + whitespace, leaving the `{` or `(`.
-        js = js.replaceAll("(?m)^export\\s+default\\s+", "");
-
-        // Remove other `export ` keywords (named exports, re-exports).
-        js = js.replaceAll("(?m)^export\\s+", "");
-
-        // Remove interface declarations
-        js = js.replaceAll("(?s)interface\\s+\\w+\\s*\\{.*?\\}", "");
-
-        // Remove type declarations
-        js = js.replaceAll("(?s)type\\s+\\w+\\s*=\\s*.*?;", "");
-
-        // Remove type annotations on variables
-        js = js.replaceAll("(\\w+)\\s*:\\s*[A-Za-z_<>,\\[\\]\\s|]+\\s*=", "$1 =");
-
-        // Remove 'as Type' assertions
-        js = js.replaceAll("\\s+as\\s+[A-Za-z_<>,\\[\\]\\s|]+", "");
-
-        // Remove generic type parameters
-        js = js.replaceAll("<[A-Za-z_<>,\\[\\]\\s|]+>", "");
-
-        // Trim and strip any trailing semicolons (left over from
-        // `export default {...};`) so wrapping in parens doesn't produce
-        // `({...};)` which is a syntax error.
-        js = js.trim();
-        while (js.endsWith(";")) {
-            js = js.substring(0, js.length() - 1).trim();
-        }
-
-        // Wrap the whole thing in parens so a leading `{...}` is parsed as
-        // an object expression, not a block statement.
-        js = "(" + js + ")";
-
-        return js;
     }
 }
