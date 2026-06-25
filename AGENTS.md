@@ -1,6 +1,6 @@
 # AGENTS.md — Guide for AI Agents Working on Quark
 
-> **If you read nothing else, read this:** Quark is a **three-service platform** with a strict tier-based directory layout. The `.quark.ts` file IS the program — users write only TypeScript and never touch Java. The flow: CLI sends the TypeScript to the **control plane** (server), which parses it with a regex-based `SimpleSystemParser` (no GraalJS), persists it to the **Catalog** (Go + SQLite, via NATS), and forwards deploy commands to a **data plane** (runtime) process that uses GraalJS to execute TypeScript node logic over an external NATS server.
+> **If you read nothing else, read this:** Quark is a **three-service platform** with a strict tier-based directory layout. The `.quark.ts` file IS the program — users write only TypeScript and never touch Java. The flow: CLI sends the TypeScript to the **control plane** (server), which parses it with a comment-aware `SimpleSystemParser` (no GraalJS), persists it to the **Catalog** (Go + SQLite, via NATS), and forwards deploy commands to a **data plane** (runtime) process that uses GraalJS's native ESM module support to execute TypeScript node logic over an external NATS server.
 
 ---
 
@@ -37,12 +37,11 @@ quark-platform/
 │   └── quark-server/                 ← Quarkus runner (QuarkServer.java, native-image config)
 │
 ├── runtime/                          ← DATA PLANE — includes GraalJS/Truffle
-│   ├── quark-script/                 ← GraalJsSystemParser (GraalJS-based parser, runtime-only)
-│   ├── quark-polyglot/               ← TypeScriptNodeFactory + GraalJS providers (Source/Function/Store/Endpoint)
+│   ├── quark-script/                 ← GraalJsSystemParser (GraalJS ESM-based parser, runtime-only)
+│   ├── quark-polyglot/               ← TypeScriptNodeFactory + JsConsole/JsConfig/JsMessage/JsPublisher bridges
 │   ├── quark-app/                    ← RuntimeDeployService, DataPlaneCommandHandler, forwarders
 │   ├── quark-runtime/                ← Quarkus runner (QuarkRuntime.java, native-image config w/ --macro:truffle-svm)
 │   └── providers/                    ← Node implementations (timer, cpu-profiler, etc.)
-│       ├── provider-stubs/           ← Noop/memory stubs (testing)
 │       ├── provider-timer/           ← quark/time/schedule/timer:v1
 │       ├── provider-cpu-profiler/    ← quark/system/cpu/profile:v1
 │       ├── provider-memory-profiler/← quark/system/memory/profile:v1
@@ -64,10 +63,12 @@ quark-platform/
 │   └── internal/                     ← HTTP client + model + output printers
 │
 └── example/
-    └── simple-streaming/             ← Multi-tenant streaming monitor example
-        ├── README.md
-        ├── system.quark.ts           ← The "program" — this is ALL the user writes
-        └── json/                     ← Output directory (server writes here)
+    ├── simple-streaming/             ← Multi-tenant streaming monitor example
+    │   ├── README.md
+    │   ├── system.quark.ts           ← The "program" — this is ALL the user writes
+    │   └── json/                     ← Output directory (server writes here)
+    ├── json-pipeline/                ← Timer → JSON parse → map → stdout pipeline
+    └── conditional-routing/          ← Conditional router with two stdout sinks
 ```
 
 ---
@@ -97,7 +98,9 @@ Three Maven tiers under the workspace root, each with strict dependency rules:
 | **server/** | quark-app, quark-api, quark-observability, quark-server | core/, Quarkus, NATS | GraalJS/Truffle, runtime/ |
 | **runtime/** | quark-script, quark-polyglot, quark-app, quark-runtime, providers/* | core/, Quarkus, NATS, GraalJS/Truffle | server/ |
 
-**Key invariant:** `core/quark-script` contains only `SimpleSystemParser` (regex-based, no GraalJS). The GraalJS-based `GraalJsSystemParser` lives in `runtime/quark-script`. This is what allows the server native image to stay small (76 MB vs 194 MB for the runtime).
+**Key invariant:** `core/quark-script` contains only `SimpleSystemParser` (a comment-aware regex parser, no GraalJS). The GraalJS-based `GraalJsSystemParser` lives in `runtime/quark-script`. This is what allows the server native image to stay small (76 MB vs 194 MB for the runtime).
+
+**TypeScript handling:** GraalJS Community Edition does NOT natively parse TypeScript (see [graaljs#784](https://github.com/oracle/graaljs/issues/784)). The platform's `.ts` files are valid ECMAScript modules using `export default { ... }` without actual type annotations, so the runtime evaluates them directly via GraalJS's native ESM module support (`Source.mimeType("application/javascript+module")` + `js.esm-eval-returns-exports=true`). The control plane's `SimpleSystemParser` does NOT strip TypeScript — it operates directly on the source with comment-aware, string-aware scanners. If real TS type annotations need to be supported in the future, integrate `tsc`/`esbuild`/`swc` at catalog push time.
 
 ### NATS subjects
 
@@ -154,7 +157,7 @@ Two distinct subject taxonomies flow through NATS:
    
    With `finalName=quark-runtime-runner`, the runnable jar is `quark-runtime-runner-runner.jar` (yes, double `-runner` suffix). `ProcessManager.findBinary()` and any packaging scripts must use the `-runner` variant.
 
-9. **Native image: server ≠ runtime.** The server native image must NOT include `--macro:truffle-svm` (keeps it at 76 MB, 3 GB peak RAM). The runtime native image MUST include it (194 MB, 6.5 GB peak RAM). The server uses `SimpleSystemParser` (regex); the runtime uses `GraalJsSystemParser` + `TypeScriptNodeFactory` (GraalJS).
+9. **Native image: server ≠ runtime.** The server native image must NOT include `--macro:truffle-svm` (keeps it at 76 MB, 3 GB peak RAM). The runtime native image MUST include it (194 MB, 6.5 GB peak RAM). The server uses `SimpleSystemParser` (comment-aware regex, no GraalJS); the runtime uses `GraalJsSystemParser` + `TypeScriptNodeFactory` (GraalJS ESM).
 
 10. **GraalJS enterprise is broken in native image.** `org.graalvm.polyglot:js` (enterprise) pulls in `truffle-enterprise`, whose `HSPathGen$EndPoint` calls a non-existent `Path.resolve(String, String[])` overload — a known GraalVM 21.0.11 + Truffle 24.1.x incompatibility. Use `org.graalvm.js:js-community` instead (community edition, no `truffle-enterprise`, sufficient for TS execution).
 
@@ -175,9 +178,9 @@ Two distinct subject taxonomies flow through NATS:
 - SQLite driver: `modernc.org/sqlite` (pure Go, no CGO) — required for trivial portability of the Catalog binary.
 
 ### TypeScript (user-facing)
-- `.quark.ts` files use `defineSystem()` from `quark.d.ts`.
-- Users get type safety from the npm package's `.d.ts` files.
-- The control plane parses with `SimpleSystemParser` (regex). The data plane evaluates TypeScript node logic via GraalJS.
+- `.quark.ts` files use `export default { name, namespace, nodes: { ... } }` syntax.
+- The control plane parses with `SimpleSystemParser` (comment-aware, no GraalJS).
+- The data plane evaluates TypeScript node logic via GraalJS ESM module support (`js.esm-eval-returns-exports=true`).
 
 ---
 
