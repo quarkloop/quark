@@ -6,107 +6,103 @@
 # depend on any local tool installations or paths.
 #
 # This is a BUILD verification image, not a runtime image. The runtime image
-# would be smaller (only JRE + the quarkus-app) — see docker/Dockerfile.runtime
-# (TODO: not yet implemented).
+# would be smaller (only JRE + the quarkus-app).
 # =============================================================================
 
 # ----- Stage 1: Build Java modules -----
 FROM maven:3.9-eclipse-temurin-21 AS java-builder
 
 WORKDIR /build
+
+# Copy parent POM and Maven wrapper first (cached layer for deps)
 COPY pom.xml .
 COPY mvnw mvnw.cmd .mvn ./
-COPY quark-core-domain/pom.xml quark-core-domain/
-COPY quark-core-parser/pom.xml quark-core-parser/
-COPY quark-core-registry/pom.xml quark-core-registry/
-COPY quark-core-event/pom.xml quark-core-event/
-COPY quark-core-engine/pom.xml quark-core-engine/
-COPY quark-observability/pom.xml quark-observability/
-COPY quark-core-script/pom.xml quark-core-script/
-COPY quark-app/pom.xml quark-app/
-COPY quark-api/pom.xml quark-api/
-COPY quark-server/pom.xml quark-server/
-COPY providers/pom.xml providers/
-COPY providers/provider-stubs/pom.xml providers/provider-stubs/
-COPY providers/provider-timer/pom.xml providers/provider-timer/
-COPY providers/provider-cpu-profiler/pom.xml providers/provider-cpu-profiler/
-COPY providers/provider-memory-profiler/pom.xml providers/provider-memory-profiler/
-COPY providers/provider-list/pom.xml providers/provider-list/
-COPY providers/provider-json-writer/pom.xml providers/provider-json-writer/
-COPY providers/provider-streaming-endpoint/pom.xml providers/provider-streaming-endpoint/
-COPY example/simple-streaming/runner/pom.xml example/simple-streaming/runner/
 
-# Pre-fetch dependencies (cached layer)
+# Copy all module POMs (the reactor layout is: core/, server/, runtime/)
+COPY core/quark-domain/pom.xml core/quark-domain/
+COPY core/quark-event/pom.xml core/quark-event/
+COPY core/quark-registry/pom.xml core/quark-registry/
+COPY core/quark-script/pom.xml core/quark-script/
+COPY core/quark-engine/pom.xml core/quark-engine/
+COPY server/quark-app/pom.xml server/quark-app/
+COPY server/quark-api/pom.xml server/quark-api/
+COPY server/quark-observability/pom.xml server/quark-observability/
+COPY server/quark-server/pom.xml server/quark-server/
+COPY runtime/quark-script/pom.xml runtime/quark-script/
+COPY runtime/quark-polyglot/pom.xml runtime/quark-polyglot/
+COPY runtime/quark-app/pom.xml runtime/quark-app/
+COPY runtime/quark-runtime/pom.xml runtime/quark-runtime/
+COPY runtime/providers/pom.xml runtime/providers/
+COPY runtime/providers/provider-timer/pom.xml runtime/providers/provider-timer/
+COPY runtime/providers/provider-cpu-profiler/pom.xml runtime/providers/provider-cpu-profiler/
+COPY runtime/providers/provider-memory-profiler/pom.xml runtime/providers/provider-memory-profiler/
+COPY runtime/providers/provider-json-writer/pom.xml runtime/providers/provider-json-writer/
+COPY runtime/providers/provider-streaming-endpoint/pom.xml runtime/providers/provider-streaming-endpoint/
+
+# Pre-fetch dependencies (cached layer). Tolerate failures here because
+# the parent POM references some artifacts that aren't needed in this build.
 RUN mvn -B dependency:go-offline -DskipTests || true
 
 # Copy sources and build
-COPY quark-core-domain/src quark-core-domain/src
-COPY quark-core-parser/src quark-core-parser/src
-COPY quark-core-registry/src quark-core-registry/src
-COPY quark-core-event/src quark-core-event/src
-COPY quark-core-engine/src quark-core-engine/src
-COPY quark-observability/src quark-observability/src
-COPY quark-core-script/src quark-core-script/src
-COPY quark-app/src quark-app/src
-COPY quark-api/src quark-api/src
-COPY quark-server/src quark-server/src
-COPY providers/provider-stubs/src providers/provider-stubs/src
-COPY providers/provider-timer/src providers/provider-timer/src
-COPY providers/provider-cpu-profiler/src providers/provider-cpu-profiler/src
-COPY providers/provider-memory-profiler/src providers/provider-memory-profiler/src
-COPY providers/provider-list/src providers/provider-list/src
-COPY providers/provider-json-writer/src providers/provider-json-writer/src
-COPY providers/provider-streaming-endpoint/src providers/provider-streaming-endpoint/src
-COPY example/simple-streaming/runner/src example/simple-streaming/runner/src
+COPY core/quark-domain/src core/quark-domain/src
+COPY core/quark-event/src core/quark-event/src
+COPY core/quark-registry/src core/quark-registry/src
+COPY core/quark-script/src core/quark-script/src
+COPY core/quark-engine/src core/quark-engine/src
+COPY server/quark-app/src server/quark-app/src
+COPY server/quark-api/src server/quark-api/src
+COPY server/quark-observability/src server/quark-observability/src
+COPY server/quark-server/src server/quark-server/src
+COPY runtime/quark-script/src runtime/quark-script/src
+COPY runtime/quark-polyglot/src runtime/quark-polyglot/src
+COPY runtime/quark-app/src runtime/quark-app/src
+COPY runtime/quark-runtime/src runtime/quark-runtime/src
+COPY runtime/providers/provider-timer/src runtime/providers/provider-timer/src
+COPY runtime/providers/provider-cpu-profiler/src runtime/providers/provider-cpu-profiler/src
+COPY runtime/providers/provider-memory-profiler/src runtime/providers/provider-memory-profiler/src
+COPY runtime/providers/provider-json-writer/src runtime/providers/provider-json-writer/src
+COPY runtime/providers/provider-streaming-endpoint/src runtime/providers/provider-streaming-endpoint/src
 
 RUN mvn -B clean install -DskipTests
 
-# ----- Stage 2: Build Go CLI -----
+# ----- Stage 2: Build Go CLI + Catalog -----
 FROM golang:1.24 AS go-builder
 
-WORKDIR /build
+# Build CLI
+WORKDIR /build/cli
 COPY cli/go.mod cli/go.sum ./
 RUN go mod download
-
 COPY cli/ .
 RUN go vet ./... && go test ./... && go build -trimpath -buildvcs=false -o /quarkctl .
+
+# Build Catalog
+WORKDIR /build/catalog
+COPY quark-catalog/go.mod quark-catalog/go.sum ./
+RUN go mod download
+COPY quark-catalog/ .
+RUN go vet ./... && go test ./... && go build -trimpath -buildvcs=false -o /quark-catalog ./cmd/quark-catalog
 
 # ----- Stage 3: Runtime image (JVM mode) -----
 FROM eclipse-temurin:21-jre AS runtime-jvm
 
-COPY --from=java-builder /build/quark-server/target/quark-server-0.1.0-SNAPSHOT-runner.jar /app/quark-server.jar
-COPY --from=java-builder /build/quark-server/target/lib /app/lib
+# Copy control plane (server) jar + lib dir
+COPY --from=java-builder /build/server/quark-server/target/quark-server-0.1.0-SNAPSHOT-runner.jar /app/quark-server.jar
+COPY --from=java-builder /build/server/quark-server/target/lib /app/lib/server
+# Copy data plane (runtime) jar + lib dir
+COPY --from=java-builder /build/runtime/quark-runtime/target/quark-runtime-runner-runner.jar /app/quark-runtime.jar
+COPY --from=java-builder /build/runtime/quark-runtime/target/lib /app/lib/runtime
+# Copy Go binaries
 COPY --from=go-builder /quarkctl /app/quarkctl
+COPY --from=go-builder /quark-catalog /app/quark-catalog
 
-# Smoke test
+# Smoke tests
 RUN /app/quarkctl --help | head -1
+RUN /app/quark-catalog -h 2>&1 | head -1 || true
 RUN java -version 2>&1 | head -1
 
 WORKDIR /app
-EXPOSE 8080 8081
+EXPOSE 8080 8081 4222
 
-# Default: run the JVM server
+# Default: run the JVM server. For full platform bring-up, also start
+# nats-server, the Catalog, and (if needed) the data-plane jar.
 CMD ["java", "-jar", "quark-server.jar"]
-
-# ----- Stage 4: Runtime image (native mode) -----
-# To build: docker build --target runtime-native -t quark-native .
-FROM debian:bookworm-slim AS runtime-native
-
-# Install required shared libraries for native image
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libstdc++6 \
-    zlib1g \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY --from=java-builder /build/quark-server/target/quark-server-0.1.0-SNAPSHOT-runner /app/quark-server
-COPY --from=go-builder /quarkctl /app/quarkctl
-
-# Smoke test
-RUN /app/quarkctl --help | head -1
-RUN /app/quark-server --version 2>&1 | head -1 || true
-
-WORKDIR /app
-EXPOSE 8080 8081
-
-# Default: run the native server
-CMD ["./quark-server"]
