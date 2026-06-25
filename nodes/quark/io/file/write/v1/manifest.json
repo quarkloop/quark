@@ -23,9 +23,16 @@
         "java": [
             "com.quarkloop.quark:quark-domain:0.1.0-SNAPSHOT",
             "com.quarkloop.quark:quark-registry:0.1.0-SNAPSHOT",
-            "com.fasterxml.jackson.core:jackson-databind",
-            "com.fasterxml.jackson.datatype:jackson-datatype-jsr310"
+            "org.slf4j:slf4j-api:2.0.6",
+            "jakarta.enterprise:jakarta.enterprise.cdi-api:4.1.0",
+            "com.fasterxml.jackson.core:jackson-databind:2.18.2",
+            "com.fasterxml.jackson.core:jackson-core:2.18.2",
+            "com.fasterxml.jackson.core:jackson-annotations:2.18.2",
+            "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.18.2"
         ]
     },
-    "supportedRuntimes": ["jvm", "native"]
+    "supportedRuntimes": [
+        "jvm",
+        "native"
+    ]
 }
