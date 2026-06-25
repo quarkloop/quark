@@ -162,15 +162,15 @@ quark-platform/
 │
 ├── runtime/                             ← DATA PLANE — includes GraalJS/Truffle
 │   ├── quark-script/                    ← GraalJsSystemParser (GraalJS ESM-based parser)
-│   ├── quark-polyglot/                  ← TypeScriptNodeFactory + JsConsole/JsConfig/JsMessage/JsPublisher bridges
+│   ├── quark-polyglot/                  ← TypeScriptNodeFactory + PolyglotNodeRegistry (catalog pull) + JsConsole/JsConfig/JsMessage/JsPublisher bridges
 │   ├── quark-app/                       ← RuntimeDeployService, DataPlaneCommandHandler
-│   ├── quark-runtime/                   ← Quarkus runner (QuarkRuntime.java, --macro:truffle-svm)
-│   └── providers/                       ← Node implementations
-│       ├── provider-timer/              ← quark/time/schedule/timer:v1
-│       ├── provider-cpu-profiler/       ← quark/system/cpu/profile:v1
-│       ├── provider-memory-profiler/    ← quark/system/memory/profile:v1
-│       ├── provider-json-writer/        ← quark/io/file/write:v1
-│       └── provider-streaming-endpoint/ ← quark/stream/sse/broadcast:v1
+│   └── quark-runtime/                   ← Quarkus runner (QuarkRuntime.java, --macro:truffle-svm)
+│   (NO providers/ subdir — runtime pulls every node from the Catalog at deploy time)
+│
+├── nodes/                               ← STANDARD LIBRARY (canonical node source — see nodes/README.md)
+│   └── quark/                           ← 10 nodes: 5 Java (timer, cpu, memory, writer, stream) + 5 TypeScript (stdout, json-parse, map, conditional, fetch)
+│       Each node dir: manifest.json + src/node.{java,ts} + build.toml + README.md
+│       Build + push: quarkctl node build <uri> → quarkctl node push <uri>
 │
 ├── quark-catalog/                       ← CATALOG service (Go + SQLite)
 │   ├── cmd/quark-catalog/main.go        ← Entry point
