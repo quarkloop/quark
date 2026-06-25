@@ -30,12 +30,19 @@
         </dependency>
 
         <!--
-            Node providers (timer, cpu-profiler, memory-profiler, json-writer,
-            streaming-endpoint) live in src/main/java/com/quarkloop/quark/providers/
-            inside THIS module. They are CDI-discovered via @ApplicationScoped and
-            registered by RegistryInitializer at startup. The canonical source-of-truth
-            for each provider is the corresponding nodes/quark/.../v1/src/node.java file;
-            the copy here is what actually gets compiled into the runtime binary.
+            Node providers are NOT compiled into the runtime binary.
+            They live exclusively in the nodes/ directory at the project
+            root, are built into .jar (Java) or sent as-is (.ts) packages,
+            and pushed to the Catalog via 'quarkctl node push <uri>'.
+            The runtime pulls each node from the Catalog on deploy via
+            PolyglotNodeRegistry (NATS subject 'registry.node.pull') and
+            loads it dynamically — TypeScript via GraalJS ESM, Java
+            shared-libraries via URLClassLoader.
+
+            This keeps the runtime binary small, generic, and decoupled
+            from any specific node implementation. Adding a new node
+            does NOT require rebuilding the runtime; it only requires
+            pushing the new node package to the Catalog.
         -->
 
         <!-- Quarkus -->
