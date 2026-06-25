@@ -173,22 +173,32 @@ NODES_TO_PUSH=(
 )
 for uri in "${NODES_TO_PUSH[@]}"; do
     echo "  • $uri"
-    ./$CLI_BIN node build "$uri" > /tmp/quark-node-build.log 2>&1 || {
-        echo "❌ node build failed for $uri:" >&2
-        cat /tmp/quark-node-build.log >&2
-        exit 1
-    }
-    ./$CLI_BIN node push  "$uri" > /tmp/quark-node-push.log 2>&1 || {
-        echo "❌ node push failed for $uri:" >&2
-        cat /tmp/quark-node-push.log >&2
+    ./$CLI_BIN node build "$uri" 2>&1 | sed 's/^/    /'
+    ./$CLI_BIN node push  "$uri" 2>&1 | sed 's/^/    /' || {
+        echo "❌ node push failed for $uri" >&2
         exit 1
     }
 done
-echo "  ✓ All ${#NODES_TO_PUSH[@]} nodes pushed."
+echo "  ✓ All ${#NODES_TO_PUSH[@]} nodes pushed to the Catalog."
 
 # ---- Deploy the example ----------------------------------------------------
+echo ""
 echo "▶ Deploying example under namespace 'alice'..."
+echo "  (the data plane will pull each node from the Catalog on first use)"
 ./$CLI_BIN apply -f example/simple-streaming/system.quark.ts -n alice
+
+# ---- Show node pull activity from the data plane log -----------------------
+# The data plane logs every catalog pull at INFO level:
+#   "Loaded node <uri> from catalog (type=<type>, <n> bytes)"
+# Surface those lines so the user can see the docker-image-style pull flow.
+echo ""
+echo "──────────────────────────── NODE PULL ACTIVITY ──────────────────────"
+DP_LOG="$STATE_DIR/dataplane-logs/dataplane-shared.log"
+if [ -f "$DP_LOG" ]; then
+    grep "Loaded node.*from catalog" "$DP_LOG" | sed 's/^.*Loaded node/  Pulled node/' | sort -u
+else
+    echo "  (data plane log not found at $DP_LOG)"
+fi
 
 # ---- Observe ---------------------------------------------------------------
 echo ""
