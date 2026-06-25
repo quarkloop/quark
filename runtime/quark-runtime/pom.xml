@@ -29,27 +29,14 @@
             <artifactId>quark-runtime-app</artifactId>
         </dependency>
 
-        <!-- All node providers — the data plane loads these via the registry -->
-        <dependency>
-            <groupId>com.quarkloop.quark</groupId>
-            <artifactId>provider-timer</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.quarkloop.quark</groupId>
-            <artifactId>provider-cpu-profiler</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.quarkloop.quark</groupId>
-            <artifactId>provider-memory-profiler</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.quarkloop.quark</groupId>
-            <artifactId>provider-json-writer</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.quarkloop.quark</groupId>
-            <artifactId>provider-streaming-endpoint</artifactId>
-        </dependency>
+        <!--
+            Node providers (timer, cpu-profiler, memory-profiler, json-writer,
+            streaming-endpoint) live in src/main/java/com/quarkloop/quark/providers/
+            inside THIS module. They are CDI-discovered via @ApplicationScoped and
+            registered by RegistryInitializer at startup. The canonical source-of-truth
+            for each provider is the corresponding nodes/quark/.../v1/src/node.java file;
+            the copy here is what actually gets compiled into the runtime binary.
+        -->
 
         <!-- Quarkus -->
         <dependency>
