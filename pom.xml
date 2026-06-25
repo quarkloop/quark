@@ -44,26 +44,15 @@
     </properties>
 
     <modules>
-        <!-- Core (shared, no GraalJS, no Quarkus) -->
-        <module>core/quark-domain</module>
-        <module>core/quark-event</module>
-        <module>core/quark-registry</module>
-        <module>core/quark-script</module>
-        <module>core/quark-engine</module>
-
-        <!-- Server (control plane, no GraalJS) -->
-        <module>server/quark-app</module>
-        <module>server/quark-api</module>
-        <module>server/quark-observability</module>
-        <module>server/quark-server</module>
-
-        <!-- Runtime (data plane, with GraalJS) -->
+        <!-- Runtime (data plane — GraalJS/Truffle) -->
+        <!-- quark-core consolidates the pre-v6 core/* modules. -->
+        <module>runtime/quark-core</module>
         <module>runtime/quark-script</module>
         <module>runtime/quark-polyglot</module>
         <module>runtime/quark-app</module>
         <module>runtime/quark-runtime</module>
 
-        <!-- Standalone services -->
+        <!-- (server/ is now a Go module — not a Maven module) -->
     </modules>
 
     <dependencyManagement>
@@ -80,43 +69,7 @@
             <!-- Internal modules -->
             <dependency>
                 <groupId>com.quarkloop.quark</groupId>
-                <artifactId>quark-domain</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.quarkloop.quark</groupId>
-                <artifactId>quark-script</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.quarkloop.quark</groupId>
-                <artifactId>quark-engine</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.quarkloop.quark</groupId>
-                <artifactId>quark-event</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.quarkloop.quark</groupId>
-                <artifactId>quark-registry</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            
-            <dependency>
-                <groupId>com.quarkloop.quark</groupId>
-                <artifactId>quark-observability</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.quarkloop.quark</groupId>
-                <artifactId>quark-app</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.quarkloop.quark</groupId>
-                <artifactId>quark-api</artifactId>
+                <artifactId>quark-core</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
