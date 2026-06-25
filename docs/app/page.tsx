@@ -23,7 +23,7 @@ const services = [
     name: "Control Plane",
     tagline: "Java / Native · 76 MB",
     description:
-      "REST API, deploy orchestration, spawns data-plane processes. No GraalJS — uses a regex-based SimpleSystemParser.",
+      "REST API, deploy orchestration, spawns data-plane processes. No GraalJS — uses a comment-aware SimpleSystemParser.",
   },
   {
     icon: Database,
