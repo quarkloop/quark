@@ -1,17 +1,17 @@
 package com.quarkloop.quark.app.query;
 
-import com.quarkloop.quark.core.domain.identity.Namespace;
-import com.quarkloop.quark.core.domain.node.Node;
-import com.quarkloop.quark.core.domain.state.HealthStatus;
-import com.quarkloop.quark.core.domain.state.NodeState;
-import com.quarkloop.quark.core.domain.system.NodeDefinition;
-import com.quarkloop.quark.core.engine.lifecycle.RuntimeNode;
-import com.quarkloop.quark.core.engine.lifecycle.RuntimeSystem;
-import com.quarkloop.quark.core.engine.runtime.RuntimeContext;
-import com.quarkloop.quark.core.engine.store.SystemRecord;
-import com.quarkloop.quark.core.engine.store.SystemRepository;
-import com.quarkloop.quark.core.engine.store.NodeRepository;
-import com.quarkloop.quark.core.engine.store.NodeRecord;
+import com.quarkloop.quark.runtime.domain.identity.Namespace;
+import com.quarkloop.quark.runtime.domain.node.Node;
+import com.quarkloop.quark.runtime.domain.state.HealthStatus;
+import com.quarkloop.quark.runtime.domain.state.NodeState;
+import com.quarkloop.quark.runtime.domain.system.NodeDefinition;
+import com.quarkloop.quark.runtime.engine.lifecycle.RuntimeNode;
+import com.quarkloop.quark.runtime.engine.lifecycle.RuntimeSystem;
+import com.quarkloop.quark.runtime.engine.runtime.RuntimeContext;
+import com.quarkloop.quark.runtime.engine.store.SystemRecord;
+import com.quarkloop.quark.runtime.engine.store.SystemRepository;
+import com.quarkloop.quark.runtime.engine.store.NodeRepository;
+import com.quarkloop.quark.runtime.engine.store.NodeRecord;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 

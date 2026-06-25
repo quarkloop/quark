@@ -1,15 +1,15 @@
 package com.quarkloop.quark.runtime.script;
 
-import com.quarkloop.quark.core.domain.config.NodeConfig;
-import com.quarkloop.quark.core.domain.identity.Namespace;
-import com.quarkloop.quark.core.domain.identity.NodeUri;
-import com.quarkloop.quark.core.domain.metadata.Annotations;
-import com.quarkloop.quark.core.domain.metadata.Labels;
-import com.quarkloop.quark.core.domain.system.NodeDefinition;
-import com.quarkloop.quark.core.domain.system.OnFailureConfig;
-import com.quarkloop.quark.core.domain.system.SystemDefinition;
-import com.quarkloop.quark.core.script.SystemParseResult;
-import com.quarkloop.quark.core.script.SystemParser;
+import com.quarkloop.quark.runtime.domain.config.NodeConfig;
+import com.quarkloop.quark.runtime.domain.identity.Namespace;
+import com.quarkloop.quark.runtime.domain.identity.NodeUri;
+import com.quarkloop.quark.runtime.domain.metadata.Annotations;
+import com.quarkloop.quark.runtime.domain.metadata.Labels;
+import com.quarkloop.quark.runtime.domain.system.NodeDefinition;
+import com.quarkloop.quark.runtime.domain.system.OnFailureConfig;
+import com.quarkloop.quark.runtime.domain.system.SystemDefinition;
+import com.quarkloop.quark.runtime.script.SystemParseResult;
+import com.quarkloop.quark.runtime.script.SystemParser;
 import jakarta.enterprise.context.ApplicationScoped;
 import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.Engine;

@@ -1,10 +1,10 @@
 package com.quarkloop.quark.api.v1.namespace;
 
 import com.quarkloop.quark.app.metrics.NamespaceMetricsCollector;
-import com.quarkloop.quark.core.engine.runtime.RuntimeContext;
-import com.quarkloop.quark.core.engine.store.NodeRepository;
-import com.quarkloop.quark.core.engine.store.SystemRecord;
-import com.quarkloop.quark.core.engine.store.SystemRepository;
+import com.quarkloop.quark.runtime.engine.runtime.RuntimeContext;
+import com.quarkloop.quark.runtime.engine.store.NodeRepository;
+import com.quarkloop.quark.runtime.engine.store.SystemRecord;
+import com.quarkloop.quark.runtime.engine.store.SystemRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;

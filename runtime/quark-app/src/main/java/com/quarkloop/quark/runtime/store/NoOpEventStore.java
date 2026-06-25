@@ -1,8 +1,8 @@
 package com.quarkloop.quark.runtime.store;
 
-import com.quarkloop.quark.core.domain.event.NodeEvent;
-import com.quarkloop.quark.core.event.EventFilter;
-import com.quarkloop.quark.core.event.EventStore;
+import com.quarkloop.quark.runtime.domain.event.NodeEvent;
+import com.quarkloop.quark.runtime.event.EventFilter;
+import com.quarkloop.quark.runtime.event.EventStore;
 import jakarta.enterprise.context.ApplicationScoped;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

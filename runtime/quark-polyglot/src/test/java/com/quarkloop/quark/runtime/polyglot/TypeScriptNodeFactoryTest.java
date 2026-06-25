@@ -1,9 +1,9 @@
 package com.quarkloop.quark.runtime.polyglot;
 
-import com.quarkloop.quark.core.domain.config.NodeConfig;
-import com.quarkloop.quark.core.domain.spi.NodeProvider;
-import com.quarkloop.quark.core.domain.spi.QuarkMessage;
-import com.quarkloop.quark.core.domain.spi.QuarkPublisher;
+import com.quarkloop.quark.runtime.domain.config.NodeConfig;
+import com.quarkloop.quark.runtime.domain.spi.NodeProvider;
+import com.quarkloop.quark.runtime.domain.spi.QuarkMessage;
+import com.quarkloop.quark.runtime.domain.spi.QuarkPublisher;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;

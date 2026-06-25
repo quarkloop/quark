@@ -1,6 +1,6 @@
 package com.quarkloop.quark.runtime.runner;
 
-import com.quarkloop.quark.core.engine.lifecycle.SystemDeployer;
+import com.quarkloop.quark.runtime.engine.lifecycle.SystemDeployer;
 import io.quarkus.runtime.Quarkus;
 import io.quarkus.runtime.QuarkusApplication;
 import io.quarkus.runtime.ShutdownEvent;

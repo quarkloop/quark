@@ -1,12 +1,12 @@
 package com.quarkloop.quark.app.deploy;
 
-import com.quarkloop.quark.core.domain.identity.Namespace;
-import com.quarkloop.quark.core.domain.system.NodeDefinition;
-import com.quarkloop.quark.core.domain.system.SystemDefinition;
-import com.quarkloop.quark.core.engine.lifecycle.DeploymentException;
-import com.quarkloop.quark.core.engine.runtime.RuntimeContext;
-import com.quarkloop.quark.core.script.SystemParseResult;
-import com.quarkloop.quark.core.script.SystemParser;
+import com.quarkloop.quark.runtime.domain.identity.Namespace;
+import com.quarkloop.quark.runtime.domain.system.NodeDefinition;
+import com.quarkloop.quark.runtime.domain.system.SystemDefinition;
+import com.quarkloop.quark.runtime.engine.lifecycle.DeploymentException;
+import com.quarkloop.quark.runtime.engine.runtime.RuntimeContext;
+import com.quarkloop.quark.runtime.script.SystemParseResult;
+import com.quarkloop.quark.runtime.script.SystemParser;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.slf4j.Logger;

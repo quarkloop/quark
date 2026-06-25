@@ -1,10 +1,10 @@
 package com.quarkloop.quark.runtime.polyglot;
 
-import com.quarkloop.quark.core.domain.config.NodeConfig;
-import com.quarkloop.quark.core.domain.identity.NodeUri;
-import com.quarkloop.quark.core.domain.spi.NodeProvider;
-import com.quarkloop.quark.core.registry.NodeDescriptor;
-import com.quarkloop.quark.core.registry.NodeImplementationFactory;
+import com.quarkloop.quark.runtime.domain.config.NodeConfig;
+import com.quarkloop.quark.runtime.domain.identity.NodeUri;
+import com.quarkloop.quark.runtime.domain.spi.NodeProvider;
+import com.quarkloop.quark.runtime.registry.NodeDescriptor;
+import com.quarkloop.quark.runtime.registry.NodeImplementationFactory;
 import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.HostAccess;
 import org.graalvm.polyglot.Source;

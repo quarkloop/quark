@@ -1,8 +1,8 @@
 package com.quarkloop.quark.runtime.script;
 
-import com.quarkloop.quark.core.domain.system.SystemDefinition;
-import com.quarkloop.quark.core.script.SystemParseResult;
-import com.quarkloop.quark.core.script.SystemParser;
+import com.quarkloop.quark.runtime.domain.system.SystemDefinition;
+import com.quarkloop.quark.runtime.script.SystemParseResult;
+import com.quarkloop.quark.runtime.script.SystemParser;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;

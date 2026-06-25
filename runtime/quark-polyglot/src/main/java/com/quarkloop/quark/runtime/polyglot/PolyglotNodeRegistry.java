@@ -1,9 +1,9 @@
 package com.quarkloop.quark.runtime.polyglot;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.quarkloop.quark.core.domain.identity.NodeUri;
-import com.quarkloop.quark.core.engine.nats.NatsConnectionManager;
-import com.quarkloop.quark.core.registry.NodeImplementationFactory;
+import com.quarkloop.quark.runtime.domain.identity.NodeUri;
+import com.quarkloop.quark.runtime.engine.nats.NatsConnectionManager;
+import com.quarkloop.quark.runtime.registry.NodeImplementationFactory;
 import io.nats.client.Connection;
 import io.nats.client.Message;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -47,7 +47,7 @@ import java.util.jar.JarInputStream;
  *       {@link NodeImplementationFactory}. The jar is written to a
  *       temporary file, loaded via a child {@link URLClassLoader} whose
  *       parent is the runtime's classloader (so the node code can see
- *       {@code com.quarkloop.quark.core.*} and {@code org.slf4j}), and
+ *       {@code com.quarkloop.quark.runtime.*} and {@code org.slf4j}), and
  *       the first matching class is instantiated via its no-arg
  *       constructor.</li>
  * </ul>
@@ -55,7 +55,7 @@ import java.util.jar.JarInputStream;
  * <p>The catalog pull is best-effort: on any failure (catalog down,
  * package missing, jar parse error, class load error), the lookup
  * returns {@link Optional#empty()} and the caller
- * ({@link com.quarkloop.quark.core.engine.lifecycle.SystemDeployer})
+ * ({@link com.quarkloop.quark.runtime.engine.lifecycle.SystemDeployer})
  * fails the deploy with a clear "Unknown node URIs" error. There are
  * no code-level fallbacks — see AGENTS.md pitfall 6.
  *
@@ -64,7 +64,7 @@ import java.util.jar.JarInputStream;
  * to force a re-pull (e.g. after a node has been re-pushed).
  */
 @ApplicationScoped
-public class PolyglotNodeRegistry implements com.quarkloop.quark.core.engine.polyglot.PolyglotNodeLookup {
+public class PolyglotNodeRegistry implements com.quarkloop.quark.runtime.engine.polyglot.PolyglotNodeLookup {
 
     private static final Logger log = LoggerFactory.getLogger(PolyglotNodeRegistry.class);
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(5);
@@ -236,7 +236,7 @@ public class PolyglotNodeRegistry implements com.quarkloop.quark.core.engine.pol
      * classloaders are possible but more fragile), loaded via a child
      * URLClassLoader whose parent is the current thread's context
      * classloader (which, in Quarkus, is the application classloader
-     * that sees {@code com.quarkloop.quark.core.*}), and the first
+     * that sees {@code com.quarkloop.quark.runtime.*}), and the first
      * matching class is instantiated.
      *
      * <p>The temp file is kept for the lifetime of this registry (the
@@ -424,14 +424,14 @@ public class PolyglotNodeRegistry implements com.quarkloop.quark.core.engine.pol
         }
 
         @Override
-        public com.quarkloop.quark.core.domain.spi.NodeProvider create(com.quarkloop.quark.core.domain.config.NodeConfig config) {
+        public com.quarkloop.quark.runtime.domain.spi.NodeProvider create(com.quarkloop.quark.runtime.domain.config.NodeConfig config) {
             return delegate.create(config);
         }
 
         @Override
-        public com.quarkloop.quark.core.registry.NodeDescriptor descriptor() {
-            return new com.quarkloop.quark.core.registry.NodeDescriptor(
-                    com.quarkloop.quark.core.domain.identity.NodeUri.parse(uri),
+        public com.quarkloop.quark.runtime.registry.NodeDescriptor descriptor() {
+            return new com.quarkloop.quark.runtime.registry.NodeDescriptor(
+                    com.quarkloop.quark.runtime.domain.identity.NodeUri.parse(uri),
                     description != null && !description.isBlank() ? description : delegate.descriptor().description()
             );
         }

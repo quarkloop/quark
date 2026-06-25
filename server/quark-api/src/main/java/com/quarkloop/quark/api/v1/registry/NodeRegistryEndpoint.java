@@ -2,7 +2,7 @@ package com.quarkloop.quark.api.v1.registry;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.quarkloop.quark.core.engine.nats.NatsConnectionManager;
+import com.quarkloop.quark.runtime.engine.nats.NatsConnectionManager;
 import io.nats.client.Connection;
 import io.nats.client.Message;
 import jakarta.enterprise.context.ApplicationScoped;

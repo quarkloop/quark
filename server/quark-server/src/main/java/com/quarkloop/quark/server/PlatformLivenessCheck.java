@@ -1,6 +1,6 @@
 package com.quarkloop.quark.server;
 
-import com.quarkloop.quark.core.engine.runtime.RuntimeContext;
+import com.quarkloop.quark.runtime.engine.runtime.RuntimeContext;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.health.HealthCheck;

@@ -1,15 +1,15 @@
 package com.quarkloop.quark.runtime;
 
-import com.quarkloop.quark.core.domain.event.NodeEvent;
-import com.quarkloop.quark.core.domain.event.NodeEventKind;
-import com.quarkloop.quark.core.domain.identity.Namespace;
-import com.quarkloop.quark.core.domain.system.NodeDefinition;
-import com.quarkloop.quark.core.domain.system.SystemDefinition;
-import com.quarkloop.quark.core.engine.lifecycle.RuntimeSystem;
-import com.quarkloop.quark.core.engine.lifecycle.SystemDeployer;
-import com.quarkloop.quark.core.event.EventBus;
-import com.quarkloop.quark.core.script.SystemParseResult;
-import com.quarkloop.quark.core.script.SystemParser;
+import com.quarkloop.quark.runtime.domain.event.NodeEvent;
+import com.quarkloop.quark.runtime.domain.event.NodeEventKind;
+import com.quarkloop.quark.runtime.domain.identity.Namespace;
+import com.quarkloop.quark.runtime.domain.system.NodeDefinition;
+import com.quarkloop.quark.runtime.domain.system.SystemDefinition;
+import com.quarkloop.quark.runtime.engine.lifecycle.RuntimeSystem;
+import com.quarkloop.quark.runtime.engine.lifecycle.SystemDeployer;
+import com.quarkloop.quark.runtime.event.EventBus;
+import com.quarkloop.quark.runtime.script.SystemParseResult;
+import com.quarkloop.quark.runtime.script.SystemParser;
 import com.quarkloop.quark.runtime.script.GraalJsSystemParser;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;

@@ -1,8 +1,8 @@
 package com.quarkloop.quark.app.polyglot;
 
-import com.quarkloop.quark.core.domain.identity.NodeUri;
-import com.quarkloop.quark.core.engine.polyglot.PolyglotNodeLookup;
-import com.quarkloop.quark.core.registry.NodeImplementationFactory;
+import com.quarkloop.quark.runtime.domain.identity.NodeUri;
+import com.quarkloop.quark.runtime.engine.polyglot.PolyglotNodeLookup;
+import com.quarkloop.quark.runtime.registry.NodeImplementationFactory;
 import jakarta.enterprise.context.ApplicationScoped;
 
 import java.util.Optional;

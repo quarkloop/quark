@@ -1,6 +1,6 @@
 package com.quarkloop.quark.app.query;
 
-import com.quarkloop.quark.core.engine.store.SourceRepository;
+import com.quarkloop.quark.runtime.engine.store.SourceRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 

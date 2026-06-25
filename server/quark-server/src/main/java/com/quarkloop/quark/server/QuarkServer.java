@@ -9,7 +9,7 @@ import jakarta.enterprise.event.Observes;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
-import com.quarkloop.quark.core.engine.lifecycle.SystemDeployer;
+import com.quarkloop.quark.runtime.engine.lifecycle.SystemDeployer;
 
 import jakarta.inject.Inject;
 

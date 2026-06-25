@@ -2,11 +2,11 @@ package com.quarkloop.quark.runtime;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.quarkloop.quark.core.domain.event.NodeEvent;
-import com.quarkloop.quark.core.engine.dataplane.DataPlaneIpc;
-import com.quarkloop.quark.core.event.EventBus;
-import com.quarkloop.quark.core.event.EventHandler;
-import com.quarkloop.quark.core.engine.nats.NatsConnectionManager;
+import com.quarkloop.quark.runtime.domain.event.NodeEvent;
+import com.quarkloop.quark.runtime.engine.dataplane.DataPlaneIpc;
+import com.quarkloop.quark.runtime.event.EventBus;
+import com.quarkloop.quark.runtime.event.EventHandler;
+import com.quarkloop.quark.runtime.engine.nats.NatsConnectionManager;
 import io.quarkus.runtime.StartupEvent;
 import jakarta.annotation.Priority;
 import jakarta.enterprise.context.ApplicationScoped;

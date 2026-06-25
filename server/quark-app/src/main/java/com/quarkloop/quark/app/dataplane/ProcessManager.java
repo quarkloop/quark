@@ -2,8 +2,8 @@ package com.quarkloop.quark.app.dataplane;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.quarkloop.quark.core.engine.dataplane.DataPlaneIpc;
-import com.quarkloop.quark.core.engine.dataplane.DataPlaneProcess;
+import com.quarkloop.quark.runtime.engine.dataplane.DataPlaneIpc;
+import com.quarkloop.quark.runtime.engine.dataplane.DataPlaneProcess;
 import io.quarkus.runtime.ShutdownEvent;
 import io.quarkus.runtime.StartupEvent;
 import jakarta.annotation.Priority;

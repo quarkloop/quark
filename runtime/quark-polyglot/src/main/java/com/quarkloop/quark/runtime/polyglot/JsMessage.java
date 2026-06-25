@@ -1,6 +1,6 @@
 package com.quarkloop.quark.runtime.polyglot;
 
-import com.quarkloop.quark.core.domain.spi.QuarkMessage;
+import com.quarkloop.quark.runtime.domain.spi.QuarkMessage;
 
 import java.time.Instant;
 import java.util.Map;

@@ -2,13 +2,13 @@ package com.quarkloop.quark.runtime;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.quarkloop.quark.core.domain.system.NodeDefinition;
-import com.quarkloop.quark.core.engine.dataplane.DataPlaneIpc;
-import com.quarkloop.quark.core.engine.lifecycle.RuntimeNode;
-import com.quarkloop.quark.core.engine.lifecycle.RuntimeSystem;
-import com.quarkloop.quark.core.engine.lifecycle.SystemDeployer;
+import com.quarkloop.quark.runtime.domain.system.NodeDefinition;
+import com.quarkloop.quark.runtime.engine.dataplane.DataPlaneIpc;
+import com.quarkloop.quark.runtime.engine.lifecycle.RuntimeNode;
+import com.quarkloop.quark.runtime.engine.lifecycle.RuntimeSystem;
+import com.quarkloop.quark.runtime.engine.lifecycle.SystemDeployer;
 
-import com.quarkloop.quark.core.engine.nats.NatsConnectionManager;
+import com.quarkloop.quark.runtime.engine.nats.NatsConnectionManager;
 import io.nats.client.Connection;
 import io.nats.client.Dispatcher;
 import io.nats.client.Message;
@@ -130,7 +130,7 @@ public class DataPlaneCommandHandler {
      *
      * <p>After deploying, extracts node info from the {@link RuntimeSystem}
      * and includes it in the {@link StatusResponse} so the
-     * control plane can persist {@link com.quarkloop.quark.core.engine.store.NodeRecord}s
+     * control plane can persist {@link com.quarkloop.quark.runtime.engine.store.NodeRecord}s
      * to the Catalog (the data plane cannot write to the Catalog directly due to
      * cross-process write conflict).
      */

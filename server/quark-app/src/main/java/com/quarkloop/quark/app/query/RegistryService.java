@@ -1,8 +1,8 @@
 package com.quarkloop.quark.app.query;
 
-import com.quarkloop.quark.core.domain.identity.NodeUri;
-import com.quarkloop.quark.core.registry.NodeDescriptor;
-import com.quarkloop.quark.core.registry.NodeRegistry;
+import com.quarkloop.quark.runtime.domain.identity.NodeUri;
+import com.quarkloop.quark.runtime.registry.NodeDescriptor;
+import com.quarkloop.quark.runtime.registry.NodeRegistry;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 

@@ -1,6 +1,6 @@
 package com.quarkloop.quark.runtime.polyglot;
 
-import com.quarkloop.quark.core.domain.spi.QuarkPublisher;
+import com.quarkloop.quark.runtime.domain.spi.QuarkPublisher;
 
 import java.util.HashMap;
 import java.util.Map;

@@ -1,9 +1,9 @@
 package com.quarkloop.quark.app.query;
 
-import com.quarkloop.quark.core.domain.event.NodeEvent;
-import com.quarkloop.quark.core.domain.event.NodeEventKind;
-import com.quarkloop.quark.core.event.EventFilter;
-import com.quarkloop.quark.core.event.EventStore;
+import com.quarkloop.quark.runtime.domain.event.NodeEvent;
+import com.quarkloop.quark.runtime.domain.event.NodeEventKind;
+import com.quarkloop.quark.runtime.event.EventFilter;
+import com.quarkloop.quark.runtime.event.EventStore;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 

@@ -2,10 +2,10 @@ package com.quarkloop.quark.app.dataplane;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.quarkloop.quark.core.domain.event.NodeEvent;
-import com.quarkloop.quark.core.engine.dataplane.DataPlaneIpc;
-import com.quarkloop.quark.core.event.EventStore;
-import com.quarkloop.quark.core.engine.nats.NatsConnectionManager;
+import com.quarkloop.quark.runtime.domain.event.NodeEvent;
+import com.quarkloop.quark.runtime.engine.dataplane.DataPlaneIpc;
+import com.quarkloop.quark.runtime.event.EventStore;
+import com.quarkloop.quark.runtime.engine.nats.NatsConnectionManager;
 import io.nats.client.Connection;
 import io.nats.client.Dispatcher;
 import io.nats.client.Message;

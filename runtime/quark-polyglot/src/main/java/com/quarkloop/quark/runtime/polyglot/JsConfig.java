@@ -1,6 +1,6 @@
 package com.quarkloop.quark.runtime.polyglot;
 
-import com.quarkloop.quark.core.domain.config.NodeConfig;
+import com.quarkloop.quark.runtime.domain.config.NodeConfig;
 
 /**
  * Host-access bridge that lets TypeScript nodes read configuration.

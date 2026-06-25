@@ -1,11 +1,11 @@
 package com.quarkloop.quark.app.lifecycle;
 
-import com.quarkloop.quark.core.domain.identity.Namespace;
-import com.quarkloop.quark.core.domain.state.NodeState;
-import com.quarkloop.quark.core.engine.lifecycle.LifecycleManager;
-import com.quarkloop.quark.core.engine.lifecycle.RuntimeNode;
-import com.quarkloop.quark.core.engine.lifecycle.RuntimeSystem;
-import com.quarkloop.quark.core.engine.runtime.RuntimeContext;
+import com.quarkloop.quark.runtime.domain.identity.Namespace;
+import com.quarkloop.quark.runtime.domain.state.NodeState;
+import com.quarkloop.quark.runtime.engine.lifecycle.LifecycleManager;
+import com.quarkloop.quark.runtime.engine.lifecycle.RuntimeNode;
+import com.quarkloop.quark.runtime.engine.lifecycle.RuntimeSystem;
+import com.quarkloop.quark.runtime.engine.runtime.RuntimeContext;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.slf4j.Logger;

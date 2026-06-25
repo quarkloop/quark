@@ -1,14 +1,14 @@
 package com.quarkloop.quark.app.health;
 
-import com.quarkloop.quark.core.domain.event.NodeEvent;
-import com.quarkloop.quark.core.domain.event.NodeEventKind;
-import com.quarkloop.quark.core.domain.identity.Namespace;
-import com.quarkloop.quark.core.domain.state.HealthStatus;
-import com.quarkloop.quark.core.engine.lifecycle.RuntimeNode;
-import com.quarkloop.quark.core.engine.lifecycle.RuntimeSystem;
-import com.quarkloop.quark.core.engine.runtime.RuntimeContext;
-import com.quarkloop.quark.core.event.EventFilter;
-import com.quarkloop.quark.core.event.EventStore;
+import com.quarkloop.quark.runtime.domain.event.NodeEvent;
+import com.quarkloop.quark.runtime.domain.event.NodeEventKind;
+import com.quarkloop.quark.runtime.domain.identity.Namespace;
+import com.quarkloop.quark.runtime.domain.state.HealthStatus;
+import com.quarkloop.quark.runtime.engine.lifecycle.RuntimeNode;
+import com.quarkloop.quark.runtime.engine.lifecycle.RuntimeSystem;
+import com.quarkloop.quark.runtime.engine.runtime.RuntimeContext;
+import com.quarkloop.quark.runtime.event.EventFilter;
+import com.quarkloop.quark.runtime.event.EventStore;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
