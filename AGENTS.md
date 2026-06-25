@@ -231,7 +231,7 @@ When `quarkctl apply -f system.quark.ts -n alice` triggers a deploy:
    - Materialise the jar to a temp file.
    - Create a `URLClassLoader` with the runtime's classloader as
      parent (so the loaded Factory can see
-     `com.quarkloop.quark.core.*`).
+     `com.quarkloop.quark.runtime.*`).
    - Walk every top-level `.class` in the jar, load each via
      `Class.forName(name, false, loader)`, and check whether it
      implements `NodeImplementationFactory`.

@@ -226,9 +226,9 @@ accordingly. The package is derived from the URI:
 ```java
 package quark.io.file.watch;
 
-import com.quarkloop.quark.core.domain.config.NodeConfig;
-import com.quarkloop.quark.core.domain.spi.NodeProvider;
-import com.quarkloop.quark.core.domain.spi.QuarkPublisher;
+import com.quarkloop.quark.runtime.domain.config.NodeConfig;
+import com.quarkloop.quark.runtime.domain.spi.NodeProvider;
+import com.quarkloop.quark.runtime.domain.spi.QuarkPublisher;
 
 public class FileWatchNode implements NodeProvider {
 
@@ -258,7 +258,7 @@ view of the config instead of raw `NodeConfig.getString()` calls:
 ```java
 package quark.io.file.watch;
 
-import com.quarkloop.quark.core.domain.config.NodeConfig;
+import com.quarkloop.quark.runtime.domain.config.NodeConfig;
 
 public record FileWatchConfig(
     String path,
