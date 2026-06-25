@@ -16,26 +16,10 @@
     <description>Quarkus runner for the control plane. NO GraalJS, NO providers.</description>
 
     <dependencies>
-        <!-- Core -->
+        <!-- quark-core consolidates the pre-v6 core/* modules. -->
         <dependency>
             <groupId>com.quarkloop.quark</groupId>
-            <artifactId>quark-domain</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.quarkloop.quark</groupId>
-            <artifactId>quark-event</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.quarkloop.quark</groupId>
-            <artifactId>quark-registry</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.quarkloop.quark</groupId>
-            <artifactId>quark-engine</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.quarkloop.quark</groupId>
-            <artifactId>quark-script</artifactId>
+            <artifactId>quark-core</artifactId>
         </dependency>
 
         <!-- Server app + API + observability -->

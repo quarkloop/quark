@@ -15,11 +15,7 @@
     <dependencies>
         <dependency>
             <groupId>com.quarkloop.quark</groupId>
-            <artifactId>quark-domain</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.quarkloop.quark</groupId>
-            <artifactId>quark-engine</artifactId>
+            <artifactId>quark-core</artifactId>
         </dependency>
         <dependency>
             <groupId>jakarta.enterprise</groupId>
