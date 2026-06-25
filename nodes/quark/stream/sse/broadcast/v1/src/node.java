@@ -31,7 +31,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * <p>URI: {@code quark/stream/sse/broadcast:v1}
  */
 @ApplicationScoped
-public class StreamingEndpointFactory implements NodeImplementationFactory {
+class StreamingEndpointFactory implements NodeImplementationFactory {
 
     private static final Logger log = LoggerFactory.getLogger(StreamingEndpointFactory.class);
 

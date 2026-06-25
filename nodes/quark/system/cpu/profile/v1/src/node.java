@@ -23,7 +23,7 @@ import java.util.Map;
  * <p>URI: {@code quark/system/cpu/profile:v1}
  */
 @ApplicationScoped
-public class CpuProfilerFactory implements NodeImplementationFactory {
+class CpuProfilerFactory implements NodeImplementationFactory {
 
     private static final Logger log = LoggerFactory.getLogger(CpuProfilerFactory.class);
 

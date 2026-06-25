@@ -27,7 +27,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * Config: {@code interval} (string, default "1s")
  */
 @ApplicationScoped
-public class TimerSourceFactory implements NodeImplementationFactory {
+class TimerSourceFactory implements NodeImplementationFactory {
 
     private static final Logger log = LoggerFactory.getLogger(TimerSourceFactory.class);
 

@@ -31,7 +31,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * Config: {@code path} (string, required), {@code mode} (default "append")
  */
 @ApplicationScoped
-public class JsonWriterFactory implements NodeImplementationFactory {
+class JsonWriterFactory implements NodeImplementationFactory {
 
     private static final Logger log = LoggerFactory.getLogger(JsonWriterFactory.class);
 

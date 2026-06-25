@@ -24,7 +24,7 @@ import java.util.Map;
  * <p>URI: {@code quark/system/memory/profile:v1}
  */
 @ApplicationScoped
-public class MemoryProfilerFactory implements NodeImplementationFactory {
+class MemoryProfilerFactory implements NodeImplementationFactory {
 
     private static final Logger log = LoggerFactory.getLogger(MemoryProfilerFactory.class);
 
