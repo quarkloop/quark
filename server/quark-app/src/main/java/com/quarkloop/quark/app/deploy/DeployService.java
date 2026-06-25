@@ -226,7 +226,7 @@ public class DeployService {
                     int saved = 0;
                     for (NodeInfo ni : resp.nodes()) {
                         NodeRecord record = new NodeRecord(
-                                ns, name, ni.name(), ni.uri(), 
+                                ns, name, ni.name(), ni.uri(),
                                 ni.state(), ni.health(), 1L, null,
                                 ni.listens(), ni.events(),
                                 Map.of(), Map.of(), Map.of(),
