@@ -62,7 +62,6 @@
         <module>runtime/quark-polyglot</module>
         <module>runtime/quark-app</module>
         <module>runtime/quark-runtime</module>
-        <module>runtime/providers</module>
 
         <!-- Standalone services -->
     </modules>
@@ -138,33 +137,6 @@
             <dependency>
                 <groupId>com.quarkloop.quark</groupId>
                 <artifactId>quark-runtime-runner</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-
-            <!-- Provider modules (artifact = provider-*) -->
-            <dependency>
-                <groupId>com.quarkloop.quark</groupId>
-                <artifactId>provider-timer</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.quarkloop.quark</groupId>
-                <artifactId>provider-cpu-profiler</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.quarkloop.quark</groupId>
-                <artifactId>provider-memory-profiler</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.quarkloop.quark</groupId>
-                <artifactId>provider-json-writer</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.quarkloop.quark</groupId>
-                <artifactId>provider-streaming-endpoint</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
