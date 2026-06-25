@@ -239,7 +239,6 @@ func runNodeInfo(cmd *cobra.Command, args []string) error {
         }
 
         fmt.Fprintf(os.Stdout, "URI:          %s\n", info["uri"])
-        fmt.Fprintf(os.Stdout, "Category:     %s\n", info["category"])
         fmt.Fprintf(os.Stdout, "Version:      %s\n", info["version"])
         fmt.Fprintf(os.Stdout, "Content Type: %s\n", info["contentType"])
         fmt.Fprintf(os.Stdout, "Checksum:     %s\n", info["checksum"])

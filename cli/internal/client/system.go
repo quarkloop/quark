@@ -148,9 +148,9 @@ func (c *Client) ListEvents(ctx context.Context, namespace, system, node, kinds,
 }
 
 // ListRegistry returns all registered node implementations.
-func (c *Client) ListRegistry(ctx context.Context, category, query string) ([]model.RegistryEntry, error) {
+func (c *Client) ListRegistry(ctx context.Context, query string) ([]model.RegistryEntry, error) {
         var out []model.RegistryEntry
-        path := "/api/v1/registry" + buildQuery("category", category, "q", query)
+        path := "/api/v1/registry" + buildQuery("q", query)
         if err := c.get(ctx, path, &out); err != nil {
                 return nil, err
         }

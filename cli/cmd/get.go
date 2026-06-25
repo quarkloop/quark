@@ -222,7 +222,7 @@ func runGetRegistry(cmd *cobra.Command, args []string) error {
         c := newClient()
         ctx, cancel := ctx()
         defer cancel()
-        list, err := c.ListRegistry(ctx, "", "")
+        list, err := c.ListRegistry(ctx, "")
         if err != nil {
                 return newPrinter().PrintError(err)
         }

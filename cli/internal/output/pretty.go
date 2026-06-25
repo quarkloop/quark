@@ -105,7 +105,7 @@ func (p *PrettyPrinter) PrintSystemDetail(system interface{}) error {
         fmt.Fprintf(p.w, "Updated:  %s\n", humanTime(td.UpdatedAt))
         fmt.Fprintln(p.w)
         fmt.Fprintf(p.w, "Nodes (%d):\n", len(td.Nodes))
-        rt := newTable(p.w, []string{"NAME", "URI", "CATEGORY", "STATE", "HEALTH"})
+        rt := newTable(p.w, []string{"NAME", "URI", "STATE", "HEALTH"})
         for _, r := range td.Nodes {
                 rt.Append([]string{r.Name, r.URI, stateColored(r.State), healthColored(r.Health)})
         }
