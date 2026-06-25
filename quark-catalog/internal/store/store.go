@@ -18,6 +18,7 @@ package store
 import (
         "database/sql"
         "fmt"
+        "log"
         "os"
         "path/filepath"
         "time"
@@ -27,7 +28,8 @@ import (
 
 // Store wraps a SQLite connection for catalog operations.
 type Store struct {
-        db *sql.DB
+        db     *sql.DB
+        dbPath string
 }
 
 // MigrationResult tracks how many items were migrated from legacy JSONL
@@ -39,6 +41,13 @@ type MigrationResult struct {
 
 // Open opens (or creates) the SQLite database at stateRoot/catalog.db
 // and ensures the schema exists. The caller must call Close when done.
+//
+// The connection uses WAL journaling (concurrent readers + one writer,
+// faster crash recovery) and a single connection (SetMaxOpenConns(1))
+// because SQLite serializes writes anyway. _txlock=immediate acquires
+// the write lock at BEGIN time rather than at first write, avoiding
+// the SQLITE_BUSY_DEADLOCK that arises when two transactions both
+// upgrade from read to write concurrently.
 func Open(stateRoot string) (*Store, error) {
         if err := os.MkdirAll(stateRoot, 0o755); err != nil {
                 return nil, fmt.Errorf("cannot create state root: %w", err)
@@ -54,11 +63,47 @@ func Open(stateRoot string) (*Store, error) {
         }
         // SQLite serializes writes — a single connection avoids lock contention.
         db.SetMaxOpenConns(1)
-        s := &Store{db: db}
+        s := &Store{db: db, dbPath: dbPath}
         if err := s.createSchema(); err != nil {
                 return nil, fmt.Errorf("cannot create schema: %w", err)
         }
+        // Probe write — verifies that the connection is writable immediately
+        // after schema creation. If this fails, every subsequent handler will
+        // also fail with "attempt to write a readonly database" — a misleading
+        // SQLite error that often masks a filesystem permission issue, a stale
+        // lock left by a crashed peer process, or an over-eager journal-mode
+        // downgrade. Log loudly so operators can see the real cause.
+        if err := s.probeWrite(); err != nil {
+                log.Printf("[WARN] Catalog store probe write failed: %v (dbPath=%s)", err, dbPath)
+        }
         return s, nil
+}
+
+// probeWrite inserts a throwaway row into catalog_meta and verifies that
+// the connection can actually persist data. The row's key is namespaced
+// ("probe.<timestamp>") so repeated probes don't collide with real data.
+func (s *Store) probeWrite() error {
+        probeKey := fmt.Sprintf("probe.%s", time.Now().UTC().Format("20060102T150405.000000000"))
+        _, err := s.db.Exec(
+                `INSERT OR REPLACE INTO catalog_meta (key, value) VALUES (?, ?)`,
+                probeKey, "open-probe",
+        )
+        if err != nil {
+                // Also gather some diagnostic context to help debug the failure.
+                var mode, queryOnly int
+                _ = s.db.QueryRow("PRAGMA journal_mode").Scan(&mode) // best-effort
+                _ = s.db.QueryRow("PRAGMA query_only").Scan(&queryOnly)
+                st, _ := os.Stat(s.dbPath)
+                size := int64(-1)
+                modeStr := "?"
+                if st != nil {
+                        size = st.Size()
+                        modeStr = fmt.Sprintf("%v", st.Mode())
+                }
+                return fmt.Errorf("probe write failed (journal_mode=%d, query_only=%d, file size=%d, file mode=%s): %w",
+                        mode, queryOnly, size, modeStr, err)
+        }
+        return nil
 }
 
 // Close closes the underlying database connection.
