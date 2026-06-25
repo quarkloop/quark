@@ -13,12 +13,19 @@
             "description": "Duration like 1s, 500ms, 10s, 1m, 1h"
         }
     },
-    "events": ["tick"],
+    "events": [
+        "tick"
+    ],
     "dependencies": {
         "java": [
             "com.quarkloop.quark:quark-domain:0.1.0-SNAPSHOT",
-            "com.quarkloop.quark:quark-registry:0.1.0-SNAPSHOT"
+            "com.quarkloop.quark:quark-registry:0.1.0-SNAPSHOT",
+            "org.slf4j:slf4j-api:2.0.6",
+            "jakarta.enterprise:jakarta.enterprise.cdi-api:4.1.0"
         ]
     },
-    "supportedRuntimes": ["jvm", "native"]
+    "supportedRuntimes": [
+        "jvm",
+        "native"
+    ]
 }
