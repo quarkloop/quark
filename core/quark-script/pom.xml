@@ -13,7 +13,7 @@
 
     <artifactId>quark-script</artifactId>
     <name>Quark Core Script</name>
-    <description>SystemParser interface + SimpleSystemParser (regex-based, no GraalJS). The GraalJS-based parser lives in runtime/quark-script.</description>
+    <description>SystemParser interface + SimpleSystemParser (comment-aware, no GraalJS). The GraalJS ESM-based parser lives in runtime/quark-script.</description>
 
     <dependencies>
         <dependency>
