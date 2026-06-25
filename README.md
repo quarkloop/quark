@@ -2,7 +2,7 @@
 
 A universal runtime for programmable nodes, built on a **three-service architecture**: a Java/Native control plane (no GraalJS), a Go + SQLite Catalog service, and a Java/Native data plane (with GraalJS for TypeScript execution). All services communicate via an external NATS broker.
 
-Everything in Quark — sources, functions, stores, endpoints, policies — is a **Node** identified by a Docker-style URI (`category/implementation:version`). Users declare nodes and their communication patterns in `.quark.ts` files. The control plane parses these declarations (via a comment-aware `SimpleSystemParser`, no GraalJS) and forwards them to the data plane, where GraalJS's native ESM module support evaluates TypeScript node logic over NATS.
+Everything in Quark — timers, profilers, parsers, writers, endpoints, policies — is a **Node** identified by a Docker-style URI (`<namespace>/<domain>/<subdomain>/<node>:<version>`). Users declare nodes and their communication patterns in `.quark.ts` files. The control plane parses these declarations (via a comment-aware `SimpleSystemParser`, no GraalJS) and forwards them to the data plane, where GraalJS's native ESM module support evaluates TypeScript node logic over NATS.
 
 **Multi-tenant by construction**: NATS subjects encode the namespace. Two tenants can deploy same-named systems simultaneously with zero data leakage.
 
@@ -184,10 +184,38 @@ quark-platform/
 ├── example/                             ← Runnable examples
 │   ├── simple-streaming/                ← Multi-tenant streaming monitor
 │   ├── json-pipeline/                   ← Timer → JSON parse → map → stdout
-│   └── conditional-routing/             ← Conditional router with two sinks
+│   └── conditional-routing/             ← Conditional router with two stdout destinations
 │
 └── cli/                                 ← Go-based CLI (quarkctl, with --json flag)
 ```
+
+---
+
+## Node Lifecycle: Build → Push → Pull → Run
+
+The platform uses a **docker-image model** for nodes. The runtime
+binary NEVER contains node implementations — every node is fetched
+from the Catalog on first use and cached for the rest of the process
+lifetime.
+
+```
+nodes/  ──build──▶  .jar/.ts  ──push──▶  Catalog  ──pull──▶  Runtime  ──run──▶  execute
+(source)           (artifact)           (registry)          (exec)
+```
+
+| Phase | Command | What happens |
+|-------|---------|--------------|
+| **Build** | `quarkctl node build <uri>` | Java: `javac` compiles `src/*.java` → `target/<node>.jar` (classpath resolved from `manifest.json`'s `dependencies.java`). TypeScript: no-op. |
+| **Push** | `quarkctl node push <uri>` | Packages `manifest.json` + build output into a zip, sends to Catalog via `registry.node.push` NATS subject. Catalog stores in `node_packages` SQLite table. |
+| **Pull** | (automatic, on deploy) | When `quarkctl apply` triggers a deploy, the data plane's `PolyglotNodeRegistry` calls `registry.node.pull` for each node URI. Catalog returns the zip blob; runtime unzips + loads (Java: `URLClassLoader`; TypeScript: GraalJS ESM). |
+| **Run** | (automatic) | Engine calls `factory.create(config)` → `provider.init(config)` → `provider.start()` or `provider.onMessage()`. On undeploy: `provider.close()`. |
+
+The data plane logs every pull at INFO level:
+`Loaded node <uri> from catalog (type=<type>, <n> bytes)`.
+
+**Adding a node** requires only `quarkctl node build <uri>` + `quarkctl
+node push <uri>` — no runtime rebuild. See `AGENTS.md` § "Node
+Lifecycle" for the full flow diagram and implementation details.
 
 ---
 
@@ -272,8 +300,8 @@ quarkctl delete system monitor -n alice
 quarkctl node list
 quarkctl node info quark/time/schedule/timer:v1
 quarkctl node search timer
-quarkctl node push -f my-node.ts --uri acme/transform/payments/risk-score:v1
-quarkctl node pull acme/transform/payments/risk-score:v1
+quarkctl node push -f my-node.ts --uri acme/data/payments/risk-score:v1
+quarkctl node pull acme/data/payments/risk-score:v1
 
 # Get JSON output (for AI agents)
 quarkctl get system monitor -n alice --json

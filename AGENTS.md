@@ -80,7 +80,7 @@ quark-platform/
     │   ├── system.quark.ts           ← The "program" — this is ALL the user writes
     │   └── json/                     ← Output directory (server writes here)
     ├── json-pipeline/                ← Timer → JSON parse → map → stdout pipeline
-    └── conditional-routing/          ← Conditional router with two stdout sinks
+    └── conditional-routing/          ← Conditional router with two stdout destinations
 ```
 
 ---
@@ -136,6 +136,143 @@ Two distinct subject taxonomies flow through NATS:
 **Node-data subjects** (runtime-internal, between nodes):
 - `<namespace>.<system>.<node>.<event>` — node-to-node events (e.g. `alice.monitor.timer.tick`)
 - Note: as of v8, NATS **Core** is used (not JetStream) — no message persistence, no automatic retries, no fallback routing. The `onFailure` field in `.quark.ts` is parsed but **not enforced** at runtime. See `docs/NODE.md` §6.
+
+---
+
+## Node Lifecycle: Build → Push → Pull → Run
+
+The platform uses a **docker-image model** for nodes. The runtime
+binary NEVER contains node implementations — every node is fetched
+from the Catalog on first use and cached for the rest of the process
+lifetime. Adding a new node does NOT require rebuilding the runtime;
+it only requires pushing the new node package to the Catalog.
+
+### The four phases
+
+```
+   ┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+   │  nodes/     │     │  Catalog    │     │  Catalog    │     │  Runtime    │
+   │  (source)   │     │  (registry) │     │  (store)    │     │  (exec)     │
+   └──────┬──────┘     └──────┬──────┘     └──────┬──────┘     └──────┬──────┘
+          │                   │                   │                   │
+          │  quarkctl build   │                   │                   │
+          │──────────────────▶│                   │                   │
+          │  (javac → .jar)   │                   │                   │
+          │                   │                   │                   │
+          │  quarkctl push    │                   │                   │
+          │──────────────────▶│  registry.node.push (NATS)            │
+          │                   │──────────────────▶│                   │
+          │                   │  store in SQLite  │                   │
+          │                   │                   │                   │
+          │                   │                   │  quarkctl apply   │
+          │                   │                   │──────────────────▶│
+          │                   │                   │                   │ deploy cmd
+          │                   │                   │                   │ via NATS
+          │                   │                   │                   │
+          │                   │  registry.node.pull (NATS)            │
+          │                   │◀──────────────────────────────────────│
+          │                   │──────────────────▶│                   │
+          │                   │  return zip blob  │                   │
+          │                   │                   │──────────────────▶│
+          │                   │                   │                   │ unzip + load
+          │                   │                   │                   │ (URLClassLoader
+          │                   │                   │                   │  or GraalJS ESM)
+          │                   │                   │                   │
+          │                   │                   │                   │ execute node
+   └─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘
+```
+
+### Phase 1: Build (developer machine)
+
+```bash
+quarkctl node build quark/time/schedule/timer:v1
+```
+
+- Resolves `nodes/quark/time/schedule/timer/v1/` from the URI.
+- Reads `manifest.json` to determine the language (`java` | `typescript`).
+- For **Java**: resolves the classpath from `manifest.json`'s
+  `dependencies.java` list (Maven coordinates → `~/.m2/repository/`),
+  runs `javac` to compile `src/*.java` → `target/classes/`, then
+  `jar cf` to package → `target/<node>-v<version>.jar`.
+- For **TypeScript**: no-op (the runtime evaluates `src/` directly
+  via GraalJS ESM; no compile step).
+
+### Phase 2: Push (developer machine → Catalog)
+
+```bash
+quarkctl node push quark/time/schedule/timer:v1
+```
+
+- Packages `manifest.json` + the build output (`.jar` or `.ts`)
+  into a single zip blob.
+- POSTs `{ uri, version, manifest, content (zip bytes base64),
+  contentType }` to `/api/v1/registry/nodes` on the control plane.
+- The control plane forwards to the Catalog via the
+  `registry.node.push` NATS subject.
+- The Catalog stores `{ uri, version, manifest, content, contentType,
+  checksum }` in the `node_packages` SQLite table.
+
+### Phase 3: Pull (runtime → Catalog, on deploy)
+
+When `quarkctl apply -f system.quark.ts -n alice` triggers a deploy:
+
+1. Control plane parses the `.quark.ts`, persists the system record,
+   and sends a `DeployCommand` to the data plane via
+   `quark.control.<runtimeId>.deploy` (NATS request-reply).
+2. The data plane's `SystemDeployer` walks every node in the system
+   definition. For each node URI:
+   - First checks the in-process `NodeRegistry` (for built-in
+     descriptors — usually empty in production).
+   - If not found, calls `PolyglotNodeRegistry.lookupFactory(uri)`,
+     which sends `registry.node.pull` to the Catalog via NATS.
+   - The Catalog returns the zip blob; the runtime unzips it and
+     extracts the `.jar` (Java) or `.ts` (TypeScript).
+3. For **Java** (`contentType=shared-library`):
+   - Materialise the jar to a temp file.
+   - Create a `URLClassLoader` with the runtime's classloader as
+     parent (so the loaded Factory can see
+     `com.quarkloop.quark.core.*`).
+   - Walk every top-level `.class` in the jar, load each via
+     `Class.forName(name, false, loader)`, and check whether it
+     implements `NodeImplementationFactory`.
+   - Instantiate the first match via `getDeclaredConstructor()` +
+     `setAccessible(true)` (nodes/ convention uses package-private
+     classes so the file can be named `node.java`).
+4. For **TypeScript** (`contentType=typescript`):
+   - Pass the source to `TypeScriptNodeFactory`, which evaluates it
+     via GraalJS's native ESM module support
+     (`Source.mimeType("application/javascript+module")` +
+     `js.esm-eval-returns-exports=true`).
+5. The loaded `NodeImplementationFactory` is cached by URI for the
+   rest of the process lifetime. Subsequent deploys of the same URI
+   do NOT re-pull.
+
+The data plane logs every pull at INFO level:
+`Loaded node <uri> from catalog (type=<type>, <n> bytes)`.
+
+### Phase 4: Run (runtime executes the node)
+
+Once the factory is loaded, the engine:
+- Calls `factory.create(config)` to get a `NodeProvider` instance.
+- Calls `provider.init(config)`.
+- If the node has `listens`: creates NATS subscriptions that dispatch
+  to `provider.onMessage(msg, publisher)`.
+- If the node has no `listens` (autonomous): calls
+  `provider.start(publisher, config)`.
+- On undeploy: calls `provider.close()`.
+
+### What this means in practice
+
+- **Adding a node**: write `nodes/<ns>/<domain>/<subdomain>/<node>/<version>/`,
+  run `quarkctl node build <uri>` + `quarkctl node push <uri>`. No
+  runtime rebuild.
+- **Updating a node**: edit `src/`, re-run `build` + `push`. The
+  runtime picks up the new version on the next deploy (the in-process
+  cache is per-process; restart the data plane to clear it).
+- **Runtime binary**: stays small and generic. It contains the
+  engine, the GraalJS/Truffle runtime, and the catalog-pull
+  machinery — nothing else. The same binary can run any node that
+  has been pushed to the Catalog.
 
 ---
 
