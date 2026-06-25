@@ -90,16 +90,18 @@ quarkctl get node cpu -n alice -s monitor
 
 ### Node Package Registry — push, pull, search
 
-The `node` subcommand manages the node package registry (pushed `.ts`/`.so`
-payloads stored in the Catalog):
+The `node` subcommand manages the node package registry (pushed `.ts`/`.jar`
+payloads stored in the Catalog). Nodes live in `nodes/` at the project root;
+build compiles `src/` per `build.toml`, push packages the result into a zip
+and sends it to the Catalog:
 
 ```bash
 quarkctl node list                          # list all registered node packages
-quarkctl node list --category source        # filter by category
-quarkctl node info source/timer:v1          # show metadata for a package
+quarkctl node info quark/time/schedule/timer:v1   # show metadata for a package
 quarkctl node search timer                  # search by keyword in URI/manifest
-quarkctl node push -f my-node.ts --uri source/my-node:v1
-quarkctl node pull source/timer:v1          # download a package's content
+quarkctl node build quark/time/schedule/timer:v1  # compile src/ → target/*.jar (Java) or no-op (TS)
+quarkctl node push  quark/time/schedule/timer:v1  # package + push to Catalog
+quarkctl node pull  quark/time/schedule/timer:v1  # download a package's content
 ```
 
 ### Events — query and watch

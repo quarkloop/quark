@@ -168,16 +168,21 @@ Multi-tenancy is implicit — Alice's subjects can never overlap with Bob's.
 
 ---
 
-## Passive vs Active
+## Autonomous vs Message-Driven
 
-| Passive Nodes | Active Nodes |
-|---------------|-------------|
-| Source, Store, Endpoint, Policy | Function |
-| Exist, hold state, expose interfaces | Execute behavior: receive, transform, produce |
-| State only | State + behavior |
+Nodes come in two flavors, distinguished by whether they declare
+`listens`:
 
-Execution emerges from composition — a Source publishing events that a
-Function listens to creates an executable pipeline through NATS.
+| Autonomous Nodes | Message-Driven Nodes |
+|------------------|----------------------|
+| No `listens` — start on deploy | Have `listens` — react to events |
+| Implement `onStart` + `onStop` | Implement `onMessage` |
+| Examples: `timer`, `watcher` | Examples: `parse`, `map`, `write` |
+| Drive the pipeline | Consume + republish on the pipeline |
+
+Execution emerges from composition — an autonomous timer publishing
+`tick` events that a message-driven profiler listens to creates an
+executable pipeline through NATS.
 
 ---
 

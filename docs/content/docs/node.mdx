@@ -1,6 +1,6 @@
 ---
 title: "Node Specification"
-description: "The full Node spec — categories, lifecycle state machine, multi-tenancy, NATS messaging design, persistence layout, REST API, and CLI reference."
+description: "The full Node spec — URI format, lifecycle state machine, multi-tenancy, NATS messaging design, persistence layout, REST API, and CLI reference."
 status: "Architecture — Three-Service + NATS Core + GraalJS"
 date: "2026-06-24"
 ---
@@ -15,8 +15,8 @@ import { Callout } from "fumadocs-ui/components/callout";
 ## 1. Introduction
 
 Quark is a universal runtime for programmable nodes. Everything in Quark —
-sources, functions, stores, endpoints, policies — is a **Node** identified by
-a Docker-style URI (`category/implementation:version`).
+timers, profilers, parsers, writers, endpoints, policies — is a **Node**
+identified by a Docker-style URI (`<namespace>/<domain>/<subdomain>/<node>:<version>`).
 
 Users write **TypeScript files** (`.quark.ts`) that declare nodes and their
 communication patterns. The control plane parses these files via
@@ -58,11 +58,15 @@ The `.quark.ts` file is parsed **twice**:
 
 ### Provider Layer
 
-Providers are self-contained Java modules in `runtime/providers/provider-*`:
+Providers are node implementations loaded from the Catalog at deploy
+time (Java `.jar` via URLClassLoader, TypeScript `.ts` via GraalJS ESM):
 
 - Input: `QuarkMessage` (incoming NATS message)
 - Output: `QuarkPublisher.publish()` (outgoing NATS message)
-- Implements one SPI interface (`SourceProvider`, `FunctionProvider`, `StoreProvider`, `EndpointProvider`, `PolicyProvider`)
+- Implements the `NodeProvider` SPI — the engine detects which methods
+  the node overrides (`onMessage`, `onStart`, `onStop`, `close`) and
+  calls them accordingly. There is no behavioral type or category
+  field on the provider.
 - Knows nothing about NATS subjects, other nodes, or the engine internals
 - No static/shared state (instance-per-node)
 
@@ -335,10 +339,11 @@ quarkctl delete system monitor -n alice
 
 # Node package registry
 quarkctl node list
-quarkctl node info source/timer:v1
+quarkctl node info quark/time/schedule/timer:v1
 quarkctl node search timer
-quarkctl node push -f my-node.ts --uri source/my-node:v1
-quarkctl node pull source/my-node:v1
+quarkctl node build quark/time/schedule/timer:v1
+quarkctl node push  quark/time/schedule/timer:v1
+quarkctl node pull  quark/time/schedule/timer:v1
 
 # Get JSON output (for AI agents)
 quarkctl get system monitor -n alice --json

@@ -119,7 +119,7 @@ A subdomain can be:
 
 <Callout type="info" title="Why subdomains are mandatory">
   A mandatory subdomain forces organization. You can't dump 50 nodes as flat
-  siblings under `quark/transform/` — they must be separated by concern into
+  siblings under `quark/codec/` — they must be separated by concern into
   subdomains like `quark/codec/json/`, `quark/codec/csv/`, etc. This makes
   the catalog navigable and the URI self-describing.
 </Callout>
@@ -133,7 +133,7 @@ The node is the specific implementation — the concrete node identity within a 
 - Verb-noun for actions: `parse-json`, `validate-schema`, `write-file`.
 - Noun for systems: `timer`, `cron`, `webhook`, `watcher`.
 - No version in the name (version is the `:vN` suffix).
-- No category/domain prefix (the domain is already in the path).
+- No domain prefix in the name (the domain is already in the path).
 - No vendor names (the vendor is the subdomain, if applicable).
 
 ### 3.5 Version (after `:`)
@@ -177,23 +177,23 @@ The version pins the node's contract.
 
 ```bash
 # Dev phase
-acme/transform/payments/risk-score:v0.1.0-dev.3      — dev build, day 3
-acme/transform/payments/risk-score:v0.1.0-rc.1       — release candidate
+acme/data/payments/risk-score:v0.1.0-dev.3      — dev build, day 3
+acme/data/payments/risk-score:v0.1.0-rc.1       — release candidate
 
 # Production
-acme/transform/payments/risk-score:v1.0.0             — first stable release
-acme/transform/payments/risk-score:v1.0.1             — hotfix
+acme/data/payments/risk-score:v1.0.0             — first stable release
+acme/data/payments/risk-score:v1.0.1             — hotfix
 
 # Major upgrade
-acme/transform/payments/risk-score:v2.0.0             — breaking change
+acme/data/payments/risk-score:v2.0.0             — breaking change
 ```
 
 Users can pin at any granularity:
 
 ```typescript
-uses: "acme/transform/payments/risk-score:v1.0.1"   // pinned to exact hotfix
-uses: "acme/transform/payments/risk-score:v1.0"     // resolves to newest 1.0.x
-uses: "acme/transform/payments/risk-score:v1"       // resolves to newest 1.x.x
+uses: "acme/data/payments/risk-score:v1.0.1"   // pinned to exact hotfix
+uses: "acme/data/payments/risk-score:v1.0"     // resolves to newest 1.0.x
+uses: "acme/data/payments/risk-score:v1"       // resolves to newest 1.x.x
 ```
 
 ---
@@ -263,7 +263,7 @@ acme/ai/local/fraud-detect:v1             — Acme's proprietary fraud detection
 
 ```
 jane/ai/local/summarize:v1                — community text summarizer
-jane/notify/discord/post:v1               — Discord notification sink
+jane/notify/discord/post:v1               — Discord notification poster
 ```
 
 ### `observability/` — a shared observability namespace
@@ -285,19 +285,17 @@ A parser can split on `/` and know exactly what each segment means. No
 `quark/db/postgres/write:v1` immediately sees: standard library, database,
 Postgres, write operation, version 1.
 
-### Why domain-based organization (not behavioral)?
+### Why domain-based organization?
 
 The domain tells you **what area of computing** the node operates in — like
 Go's `net/http`, `database/sql`, `crypto/sha256`. The node's implementation
 (determined by its registered `NodeImplementationFactory`, not its URI) tells
 the engine **how to run it**.
 
-This separates two concerns that the old behavioral categories
-(`source/`, `transform/`, `sink/`) tried to conflate:
-organization (how humans find nodes) and runtime behavior (how the engine
-calls them). A database query and a database write are both in `db/` because
-they're both database operations — even though one produces data and the
-other consumes it.
+This separates two concerns: organization (how humans find nodes) and
+runtime behavior (how the engine calls them). A database query and a
+database write are both in `db/` because they're both database operations —
+even though one produces data and the other consumes it.
 
 ### Why is the subdomain mandatory?
 

@@ -44,7 +44,7 @@ export default({
     runtime: "shared" | "isolated",  // optional, default "shared"
     nodes: {
         "<node-name>": {
-            uses: "<category>/<implementation>:<version>",
+            uses: "<namespace>/<domain>/<subdomain>/<node>:<version>",
             // ... configuration properties
             listens: ["<relative-subject>", ...],
             events: ["<event-type>", ...],

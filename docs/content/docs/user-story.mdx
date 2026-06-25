@@ -51,7 +51,7 @@ export default({
         },
 
         "enrich-geo": {
-            uses: "quark/transform/geoip/enrich:v1",
+            uses: "quark/data/shape/geoip:v1",
             ip_field: "client_ip",
             listens: ["parse-json.data"],
             events: ["data"],

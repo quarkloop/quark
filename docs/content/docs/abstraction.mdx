@@ -19,15 +19,16 @@ import { Callout } from "fumadocs-ui/components/callout";
 
 Node is the base abstraction. Everything in Quark is a Node.
 
-A Source is a Node. A Function is a Node. A Store is a Node. An Endpoint is a
-Node. A Policy is a Node. Anything in this system is a Node.
+A timer is a Node. A profiler is a Node. A parser is a Node. A writer
+is a Node. A streaming endpoint is a Node. Anything in this system is
+a Node.
 
 Every Node possesses:
 
 ### Identity
 
 - `name` — unique identifier within the system
-- `uri` — Docker-style URI: `<category>/<implementation>:<version>`
+- `uri` — Docker-style URI: `<namespace>/<domain>/<subdomain>/<node>:<version>`
 - `namespace` — tenant isolation boundary
 - `system` — the system this node belongs to
 
@@ -178,19 +179,19 @@ Events: Value collected, Collection updated
 **System monitoring:**
 
 ```
-Nodes: Log sources, Functions, Dashboard, Database
-Communication: Sources publish "data" → Functions listen → Functions publish "data" → Dashboard + Database listen
+Nodes: Log producer, Parsers, Dashboard, Database
+Communication: Log producer publishes "data" → Parsers listen → Parsers publish "data" → Dashboard + Database listen
 State: Log data, Metrics, Dashboard state
 Behavior: Parse, Aggregate, Visualize
-Execution: Functions execute on schedule via NATS
+Execution: Parsers execute on schedule via NATS
 Events: Logs processed, Metrics updated
 ```
 
 **Document knowledge base:**
 
 ```
-Nodes: Document source, Functions, API
-Communication: Source publishes "data" → Functions listen → Functions publish "data" → API listens
+Nodes: Document producer, Parsers, API
+Communication: Document producer publishes "data" → Parsers listen → Parsers publish "data" → API listens
 State: Documents, Extracted text, Knowledge
 Behavior: Extract, Index, Search
 Execution: Ingestion runs, API serves queries

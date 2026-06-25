@@ -217,19 +217,20 @@ src/
 └── node.test.java         ← package quark.io.file.watch; (optional)
 ```
 
-**`node.java`** — the implementation. Implements one of the behavioral SPI
-interfaces (`SourceProvider`, `TransformProvider`, `SinkProvider`,
-`RouteProvider`, `StreamProvider`, `ComputeProvider`). The package is
-derived from the URI: `quark/io/file/watch:v1` → `package quark.io.file.watch;`
+**`node.java`** — the implementation. Implements the `NodeProvider` SPI
+interface; the engine detects which methods the node overrides
+(`onMessage`, `onStart`, `onStop`, `close`) and calls them
+accordingly. The package is derived from the URI:
+`quark/io/file/watch:v1` → `package quark.io.file.watch;`
 
 ```java
 package quark.io.file.watch;
 
-import com.quarkloop.quark.domain.config.NodeConfig;
-import com.quarkloop.quark.domain.spi.SourceProvider;
-import com.quarkloop.quark.domain.spi.QuarkPublisher;
+import com.quarkloop.quark.core.domain.config.NodeConfig;
+import com.quarkloop.quark.core.domain.spi.NodeProvider;
+import com.quarkloop.quark.core.domain.spi.QuarkPublisher;
 
-public class FileWatchNode implements SourceProvider {
+public class FileWatchNode implements NodeProvider {
 
     private FileWatchConfig config;
     private WatchService watchService;
@@ -257,7 +258,7 @@ view of the config instead of raw `NodeConfig.getString()` calls:
 ```java
 package quark.io.file.watch;
 
-import com.quarkloop.quark.domain.config.NodeConfig;
+import com.quarkloop.quark.core.domain.config.NodeConfig;
 
 public record FileWatchConfig(
     String path,
@@ -287,11 +288,12 @@ src/
 └── node.test.ts           ← tests (optional)
 ```
 
-**`node.ts`** — exports an object with the SPI methods. The available
-methods depend on the `category` declared in the manifest:
+**`node.ts`** — exports an object with the SPI methods. The engine
+detects which methods the node overrides at runtime and calls them
+accordingly:
 
 ```typescript
-// category: "transform" → implements onMessage
+// A message-driven node implements onMessage:
 export default {
     onMessage(message: NodeMessage, publisher: NodePublisher) {
         const model = config.getString("model", "gpt-4");
@@ -305,7 +307,7 @@ export default {
 };
 ```
 
-For `category: "source"` → implements `onStart` + `onStop`:
+An autonomous node (no `listens`) implements `onStart` + `onStop`:
 
 ```typescript
 export default {
@@ -487,7 +489,7 @@ When a `.quark.ts` file references a URI not in the built-in registry:
    - JVM mode + `contentType=shared-library` → loads the `.jar` via a classloader.
    - Native mode + `contentType=shared-library` → loads the `.so` via `System.load()`.
    - `contentType=typescript` → evaluates the `.ts` source via GraalJS.
-4. The data plane creates a `NodeImplementationFactory` from the loaded code and the manifest's `category` field.
+4. The data plane instantiates the `NodeImplementationFactory` from the loaded code (Java: reflective load via URLClassLoader; TypeScript: `TypeScriptNodeFactory` wraps the ESM source).
 
 <Steps>
   <Step>**Developer writes** `nodes/quark/io/file/watch/v1/` with `manifest.json`, `src/node.java`, `build.toml`.</Step>
