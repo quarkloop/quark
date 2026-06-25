@@ -45,7 +45,7 @@ diagram):
 
 The `.quark.ts` file is parsed **twice**:
 
-1. **Parse-time (control plane)**: `SimpleSystemParser` (in `core/quark-script`)
+1. **Parse-time (control plane)**: `SimpleSystemParser` (in `runtime/quark-core`)
    extracts system name, namespace, runtime mode, and node definitions using
    regex. No GraalJS, no JS evaluation. This produces a `SystemDefinition`
    record used for metadata persistence and deploy routing.
