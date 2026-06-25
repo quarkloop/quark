@@ -33,15 +33,18 @@ cd "$ROOT_DIR"
 BUILD_MODE="${BUILD_MODE:-jvm}"
 CLI_BIN="cli/quarkctl"
 
-if [ "$BUILD_MODE" = "native" ]; then
-    SERVER_BIN="quark-server/target/quark-server-0.1.0-SNAPSHOT-runner"
+# Use RUN_MODE if set (the Makefile uses RUN_MODE=jvm|native). Backwards-compat with BUILD_MODE.
+RUN_MODE="${RUN_MODE:-${BUILD_MODE:-jvm}}"
+
+if [ "$RUN_MODE" = "native" ]; then
+    SERVER_BIN="server/quark-server/target/quark-server-0.1.0-SNAPSHOT-runner"
     if [ ! -x "$SERVER_BIN" ]; then
-        echo "❌ Native binary not found at $SERVER_BIN — run 'make build-native' first." >&2
+        echo "❌ Native binary not found at $SERVER_BIN — run 'make build-native-server' first." >&2
         exit 1
     fi
     RUN_CMD=("$SERVER_BIN" "-Dquark.native=true")
 else
-    SERVER_BIN="quark-server/target/quark-server-0.1.0-SNAPSHOT-runner.jar"
+    SERVER_BIN="server/quark-server/target/quark-server-0.1.0-SNAPSHOT-runner.jar"
     if [ ! -f "$SERVER_BIN" ]; then
         echo "❌ Server jar not found at $SERVER_BIN — run 'make build' first." >&2
         exit 1
@@ -100,19 +103,13 @@ echo "  Catalog PID: $CATALOG_PID"
 sleep 1
 echo "  ✓ Catalog ready"
 
-cleanup_nats() {
-    kill "$CATALOG_PID" 2>/dev/null || true
-    wait "$CATALOG_PID" 2>/dev/null || true
-    kill "$NATS_PID" 2>/dev/null || true
-    wait "$NATS_PID" 2>/dev/null || true
-}
-
 # ---- Start the server ------------------------------------------------------
-echo "▶ Starting Quark server ($BUILD_MODE mode, background)..."
+echo "▶ Starting Quark server ($RUN_MODE mode, background)..."
 
 # Use a dedicated port to avoid clashes with any running instance.
 export QUARK_STATE_ROOT="$STATE_DIR"
-export BUILD_MODE
+export RUN_MODE
+export BUILD_MODE="$RUN_MODE"   # backwards-compat for any downstream readers
 
 
 "${RUN_CMD[@]}" \
@@ -125,6 +122,9 @@ cleanup() {
     echo "⏹ Stopping server (PID $SERVER_PID)..."
     kill "$SERVER_PID" 2>/dev/null || true
     wait "$SERVER_PID" 2>/dev/null || true
+    echo "⏹ Stopping Catalog (PID $CATALOG_PID)..."
+    kill "$CATALOG_PID" 2>/dev/null || true
+    wait "$CATALOG_PID" 2>/dev/null || true
     echo "⏹ Stopping NATS (PID $NATS_PID)..."
     kill "$NATS_PID" 2>/dev/null || true
     wait "$NATS_PID" 2>/dev/null || true
@@ -132,16 +132,22 @@ cleanup() {
 trap cleanup EXIT
 
 # ---- Wait for readiness ----------------------------------------------------
+# The control plane exposes two health surfaces:
+#   - /health/live    (HealthEndpoint @Path("/health") — plain JSON, always 200 once Quarkus is up)
+#   - /q/health/live  (SmallRye Health — runs PlatformLivenessCheck)
+# Both are valid; we poll /health/live (the simpler one).
 echo "⏳ Waiting for server to be ready..."
+READY=0
 for i in $(seq 1 30); do
-    if curl -sf http://localhost:8080/health >/dev/null 2>&1; then
+    if curl -sf http://localhost:8080/health/live >/dev/null 2>&1; then
         echo "✓ Server ready (after ${i}s)"
+        READY=1
         break
     fi
     sleep 1
 done
 
-if ! curl -sf http://localhost:8080/health/live >/dev/null 2>&1; then
+if [ "$READY" -ne 1 ]; then
     echo "❌ Server did not become ready in 30s. Server log:" >&2
     cat /tmp/quark-server.log >&2
     exit 1
