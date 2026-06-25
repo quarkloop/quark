@@ -1,7 +1,6 @@
 package com.quarkloop.quark.core.domain.config;
 
 import java.util.Collections;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -62,17 +61,6 @@ public record NodeConfig(Map<String, Object> properties) {
             return Boolean.parseBoolean(s);
         }
         return defaultValue;
-    }
-
-    @SuppressWarnings("unchecked")
-    public List<String> getStringList(String key) {
-        Object val = properties.get(key);
-        if (val instanceof List<?> list) {
-            return list.stream()
-                    .map(Object::toString)
-                    .toList();
-        }
-        return Collections.emptyList();
     }
 
     public Map<String, Object> asMap() {
