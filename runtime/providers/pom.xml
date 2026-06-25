@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.quarkloop.quark</groupId>
+        <artifactId>quark-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>quark-providers-parent</artifactId>
+    <packaging>pom</packaging>
+    <name>Quark Providers Parent</name>
+    <description>
+        Parent POM for node provider modules. Each provider is a
+        self-contained module that registers a NodeImplementationFactory
+        bean via CDI.
+    </description>
+
+    <modules>
+        <module>provider-timer</module>
+        <module>provider-cpu-profiler</module>
+        <module>provider-memory-profiler</module>
+        <module>provider-json-writer</module>
+        <module>provider-streaming-endpoint</module>
+    </modules>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>com.quarkloop.quark</groupId>
+                <artifactId>provider-timer</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.quarkloop.quark</groupId>
+                <artifactId>provider-cpu-profiler</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.quarkloop.quark</groupId>
+                <artifactId>provider-memory-profiler</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.quarkloop.quark</groupId>
+                <artifactId>provider-json-writer</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.quarkloop.quark</groupId>
+                <artifactId>provider-streaming-endpoint</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+</project>
