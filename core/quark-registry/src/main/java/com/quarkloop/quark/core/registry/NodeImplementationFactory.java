@@ -7,8 +7,9 @@ import com.quarkloop.quark.core.domain.spi.NodeProvider;
  * SPI for node implementation providers.
  *
  * <p>Each factory creates {@link NodeProvider} instances from configuration.
- * The factory no longer declares a behavioral category — the engine detects
- * which methods the provider overrides at runtime.
+ * The engine detects which methods the provider overrides at runtime
+ * (onMessage, start, close, etc.) — there is no behavioral type or
+ * category field on the factory.
  */
 public interface NodeImplementationFactory {
 

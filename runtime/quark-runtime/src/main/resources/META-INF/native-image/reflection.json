@@ -138,11 +138,6 @@
     "allDeclaredMethods": true
   },
   {
-    "name": "com.quarkloop.quark.core.domain.category.NodeCategory",
-    "allDeclaredConstructors": true,
-    "allDeclaredMethods": true
-  },
-  {
     "name": "com.quarkloop.quark.core.domain.state.NodeState",
     "allDeclaredConstructors": true,
     "allDeclaredMethods": true

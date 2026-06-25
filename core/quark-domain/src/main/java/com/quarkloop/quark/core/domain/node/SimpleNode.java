@@ -9,9 +9,10 @@ import java.util.Objects;
 /**
  * Default implementation of {@link Node}.
  *
- * <p>A simple immutable record. No behavioral category — the node's behavior
- * is determined at runtime by which {@link com.quarkloop.quark.core.domain.spi.NodeProvider}
- * methods it overrides.
+ * <p>A simple immutable record. The node's behavior is determined at
+ * runtime by which {@link com.quarkloop.quark.core.domain.spi.NodeProvider}
+ * methods it overrides (onMessage, start, close, etc.) — there is no
+ * behavioral type or category field.
  */
 public record SimpleNode(
         String name,
