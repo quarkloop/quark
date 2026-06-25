@@ -153,6 +153,39 @@ if [ "$READY" -ne 1 ]; then
     exit 1
 fi
 
+# ---- Push standard library nodes to the Catalog ----------------------------
+# The runtime NEVER compiles node implementations into its binary. Every node
+# the example system references (timer, cpu, memory, writer, stream) must be
+# pushed to the Catalog before the deploy command, so the data plane can pull
+# them at deploy time via the registry.node.pull NATS subject.
+#
+# This is the docker-image model: build → push → pull → run. The script does
+# not push the 5 TypeScript nodes (stdout, json-parse, map, conditional, fetch)
+# because the simple-streaming example doesn't reference them — but they would
+# be pushed the same way if a system used them.
+echo "▶ Building + pushing standard library nodes to the Catalog..."
+NODES_TO_PUSH=(
+    "quark/time/schedule/timer:v1"
+    "quark/system/cpu/profile:v1"
+    "quark/system/memory/profile:v1"
+    "quark/io/file/write:v1"
+    "quark/stream/sse/broadcast:v1"
+)
+for uri in "${NODES_TO_PUSH[@]}"; do
+    echo "  • $uri"
+    ./$CLI_BIN node build "$uri" > /tmp/quark-node-build.log 2>&1 || {
+        echo "❌ node build failed for $uri:" >&2
+        cat /tmp/quark-node-build.log >&2
+        exit 1
+    }
+    ./$CLI_BIN node push  "$uri" > /tmp/quark-node-push.log 2>&1 || {
+        echo "❌ node push failed for $uri:" >&2
+        cat /tmp/quark-node-push.log >&2
+        exit 1
+    }
+done
+echo "  ✓ All ${#NODES_TO_PUSH[@]} nodes pushed."
+
 # ---- Deploy the example ----------------------------------------------------
 echo "▶ Deploying example under namespace 'alice'..."
 ./$CLI_BIN apply -f example/simple-streaming/system.quark.ts -n alice
