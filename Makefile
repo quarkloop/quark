@@ -55,8 +55,11 @@ SERVER_NATIVE := server/quark-server/target/quark-server-0.1.0-SNAPSHOT-runner
 # Data plane (runtime) — JVM and native variants
 # Note: Quarkus names native output as <finalName>-runner, and we set
 # finalName=quark-runtime-runner, so the binary is quark-runtime-runner-runner
-# (yes, double -runner suffix). The JVM jar is just <finalName>.jar.
-RUNTIME_JAR    := runtime/quark-runtime/target/quark-runtime-runner.jar
+# (yes, double -runner suffix). The JVM runnable jar follows the same rule:
+# <finalName>-runner.jar = quark-runtime-runner-runner.jar.
+# The thin jar <finalName>.jar = quark-runtime-runner.jar has no main manifest
+# and is NOT runnable — do not use it for `java -jar`.
+RUNTIME_JAR    := runtime/quark-runtime/target/quark-runtime-runner-runner.jar
 RUNTIME_NATIVE := runtime/quark-runtime/target/quark-runtime-runner-runner
 
 # Default run mode = JVM (use RUN_MODE=native for native binaries)
@@ -101,7 +104,7 @@ help: ## Show this help
 	@printf "$(C_BOLD)Run mode:$(C_RESET) $(MODE_LABEL)  (set RUN_MODE=native for native binaries)\n\n"
 	@printf "$(C_BOLD)Build & clean$(C_RESET)\n"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
-	        | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(C_GREEN)%-26s$(C_RESET) %s\n", $$1, $$2}'
+                | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(C_GREEN)%-26s$(C_RESET) %s\n", $$1, $$2}'
 	@printf "\n$(C_BOLD)Examples$(C_RESET)\n"
 	@printf "  $(C_BLUE)make build$(C_RESET)                          # JVM build (all modules + CLI + Catalog)\n"
 	@printf "  $(C_BLUE)make build-native$(C_RESET)                   # Both native binaries (~13 min total)\n"
@@ -168,9 +171,9 @@ build-catalog: ## Build the Catalog service (Go + SQLite)
 # Check that native-image is available
 define check_native_image
 	@command -v native-image >/dev/null 2>&1 || { \
-	        printf "$(C_RED)✗ native-image not found. Install Oracle GraalVM 21+ and ensure native-image is on PATH$(C_RESET)\n"; \
-	        printf "    Or set GRAALVM_HOME=/path/to/graalvm-jdk-21\n"; \
-	        exit 1; \
+                printf "$(C_RED)✗ native-image not found. Install Oracle GraalVM 21+ and ensure native-image is on PATH$(C_RESET)\n"; \
+                printf "    Or set GRAALVM_HOME=/path/to/graalvm-jdk-21\n"; \
+                exit 1; \
 	}
 endef
 
@@ -279,11 +282,11 @@ dist: build-go ## Build platform-specific CLI binaries into dist/
 	@printf "$(C_BLUE)> Building platform-specific CLI binaries...$(C_RESET)\n"
 	@mkdir -p dist
 	@cd $(CLI_DIR) && \
-	        GOOS=darwin  GOARCH=arm64 $(GO) build $(GOFLAGS) -o ../dist/quarkctl-darwin-arm64  . && \
-	        GOOS=darwin  GOARCH=amd64 $(GO) build $(GOFLAGS) -o ../dist/quarkctl-darwin-amd64  . && \
-	        GOOS=linux   GOARCH=amd64 $(GO) build $(GOFLAGS) -o ../dist/quarkctl-linux-amd64   . && \
-	        GOOS=linux   GOARCH=arm64 $(GO) build $(GOFLAGS) -o ../dist/quarkctl-linux-arm64   . && \
-	        GOOS=windows GOARCH=amd64 $(GO) build $(GOFLAGS) -o ../dist/quarkctl-windows-amd64.exe .
+                GOOS=darwin  GOARCH=arm64 $(GO) build $(GOFLAGS) -o ../dist/quarkctl-darwin-arm64  . && \
+                GOOS=darwin  GOARCH=amd64 $(GO) build $(GOFLAGS) -o ../dist/quarkctl-darwin-amd64  . && \
+                GOOS=linux   GOARCH=amd64 $(GO) build $(GOFLAGS) -o ../dist/quarkctl-linux-amd64   . && \
+                GOOS=linux   GOARCH=arm64 $(GO) build $(GOFLAGS) -o ../dist/quarkctl-linux-arm64   . && \
+                GOOS=windows GOARCH=amd64 $(GO) build $(GOFLAGS) -o ../dist/quarkctl-windows-amd64.exe .
 	@printf "$(C_GREEN)✓ Built 5 binaries in dist/$(C_RESET)\n"
 	@ls -lh dist/
 
@@ -295,29 +298,29 @@ dist: build-go ## Build platform-specific CLI binaries into dist/
 docker-build-java: ## Build Java project in a clean Docker container
 	@printf "$(C_BLUE)> Building Java in Docker (maven:3.9-eclipse-temurin-21)...$(C_RESET)\n"
 	docker run --rm -v "$$PWD":/app -w /app maven:3.9-eclipse-temurin-21 \
-	        mvn -B clean install -DskipTests
+                mvn -B clean install -DskipTests
 	@printf "$(C_GREEN)✓ Java Docker build complete$(C_RESET)\n"
 
 docker-build-native: ## Build both native executables in Docker (Mandrel builder image)
 	@printf "$(C_BLUE)> Building native in Docker (quay.io/quarkus/ubi-quarkus-mandrel-builder-image)...$(C_RESET)\n"
 	docker run --rm -v "$$PWD":/app -w /app maven:3.9-eclipse-temurin-21 \
-	        mvn -B -pl server/quark-server -am -Pnative clean install -DskipTests
+                mvn -B -pl server/quark-server -am -Pnative clean install -DskipTests
 	docker run --rm -v "$$PWD":/app -w /app maven:3.9-eclipse-temurin-21 \
-	        mvn -B -pl runtime/quark-runtime -am -Pnative clean install -DskipTests
+                mvn -B -pl runtime/quark-runtime -am -Pnative clean install -DskipTests
 	@printf "$(C_GREEN)✓ Native Docker build complete (both binaries)$(C_RESET)\n"
 
 docker-build-go: ## Build Go CLI in a clean Docker container
 	@printf "$(C_BLUE)> Building Go in Docker (golang:1.24)...$(C_RESET)\n"
 	docker run --rm -v "$$PWD":/app -w /app/cli golang:1.24 \
-	        go build -trimpath -buildvcs=false -o /app/$(CLI_BIN) .
+                go build -trimpath -buildvcs=false -o /app/$(CLI_BIN) .
 	@printf "$(C_GREEN)✓ Go Docker build complete: $(CLI_BIN)$(C_RESET)\n"
 
 docker-verify: ## Full clean build + test in Docker (CI-friendly, no host deps)
 	@printf "$(C_BLUE)> Full verify in Docker...$(C_RESET)\n"
 	docker run --rm -v "$$PWD":/app -w /app maven:3.9-eclipse-temurin-21 \
-	        mvn -B clean verify
+                mvn -B clean verify
 	docker run --rm -v "$$PWD":/app -w /app/cli golang:1.24 \
-	        sh -c 'go vet ./... && go test ./... && go build -trimpath -buildvcs=false -o /app/$(CLI_BIN) .'
+                sh -c 'go vet ./... && go test ./... && go build -trimpath -buildvcs=false -o /app/$(CLI_BIN) .'
 	@printf "$(C_GREEN)✓ Docker verify complete$(C_RESET)\n"
 
 # =============================================================================
