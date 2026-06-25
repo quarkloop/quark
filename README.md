@@ -1,8 +1,8 @@
 # Quark Platform
 
-A universal runtime for programmable nodes, built on a **three-service architecture**: a Java/Native control plane (no GraalJS), a Go + SQLite Catalog service, and a Java/Native data plane (with GraalJS for TypeScript execution). All services communicate via an external NATS broker.
+A universal runtime for programmable nodes, built on a **three-service architecture**: a Go control plane (Fiber + nats.go), a Go + SQLite Catalog service, and a Java/Native data plane (with GraalJS for TypeScript execution). All services communicate via an external NATS broker.
 
-Everything in Quark — timers, profilers, parsers, writers, endpoints, policies — is a **Node** identified by a Docker-style URI (`<namespace>/<domain>/<subdomain>/<node>:<version>`). Users declare nodes and their communication patterns in `.quark.ts` files. The control plane parses these declarations (via a comment-aware `SimpleSystemParser`, no GraalJS) and forwards them to the data plane, where GraalJS's native ESM module support evaluates TypeScript node logic over NATS.
+Everything in Quark — timers, profilers, parsers, writers, endpoints, policies — is a **Node** identified by a Docker-style URI (`<namespace>/<domain>/<subdomain>/<node>:<version>`). Users declare nodes and their communication patterns in `.quark.ts` files. The control plane persists these declarations verbatim and forwards them to the data plane, where GraalJS's native ESM module support evaluates TypeScript node logic over NATS.
 
 **Multi-tenant by construction**: NATS subjects encode the namespace. Two tenants can deploy same-named systems simultaneously with zero data leakage.
 
@@ -15,30 +15,30 @@ Everything in Quark — timers, profilers, parsers, writers, endpoints, policies
 ```
 ┌──────────────────┐    NATS    ┌──────────────────┐    NATS    ┌────────────────┐
 │  Control Plane    │◄─────────►│  Catalog Service  │◄─────────►│  Data Plane(s)  │
-│  (Java/Native)    │           │  (Go + SQLite)    │           │  (Java/Native)  │
+│  (Go + Fiber)     │           │  (Go + SQLite)    │           │  (Java/Native)  │
 │                   │           │                   │           │                 │
 │  - REST API       │ catalog.* │  - System Store   │ quark.     │  - Node Exec    │
 │  - ProcessMgr     │ subjects  │  - Node Store     │ control.*  │  - GraalJS      │
 │  - Deploy Orch    │           │  - Event Store    │ quark.data.*│  - Event Fwd    │
 │  - Query→NATS     │           │  - Node Registry  │           │  - Metrics Fwd  │
-│  - SimpleParser   │           │  - QNP Storage    │           │                 │
+│  - No TS parsing  │           │  - QNP Storage    │           │  - TS Parser    │
 └──────────────────┘           └──────────────────┘           └────────────────┘
         ▲                                                                               ▲
         │                                                                               │
         └────────────────── NATS broker (external, nats://localhost:4222) ──────────────┘
 ```
 
-- **Control Plane** (`server/`): REST API, process management, deploy orchestration. Uses `SimpleSystemParser` (comment-aware, no GraalJS) to parse `.quark.ts`. Sends all persistence requests to the Catalog via NATS. Spawns data-plane processes on demand.
+- **Control Plane** (`server/`): REST API, process management, deploy orchestration. Written in Go (Fiber + nats.go + zap). Does NOT parse TypeScript — treats `.quark.ts` as opaque, forwards it verbatim to the data plane via NATS. A minimal regex "sniffer" extracts just the system name + runtime mode for routing. Spawns data-plane processes on demand.
 - **Catalog Service** (`quark-catalog/`): Standalone Go process with SQLite storage. Pure Go (`modernc.org/sqlite`, no CGO), no JNI, no GraalVM issues. Stores systems, nodes, events, source, and node packages (`.ts`/`.so` files). Performs JSONL migration on first startup.
-- **Data Plane** (`runtime/`): Executes node systems. Spawned by the control plane. Includes GraalJS/Truffle for TypeScript node execution. Forwards events and metrics back via NATS.
+- **Data Plane** (`runtime/`): Executes node systems. Spawned by the control plane. Includes GraalJS/Truffle for TypeScript node execution. Parses the `.quark.ts` source via `GraalJsSystemParser` (full ESM evaluation) + `SimpleSystemParser` (structural extraction). Forwards events and metrics back via NATS.
 
 ### Native Binary Characteristics
 
 | Binary | Size | Build time | Peak RAM | Startup | Includes GraalJS |
 |--------|------|------------|----------|---------|------------------|
-| Control plane (`quark-server-0.1.0-SNAPSHOT-runner`) | 76 MB | ~4 min | 3 GB | 46 ms | ❌ No |
-| Data plane (`quark-runtime-runner-runner`) | 194 MB | ~9 min | 6.5 GB | 38 ms | ✅ Yes (`--macro:truffle-svm`) |
-| Catalog (`quark-catalog`) | 15 MB | <5 s | <50 MB | <100 ms | n/a (Go) |
+| Control plane (`server/quark-server`) | ~13 MB | <5s | <100 MB | <50 ms | ❌ No (Go binary) |
+| Data plane (`runtime/quark-runtime-runner-runner`) | 194 MB | ~9 min | 6.5 GB | 38 ms | ✅ Yes (`--macro:truffle-svm`) |
+| Catalog (`quark-catalog`) | 15 MB | <5s | <50 MB | <100 ms | n/a (Go) |
 
 ### IPC Protocol (NATS)
 
@@ -142,25 +142,32 @@ quark-platform/
 ├── AGENTS.md                            ← Guide for AI agents (READ FIRST if you're an AI)
 ├── README.md                            ← This file
 ├── Makefile                             ← All build/test/run commands (run `make help`)
-├── pom.xml                              ← Parent POM (BOM management, plugin config, native profile)
+├── pom.xml                              ← Parent POM (runtime/* modules only — server/ is Go)
 ├── mvnw / mvnw.cmd / .mvn/             ← Maven wrapper (DO NOT delete .mvn/wrapper/)
 ├── Dockerfile                           ← Clean-container build verification
 ├── docs/                                ← Specification documents
 │
-├── core/                                ← SHARED code — no GraalJS, no Quarkus
-│   ├── quark-domain/                    ← Pure domain model (records, sealed interfaces)
-│   ├── quark-event/                     ← Event bus + per-tenant event store SPI
-│   ├── quark-registry/                  ← SPI registry for node implementations
-│   ├── quark-script/                    ← SystemParser interface + SimpleSystemParser (comment-aware, no GraalJS)
-│   └── quark-engine/                    ← Lifecycle, NATS wiring, DataPlaneProcess, ProcessManager
+├── server/                              ← CONTROL PLANE — Go + Fiber (single binary)
+│   ├── go.mod / go.sum                  ← module github.com/quarkloop/quark/server
+│   ├── cmd/server/main.go               ← entry point: env config + graceful shutdown
+│   └── internal/
+│       ├── config/                      ← env-var config (QUARK_HTTP_PORT, etc.)
+│       ├── domain/                      ← Go structs mirroring Java records
+│       ├── nats/                        ← NATS connection wrapper
+│       ├── store/                       ← repository interfaces + NatsCatalogClient
+│       ├── dataplane/                   ← ProcessManager + DataPlaneProcess + ipc
+│       ├── deploy/                      ← DeployService (persist + forward; NO TS parsing)
+│       ├── event/                       ← event receiver (quark.data.event.> sub)
+│       ├── metrics/                     ← heartbeat collector + rate computer
+│       ├── query/                       ← read-side services (System/Node/.../Event/Source)
+│       ├── health/                      ← /health/live + /health/ready
+│       └── http/                        ← Fiber app + handlers + middleware + DTOs
 │
-├── server/                              ← CONTROL PLANE — no GraalJS
-│   ├── quark-app/                       ← DeployService, QueryService, NatsCatalogClient
-│   ├── quark-api/                       ← JAX-RS REST endpoints + DTOs (/api/v1/...)
-│   ├── quark-observability/             ← Metrics, health checks
-│   └── quark-server/                    ← Quarkus runner (QuarkServer.java, native-image config)
-│
-├── runtime/                             ← DATA PLANE — includes GraalJS/Truffle
+├── runtime/                             ← DATA PLANE — Java + GraalJS/Truffle
+│   ├── quark-core/                      ← Consolidated module: domain records, engine
+│   │                                    ←   (NATS, lifecycle, dataplane, metrics, polyglot
+│   │                                    ←   lookup, store SPIs), event bus, registry SPI,
+│   │                                    ←   and SimpleSystemParser (moved from core/)
 │   ├── quark-script/                    ← GraalJsSystemParser (GraalJS ESM-based parser)
 │   ├── quark-polyglot/                  ← TypeScriptNodeFactory + PolyglotNodeRegistry (catalog pull) + JsConsole/JsConfig/JsMessage/JsPublisher bridges
 │   ├── quark-app/                       ← RuntimeDeployService, DataPlaneCommandHandler
