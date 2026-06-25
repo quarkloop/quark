@@ -102,24 +102,17 @@ The data plane loads the content based on runtime mode:
 See **[CHECKLIST.md](./CHECKLIST.md)** for the detailed step-by-step
 checklist for creating, implementing, building, and pushing a node.
 
-## First 10 Nodes
+## Standard Library Nodes
 
-### Existing nodes (refactor to new layout)
-
-| Current URI | New URI | Language |
-|-------------|---------|----------|
-| `source/timer:v1` | `quark/time/schedule/timer:v1` | Java |
-| `function/cpu-profiler:v1` | `quark/system/cpu/profile:v1` | Java |
-| `function/memory-profiler:v1` | `quark/system/memory/profile:v1` | Java |
-| `store/json-writer:v1` | `quark/io/file/write:v1` | Java |
-| `endpoint/stream:v1` | `quark/stream/sse/broadcast:v1` | Java |
-
-### New nodes to implement
-
-| URI | Language |
-|-----|----------|
-| `quark/log/console/stdout:v1` | TypeScript |
-| `quark/codec/json/parse:v1` | TypeScript |
-| `quark/data/shape/map:v1` | TypeScript |
-| `quark/route/flow/conditional:v1` | TypeScript |
-| `quark/net/http/fetch:v1` | TypeScript |
+| URI | Language | Description |
+|-----|----------|-------------|
+| `quark/time/schedule/timer:v1` | Java | Emits a tick event at a fixed interval |
+| `quark/system/cpu/profile:v1` | Java | CPU profiler |
+| `quark/system/memory/profile:v1` | Java | Memory profiler |
+| `quark/io/file/write:v1` | Java | JSONL file writer |
+| `quark/stream/sse/broadcast:v1` | Java | SSE broadcast endpoint |
+| `quark/log/console/stdout:v1` | TypeScript | Writes message payload to stdout as JSON |
+| `quark/codec/json/parse:v1` | TypeScript | Parses JSON string payloads |
+| `quark/data/shape/map:v1` | TypeScript | Maps fields between payload shapes |
+| `quark/route/flow/conditional:v1` | TypeScript | Conditional router |
+| `quark/net/http/fetch:v1` | TypeScript | HTTP fetcher |
