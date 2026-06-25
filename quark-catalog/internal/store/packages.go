@@ -8,26 +8,26 @@ import (
 	"github.com/quarkloop/quark/quark-catalog/internal/api"
 )
 
-// --- Node package operations (pushed .ts/.so payloads) ---
+// --- Node package operations (pushed .ts/.jar payloads) ---
 //
 // Node packages are stored in the "node_packages" table, addressed by
-// URI (e.g. "source/timer:v1"). Push stores the content + a SHA-256
-// checksum; pull increments the download counter and returns the full
-// row including content. List/info variants omit the (potentially
-// large) content blob.
+// URI (e.g. "quark/time/schedule/timer:v1"). Push stores the content +
+// a SHA-256 checksum; pull increments the download counter and returns
+// the full row including content. List/info variants omit the
+// (potentially large) content blob.
 
 // PushNodePackage upserts a node package row. The checksum is computed
 // from Content inside this method so callers can't forget to set it.
 func (s *Store) PushNodePackage(req api.PushNodeRequest) error {
 	checksum := sha256hex(req.Content)
 	_, err := s.db.Exec(
-		`INSERT INTO node_packages (uri, category, version, manifest, content, content_type, checksum, created_at, downloads)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
-		 ON CONFLICT(uri) DO UPDATE SET
-		   category=excluded.category, version=excluded.version, manifest=excluded.manifest,
-		   content=excluded.content, content_type=excluded.content_type, checksum=excluded.checksum,
-		   created_at=excluded.created_at`,
-		req.URI, req.Category, req.Version, req.Manifest, req.Content, req.ContentType, checksum, now(),
+		`INSERT INTO node_packages (uri, version, manifest, content, content_type, checksum, created_at, downloads)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+                 ON CONFLICT(uri) DO UPDATE SET
+                   version=excluded.version, manifest=excluded.manifest,
+                   content=excluded.content, content_type=excluded.content_type, checksum=excluded.checksum,
+                   created_at=excluded.created_at`,
+		req.URI, req.Version, req.Manifest, req.Content, req.ContentType, checksum, now(),
 	)
 	return err
 }
@@ -39,11 +39,11 @@ func (s *Store) PullNodePackage(uri string) (*api.NodePackageResponse, error) {
 	_, _ = s.db.Exec(`UPDATE node_packages SET downloads=downloads+1 WHERE uri=?`, uri)
 
 	row := s.db.QueryRow(
-		`SELECT uri, category, version, manifest, content, content_type, checksum, created_at, downloads
-		 FROM node_packages WHERE uri=?`, uri,
+		`SELECT uri, version, manifest, content, content_type, checksum, created_at, downloads
+                 FROM node_packages WHERE uri=?`, uri,
 	)
 	var p api.NodePackageResponse
-	err := row.Scan(&p.URI, &p.Category, &p.Version, &p.Manifest, &p.Content, &p.ContentType,
+	err := row.Scan(&p.URI, &p.Version, &p.Manifest, &p.Content, &p.ContentType,
 		&p.Checksum, &p.CreatedAt, &p.Downloads)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -54,11 +54,11 @@ func (s *Store) PullNodePackage(uri string) (*api.NodePackageResponse, error) {
 // GetNodeInfo returns package metadata (no content) by URI.
 func (s *Store) GetNodeInfo(uri string) (*api.NodeInfoResponse, error) {
 	row := s.db.QueryRow(
-		`SELECT uri, category, version, manifest, content_type, checksum, created_at, downloads
-		 FROM node_packages WHERE uri=?`, uri,
+		`SELECT uri, version, manifest, content_type, checksum, created_at, downloads
+                 FROM node_packages WHERE uri=?`, uri,
 	)
 	var p api.NodeInfoResponse
-	err := row.Scan(&p.URI, &p.Category, &p.Version, &p.Manifest, &p.ContentType,
+	err := row.Scan(&p.URI, &p.Version, &p.Manifest, &p.ContentType,
 		&p.Checksum, &p.CreatedAt, &p.Downloads)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -66,21 +66,11 @@ func (s *Store) GetNodeInfo(uri string) (*api.NodeInfoResponse, error) {
 	return &p, err
 }
 
-// ListNodePackages returns metadata for all packages, optionally
-// filtered by category. Ordered by URI.
-func (s *Store) ListNodePackages(category string) ([]api.NodeInfoResponse, error) {
-	var rows *sql.Rows
-	var err error
-	if category != "" {
-		rows, err = s.db.Query(
-			`SELECT uri, category, version, manifest, content_type, checksum, created_at, downloads
-			 FROM node_packages WHERE category=? ORDER BY uri`, category,
-		)
-	} else {
-		rows, err = s.db.Query(
-			`SELECT uri, category, version, manifest, content_type, checksum, created_at, downloads
-			 FROM node_packages ORDER BY uri`)
-	}
+// ListNodePackages returns metadata for all packages, ordered by URI.
+func (s *Store) ListNodePackages() ([]api.NodeInfoResponse, error) {
+	rows, err := s.db.Query(
+		`SELECT uri, version, manifest, content_type, checksum, created_at, downloads
+                 FROM node_packages ORDER BY uri`)
 	if err != nil {
 		return nil, err
 	}
@@ -92,8 +82,8 @@ func (s *Store) ListNodePackages(category string) ([]api.NodeInfoResponse, error
 // manifest contains keyword (LIKE %keyword%).
 func (s *Store) SearchNodePackages(keyword string) ([]api.NodeInfoResponse, error) {
 	rows, err := s.db.Query(
-		`SELECT uri, category, version, manifest, content_type, checksum, created_at, downloads
-		 FROM node_packages WHERE uri LIKE ? OR manifest LIKE ? ORDER BY uri`,
+		`SELECT uri, version, manifest, content_type, checksum, created_at, downloads
+                 FROM node_packages WHERE uri LIKE ? OR manifest LIKE ? ORDER BY uri`,
 		"%"+keyword+"%", "%"+keyword+"%",
 	)
 	if err != nil {
@@ -122,7 +112,7 @@ func scanNodeInfoRows(rows *sql.Rows) ([]api.NodeInfoResponse, error) {
 	var out []api.NodeInfoResponse
 	for rows.Next() {
 		var p api.NodeInfoResponse
-		if err := rows.Scan(&p.URI, &p.Category, &p.Version, &p.Manifest, &p.ContentType,
+		if err := rows.Scan(&p.URI, &p.Version, &p.Manifest, &p.ContentType,
 			&p.Checksum, &p.CreatedAt, &p.Downloads); err != nil {
 			return nil, err
 		}

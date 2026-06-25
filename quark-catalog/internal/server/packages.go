@@ -81,7 +81,7 @@ func (s *Server) handleListNodePackages(msg *nats.Msg) {
         // Empty body → list all; tolerate decode failure.
         var req api.SearchNodesRequest
         _ = json.Unmarshal(msg.Data, &req) //nolint:errcheck // empty body is valid here
-        nodes, err := s.store.ListNodePackages(req.Category)
+        nodes, err := s.store.ListNodePackages()
         if err != nil {
                 replyError(msg, "list failed: %v", err)
                 return

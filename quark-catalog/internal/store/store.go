@@ -175,7 +175,6 @@ CREATE INDEX IF NOT EXISTS idx_events_ts      ON events(timestamp DESC);
 
 CREATE TABLE IF NOT EXISTS node_packages (
     uri          TEXT PRIMARY KEY,
-    category     TEXT,
     version      TEXT NOT NULL,
     manifest     TEXT NOT NULL,
     content      BLOB NOT NULL,
@@ -184,7 +183,6 @@ CREATE TABLE IF NOT EXISTS node_packages (
     created_at   TEXT NOT NULL DEFAULT (datetime('now')),
     downloads    INTEGER NOT NULL DEFAULT 0
 );
-CREATE INDEX IF NOT EXISTS idx_packages_category ON node_packages(category);
 
 CREATE TABLE IF NOT EXISTS registry (
     uri         TEXT PRIMARY KEY,
