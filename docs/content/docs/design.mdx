@@ -46,7 +46,7 @@ service has a single responsibility and communicates exclusively via NATS.
 
 - **Language**: Java 21 / Native image (Oracle GraalVM)
 - **Binary**: `server/quark-server/target/quark-server-0.1.0-SNAPSHOT-runner` (76 MB native, 4 min build, 46 ms startup)
-- **Includes GraalJS**: ❌ No — uses `SimpleSystemParser` (regex-based) to parse `.quark.ts`
+- **Includes GraalJS**: ❌ No — uses `SimpleSystemParser` (comment-aware, no GraalJS) to parse `.quark.ts`
 - **Responsibility**: REST API, deploy/undeploy orchestration, spawns data-plane processes, forwards persistence requests to the Catalog
 - **Does NOT**: Execute node logic, touch GraalJS, open the SQLite database directly
 

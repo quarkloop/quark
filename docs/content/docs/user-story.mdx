@@ -113,7 +113,7 @@ Behind the scenes:
 
 <Steps>
   <Step>**CLI** PUTs the TypeScript source to the control plane (`PUT /api/v1/namespaces/alice-team/systems/access-log-processor`).</Step>
-  <Step>**Control plane** parses the source with `SimpleSystemParser` (regex-based, no GraalJS) → `SystemDefinition`.</Step>
+  <Step>**Control plane** parses the source with `SimpleSystemParser` (comment-aware, no GraalJS) → `SystemDefinition`.</Step>
   <Step>**Control plane** persists the system record + source to the Catalog via NATS (`catalog.system.save`, `catalog.source.save`).</Step>
   <Step>**Control plane's** `ProcessManager` ensures a data-plane process exists for the runtime (spawns one if needed).</Step>
   <Step>**Control plane** sends a `DeployCommand` to `quark.control.<runtimeId>.deploy` via NATS request-reply.</Step>

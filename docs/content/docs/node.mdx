@@ -20,7 +20,7 @@ a Docker-style URI (`category/implementation:version`).
 
 Users write **TypeScript files** (`.quark.ts`) that declare nodes and their
 communication patterns. The control plane parses these files via
-**`SimpleSystemParser`** (regex-based, no GraalJS) and forwards them to a
+**`SimpleSystemParser`** (comment-aware, no GraalJS) and forwards them to a
 data-plane process, where **GraalJS** evaluates TypeScript node logic over an
 **external NATS Core** backbone. Nodes communicate exclusively through NATS
 subjects — no node knows about any other node directly.
@@ -37,7 +37,7 @@ diagram):
 
 | Service | Tier | Includes GraalJS? | Responsibility |
 |---------|------|-------------------|----------------|
-| **Control plane** (`server/`) | `server/` | ❌ No | REST API, deploy orchestration, parses `.quark.ts` with `SimpleSystemParser` (regex), spawns data-plane processes |
+| **Control plane** (`server/`) | `server/` | ❌ No | REST API, deploy orchestration, parses `.quark.ts` with `SimpleSystemParser` (comment-aware), spawns data-plane processes |
 | **Catalog** (`quark-catalog/`) | (Go) | n/a | SQLite-backed metadata store (systems, nodes, events, source, registry) |
 | **Data plane** (`runtime/`) | `runtime/` | ✅ Yes | Executes nodes via GraalJS + providers; connects to external NATS server |
 

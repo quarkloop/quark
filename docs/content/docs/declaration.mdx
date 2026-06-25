@@ -23,13 +23,13 @@ Quark's declarative format is built on two primitives:
 2. **NATS Subjects** — The wiring. Nodes communicate through named subjects, not direct references.
 
 The `.quark.ts` file IS the program. Users write TypeScript. The control plane
-parses the declaration via `SimpleSystemParser` (regex-based, no GraalJS),
+parses the declaration via `SimpleSystemParser` (comment-aware, no GraalJS),
 persists the source to the Catalog (Go + SQLite), and forwards a deploy
 command to a data-plane process via NATS. The data plane uses GraalJS to
 evaluate TypeScript node logic at execution time.
 
-No arrow notation. No YAML. Server-side parsing is regex-based
-(`SimpleSystemParser`); runtime-side TypeScript evaluation uses GraalJS.
+No arrow notation. No YAML. Server-side parsing is comment-aware
+(`SimpleSystemParser`); runtime-side TypeScript evaluation uses GraalJS ESM.
 
 ---
 
@@ -72,7 +72,7 @@ When a user runs `quarkctl apply -f system.quark.ts -n alice`:
 
 <Steps>
   <Step>**CLI** PUTs the source to `PUT /api/v1/namespaces/alice/systems/monitor` on the control plane.</Step>
-  <Step>**Control plane** parses the source with `SimpleSystemParser` (regex) → `SystemDefinition`.</Step>
+  <Step>**Control plane** parses the source with `SimpleSystemParser` (comment-aware) → `SystemDefinition`.</Step>
   <Step>**Control plane** persists the system record + source to the Catalog via `catalog.system.save` and `catalog.source.save` NATS requests.</Step>
   <Step>**Control plane's** `ProcessManager` ensures a data-plane process exists for the runtime (`shared` or `ns-<namespace>`), spawning one if needed.</Step>
   <Step>**Control plane** sends a `DeployCommand` (carrying the source) to `quark.control.<runtimeId>.deploy` via NATS request-reply.</Step>

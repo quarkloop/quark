@@ -153,7 +153,7 @@ NATS provides:
 </Callout>
 
 <Callout type="info" title="Parse-time vs Execute-time">
-  Server-side parsing uses `SimpleSystemParser` (regex, no GraalJS) to extract
+  Server-side parsing uses `SimpleSystemParser` (comment-aware, no GraalJS) to extract
   system structure; runtime-side TypeScript evaluation uses GraalJS in the data
   plane to execute node logic. See [Node §2](./node#three-service-architecture).
 </Callout>
