@@ -28,16 +28,16 @@ Everything in Quark — timers, profilers, parsers, writers, endpoints, policies
         └────────────────── NATS broker (external, nats://localhost:4222) ──────────────┘
 ```
 
-- **Control Plane** (`server/`): REST API, process management, deploy orchestration. Written in Go (Fiber + nats.go + zap). Does NOT parse TypeScript — treats `.quark.ts` as opaque, forwards it verbatim to the data plane via NATS. A minimal regex "sniffer" extracts just the system name + runtime mode for routing. Spawns data-plane processes on demand.
+- **Control Plane** (`quark-server/`): REST API, process management, deploy orchestration. Written in Go (Fiber + nats.go + zap). Does NOT parse TypeScript — treats `.quark.ts` as opaque, forwards it verbatim to the data plane via NATS. A minimal regex "sniffer" extracts just the system name + runtime mode for routing. Spawns data-plane processes on demand.
 - **Catalog Service** (`quark-catalog/`): Standalone Go process with SQLite storage. Pure Go (`modernc.org/sqlite`, no CGO), no JNI, no GraalVM issues. Stores systems, nodes, events, source, and node packages (`.ts`/`.so` files). Performs JSONL migration on first startup.
-- **Data Plane** (`runtime/`): Executes node systems. Spawned by the control plane. Includes GraalJS/Truffle for TypeScript node execution. Parses the `.quark.ts` source via `GraalJsSystemParser` (full ESM evaluation) + `SimpleSystemParser` (structural extraction). Forwards events and metrics back via NATS.
+- **Data Plane** (`quark-runtime/`): Executes node systems. Spawned by the control plane. Includes GraalJS/Truffle for TypeScript node execution. Parses the `.quark.ts` source via `GraalJsSystemParser` (full ESM evaluation) + `SimpleSystemParser` (structural extraction). Forwards events and metrics back via NATS.
 
 ### Native Binary Characteristics
 
 | Binary | Size | Build time | Peak RAM | Startup | Includes GraalJS |
 |--------|------|------------|----------|---------|------------------|
-| Control plane (`server/quark-server`) | ~13 MB | <5s | <100 MB | <50 ms | ❌ No (Go binary) |
-| Data plane (`runtime/quark-runtime-runner-runner`) | 194 MB | ~9 min | 6.5 GB | 38 ms | ✅ Yes (`--macro:truffle-svm`) |
+| Control plane (`quark-server/quark-server`) | ~13 MB | <5s | <100 MB | <50 ms | ❌ No (Go binary) |
+| Data plane (`quark-runtime/quark-runtime-runner-runner`) | 194 MB | ~9 min | 6.5 GB | 38 ms | ✅ Yes (`--macro:truffle-svm`) |
 | Catalog (`quark-catalog`) | 15 MB | <5s | <50 MB | <100 ms | n/a (Go) |
 
 ### IPC Protocol (NATS)
@@ -67,7 +67,7 @@ All control-plane ↔ data-plane communication flows through NATS:
 | 3 | **Isolated data plane** | Auto-spawned when `.quark.ts` has `runtime: "isolated"` | 9101+ | Dedicated process per isolated namespace |
 | 4 | **NATS server** | Operator (`nats-server`) | 4222 | Message bus for all IPC |
 | 5 | **Catalog service** | Operator (`./quark-catalog/quark-catalog`) | — | Metadata store (SQLite) + node package registry |
-| 6 | **Go CLI** (`quarkctl`) | Operator (`./cli/quarkctl`) | — | Talks to control plane REST API |
+| 6 | **Go CLI** (`quarkctl`) | Operator (`./quark-cli/quarkctl`) | — | Talks to control plane REST API |
 
 ### Runtime Isolation
 
@@ -142,12 +142,12 @@ quark-platform/
 ├── AGENTS.md                            ← Guide for AI agents (READ FIRST if you're an AI)
 ├── README.md                            ← This file
 ├── Makefile                             ← All build/test/run commands (run `make help`)
-├── pom.xml                              ← Parent POM (runtime/* modules only — server/ is Go)
+├── pom.xml                              ← Parent POM (quark-runtime/* modules only — quark-server/ is Go)
 ├── mvnw / mvnw.cmd / .mvn/             ← Maven wrapper (DO NOT delete .mvn/wrapper/)
 ├── Dockerfile                           ← Clean-container build verification
 ├── docs/                                ← Specification documents
 │
-├── server/                              ← CONTROL PLANE — Go + Fiber (single binary)
+├── quark-server/                              ← CONTROL PLANE — Go + Fiber (single binary)
 │   ├── go.mod / go.sum                  ← module github.com/quarkloop/quark/server
 │   ├── cmd/server/main.go               ← entry point: env config + graceful shutdown
 │   └── internal/
@@ -163,7 +163,7 @@ quark-platform/
 │       ├── health/                      ← /health/live + /health/ready
 │       └── http/                        ← Fiber app + handlers + middleware + DTOs
 │
-├── runtime/                             ← DATA PLANE — Java + GraalJS/Truffle
+├── quark-runtime/                             ← DATA PLANE — Java + GraalJS/Truffle
 │   ├── quark-core/                      ← Consolidated module: domain records, engine
 │   │                                    ←   (NATS, lifecycle, dataplane, metrics, polyglot
 │   │                                    ←   lookup, store SPIs), event bus, registry SPI,
@@ -174,7 +174,7 @@ quark-platform/
 │   └── quark-runtime/                   ← Quarkus runner (QuarkRuntime.java, --macro:truffle-svm)
 │   (NO providers/ subdir — runtime pulls every node from the Catalog at deploy time)
 │
-├── nodes/                               ← STANDARD LIBRARY (canonical node source — see nodes/README.md)
+├── quark-nodes/                               ← STANDARD LIBRARY (canonical node source — see quark-nodes/README.md)
 │   └── quark/                           ← 10 nodes: 5 Java (timer, cpu, memory, writer, stream) + 5 TypeScript (stdout, json-parse, map, conditional, fetch)
 │       Each node dir: manifest.json + src/node.{java,ts} + build.toml + README.md
 │       Build + push: quarkctl node build <uri> → quarkctl node push <uri>
@@ -193,7 +193,7 @@ quark-platform/
 │   ├── json-pipeline/                   ← Timer → JSON parse → map → stdout
 │   └── conditional-routing/             ← Conditional router with two stdout destinations
 │
-└── cli/                                 ← Go-based CLI (quarkctl, with --json flag)
+└── quark-cli/                                 ← Go-based CLI (quarkctl, with --json flag)
 ```
 
 ---
@@ -206,7 +206,7 @@ from the Catalog on first use and cached for the rest of the process
 lifetime.
 
 ```
-nodes/  ──build──▶  .jar/.ts  ──push──▶  Catalog  ──pull──▶  Runtime  ──run──▶  execute
+quark-nodes/  ──build──▶  .jar/.ts  ──push──▶  Catalog  ──pull──▶  Runtime  ──run──▶  execute
 (source)           (artifact)           (registry)          (exec)
 ```
 
