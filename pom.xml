@@ -46,11 +46,11 @@
     <modules>
         <!-- Runtime (data plane — GraalJS/Truffle) -->
         <!-- quark-core consolidates the pre-v6 core/* modules. -->
-        <module>runtime/quark-core</module>
-        <module>runtime/quark-script</module>
-        <module>runtime/quark-polyglot</module>
-        <module>runtime/quark-app</module>
-        <module>runtime/quark-runtime</module>
+        <module>quark-runtime/quark-core</module>
+        <module>quark-runtime/quark-script</module>
+        <module>quark-runtime/quark-polyglot</module>
+        <module>quark-runtime/quark-app</module>
+        <module>quark-runtime/quark-runtime</module>
 
         <!-- (server/ is now a Go module — not a Maven module) -->
     </modules>
@@ -126,7 +126,7 @@
                 <version>${graaljs.version}</version>
                 <type>pom</type>
                 <!--
-                    Note: the runtime/quark-script module uses js-community
+                    Note: the quark-runtime/quark-script module uses js-community
                     instead of js to avoid pulling in truffle-enterprise,
                     which has a known native-image incompatibility with
                     GraalVM 21.0.11 + Truffle 24.1.x (HSPathGen$EndPoint
@@ -303,7 +303,7 @@
             (gu install native-image  on GraalVM CE).
 
         Build output:
-          quark-server/target/quark-server-0.1.0-SNAPSHOT-runner
+          quark-server/target/quark-server-0.1.0-SNAPSHOT-runner (legacy path; quark-server is now Go)
           (a native executable, not a .jar)
 
         The profile is deliberately NOT active by default. The default build
