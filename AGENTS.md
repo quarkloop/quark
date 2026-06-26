@@ -11,7 +11,7 @@ quark-platform/
 ├── AGENTS.md                         ← this file — READ FIRST
 ├── README.md                         ← human-facing project overview
 ├── Makefile                          ← all build/test/run commands
-├── pom.xml                           ← Maven parent POM (runtime/* modules only)
+├── pom.xml                           ← Maven parent POM (quark-runtime/* modules only)
 ├── mvnw, mvnw.cmd, .mvn/            ← Maven wrapper (DO NOT delete .mvn/wrapper/)
 │
 ├── docs/                             ← specifications
@@ -22,7 +22,7 @@ quark-platform/
 │   ├── CLI.md                        ← CLI / server conceptual alignment
 │   └── USER-STORY.md                 ← how a typical user interacts with the system
 │
-├── server/                           ← CONTROL PLANE — Go + Fiber (single binary)
+├── quark-server/                           ← CONTROL PLANE — Go + Fiber (single binary)
 │   ├── go.mod, go.sum                ← module github.com/quarkloop/quark/server
 │   ├── cmd/server/main.go            ← entry point: env config + graceful shutdown
 │   └── internal/
@@ -45,7 +45,7 @@ quark-platform/
 │       └── http/                     ← Fiber app + handlers + middleware + DTOs
 │       (NO TypeScript parsing, NO GraalJS, NO in-memory node registry)
 │
-├── runtime/                          ← DATA PLANE — Java + GraalJS/Truffle
+├── quark-runtime/                          ← DATA PLANE — Java + GraalJS/Truffle
 │   ├── quark-core/                   ← Consolidated module: domain records, engine
 │   │                                 ← (NATS, lifecycle, dataplane, metrics, polyglot
 │   │                                 ← lookup, store SPIs), event bus, registry SPI,
@@ -61,7 +61,7 @@ quark-platform/
 │                                     ←   native-image config w/ --macro:truffle-svm)
 │   (NO providers/ subdir — runtime pulls every node from the Catalog at deploy time)
 │
-├── nodes/                            ← STANDARD LIBRARY (canonical node source)
+├── quark-nodes/                            ← STANDARD LIBRARY (canonical node source)
 │   ├── README.md                     ← node layout + the 18 domains
 │   ├── CHECKLIST.md                  ← 9-phase node implementation checklist
 │   └── quark/                        ← namespace
@@ -87,7 +87,7 @@ quark-platform/
 │       ├── store/                    ← SQLite persistence (modernc.org/sqlite, pure Go)
 │       └── server/                   ← NATS handlers (catalog.* + registry.*)
 │
-├── cli/                              ← Go CLI (quarkctl)
+├── quark-cli/                              ← Go CLI (quarkctl)
 │   ├── main.go
 │   ├── cmd/                          ← Cobra commands
 │   └── internal/                     ← HTTP client + model + output printers
@@ -111,9 +111,9 @@ Quark runs as **three cooperating services** plus an external NATS broker:
 
 | Service | Language | Binary | Includes GraalJS? | Role |
 |---------|----------|--------|-------------------|------|
-| **Control plane** (server) | Go | `server/quark-server` (~13 MB Go binary, <5s build) | ❌ No | REST API, deploy/undeploy orchestration, spawns data-plane processes |
+| **Control plane** (quark-server) | Go | `quark-server/quark-server` (~13 MB Go binary, <5s build) | ❌ No | REST API, deploy/undeploy orchestration, spawns data-plane processes |
 | **Catalog** | Go | `quark-catalog/quark-catalog` (15 MB) | ❌ No | SQLite-backed metadata store (systems, nodes, events, sources, registry) |
-| **Data plane** (runtime) | Java/Native | `runtime/quark-runtime/target/quark-runtime-runner-runner` (194 MB native, 9 min build) | ✅ Yes (via `--macro:truffle-svm`) | Executes nodes, hosts GraalJS, runs providers |
+| **Data plane** (quark-runtime) | Java/Native | `quark-runtime/quark-runtime/target/quark-runtime-runner-runner` (194 MB native, 9 min build) | ✅ Yes (via `--macro:truffle-svm`) | Executes nodes, hosts GraalJS, runs providers |
 | **NATS broker** | Go | `nats-server` (external) | n/a | Message bus for all inter-service communication |
 
 The data plane is **spawned on demand** by the control plane's `ProcessManager`. There is one shared runtime process (`runtimeId=shared`) for non-isolated namespaces; isolated namespaces get their own process (`runtimeId=ns-<namespace>`).
@@ -124,12 +124,12 @@ The platform is split into four top-level trees, each with strict dependency rul
 
 | Tree | Language | May depend on | May NOT depend on |
 |------|----------|---------------|-------------------|
-| **server/** | Go (Fiber + nats.go + zap) | stdlib + Fiber + nats.go + zap + envconfig | Java, GraalJS, runtime/, core/ (doesn't exist) |
-| **runtime/** | Java (Quarkus + GraalJS) | quark-core (internal), Quarkus, NATS, GraalJS/Truffle | server/, nodes/ (runtime pulls nodes from the Catalog, never compiles them) |
-| **quark-catalog/** | Go (SQLite + nats.go) | stdlib + modernc.org/sqlite + nats.go | Java, GraalJS, server/, runtime/ |
-| **cli/** | Go (Cobra) | stdlib + cobra | Java, GraalJS, server/, runtime/ (talks to the server via HTTP only) |
+| **quark-server/** | Go (Fiber + nats.go + zap) | stdlib + Fiber + nats.go + zap + envconfig | Java, GraalJS, quark-runtime/, core/ (doesn't exist) |
+| **quark-runtime/** | Java (Quarkus + GraalJS) | quark-core (internal), Quarkus, NATS, GraalJS/Truffle | server/, quark-nodes/ (runtime pulls nodes from the Catalog, never compiles them) |
+| **quark-catalog/** | Go (SQLite + nats.go) | stdlib + modernc.org/sqlite + nats.go | Java, GraalJS, quark-server/, quark-runtime/ |
+| **quark-cli/** | Go (Cobra) | stdlib + cobra | Java, GraalJS, quark-server/, quark-runtime/ (talks to the server via HTTP only) |
 
-**Key invariant:** `runtime/quark-core/.../script/SimpleSystemParser` is a comment-aware regex parser (no GraalJS). The GraalJS-based `GraalJsSystemParser` lives in `runtime/quark-script/`. The Go control plane has **no parser at all** — it treats `.quark.ts` as an opaque string and forwards it verbatim to the runtime via NATS. A minimal regex "sniffer" in `server/internal/deploy/service.go` extracts just the system name and runtime mode (shared/isolated) for NATS routing; full parsing happens in the runtime.
+**Key invariant:** `quark-runtime/quark-core/.../script/SimpleSystemParser` is a comment-aware regex parser (no GraalJS). The GraalJS-based `GraalJsSystemParser` lives in `quark-runtime/quark-script/`. The Go control plane has **no parser at all** — it treats `.quark.ts` as an opaque string and forwards it verbatim to the runtime via NATS. A minimal regex "sniffer" in `quark-server/internal/deploy/service.go` extracts just the system name and runtime mode (shared/isolated) for NATS routing; full parsing happens in the runtime.
 
 **TypeScript handling:** GraalJS Community Edition does NOT natively parse TypeScript (see [graaljs#784](https://github.com/oracle/graaljs/issues/784)). The platform's `.ts` files are valid ECMAScript modules using `export default { ... }` without actual type annotations, so the runtime evaluates them directly via GraalJS's native ESM module support (`Source.mimeType("application/javascript+module")` + `js.esm-eval-returns-exports=true`). If real TS type annotations need to be supported in the future, integrate `tsc`/`esbuild`/`swc` at catalog push time.
 
@@ -170,7 +170,7 @@ it only requires pushing the new node package to the Catalog.
 
 ```
    ┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-   │  nodes/     │     │  Catalog    │     │  Catalog    │     │  Runtime    │
+   │  quark-nodes/     │     │  Catalog    │     │  Catalog    │     │  Runtime    │
    │  (source)   │     │  (registry) │     │  (store)    │     │  (exec)     │
    └──────┬──────┘     └──────┬──────┘     └──────┬──────┘     └──────┬──────┘
           │                   │                   │                   │
@@ -207,7 +207,7 @@ it only requires pushing the new node package to the Catalog.
 quarkctl node build quark/time/schedule/timer:v1
 ```
 
-- Resolves `nodes/quark/time/schedule/timer/v1/` from the URI.
+- Resolves `quark-nodes/quark/time/schedule/timer/v1/` from the URI.
 - Reads `manifest.json` to determine the language (`java` | `typescript`).
 - For **Java**: resolves the classpath from `manifest.json`'s
   `dependencies.java` list (Maven coordinates → `~/.m2/repository/`),
@@ -255,7 +255,7 @@ When `quarkctl apply -f system.quark.ts -n alice` triggers a deploy:
      `Class.forName(name, false, loader)`, and check whether it
      implements `NodeImplementationFactory`.
    - Instantiate the first match via `getDeclaredConstructor()` +
-     `setAccessible(true)` (nodes/ convention uses package-private
+     `setAccessible(true)` (quark-nodes/ convention uses package-private
      classes so the file can be named `node.java`).
 4. For **TypeScript** (`contentType=typescript`):
    - Pass the source to `TypeScriptNodeFactory`, which evaluates it
@@ -282,7 +282,7 @@ Once the factory is loaded, the engine:
 
 ### What this means in practice
 
-- **Adding a node**: write `nodes/<ns>/<domain>/<subdomain>/<node>/<version>/`,
+- **Adding a node**: write `quark-nodes/<ns>/<domain>/<subdomain>/<node>/<version>/`,
   run `quarkctl node build <uri>` + `quarkctl node push <uri>`. No
   runtime rebuild.
 - **Updating a node**: edit `src/`, re-run `build` + `push`. The
@@ -301,7 +301,7 @@ Once the factory is loaded, the engine:
 
 1. **Never add cross-namespace methods.** All lookups require a `Namespace` parameter.
 
-2. **Never put provider code in the runtime.** Node implementations live exclusively in `nodes/quark/<domain>/<subdomain>/<node>/<version>/src/`. The runtime NEVER compiles them — it pulls every node from the Catalog at deploy time via `registry.node.pull` over NATS and loads it dynamically (TypeScript via GraalJS ESM, Java shared-libraries via URLClassLoader). This is the docker-image model: `nodes/` is the source, the Catalog is the registry, the runtime is the container runtime. Adding a node requires `quarkctl node build <uri>` + `quarkctl node push <uri>` — no runtime rebuild.
+2. **Never put provider code in the runtime.** Node implementations live exclusively in `quark-nodes/quark/<domain>/<subdomain>/<node>/<version>/src/`. The runtime NEVER compiles them — it pulls every node from the Catalog at deploy time via `registry.node.pull` over NATS and loads it dynamically (TypeScript via GraalJS ESM, Java shared-libraries via URLClassLoader). This is the docker-image model: `quark-nodes/` is the source, the Catalog is the registry, the runtime is the container runtime. Adding a node requires `quarkctl node build <uri>` + `quarkctl node push <uri>` — no runtime rebuild.
 
 3. **Never bypass NATS.** All node-to-node communication flows through NATS subjects. The control plane talks to the data plane via NATS, not via in-process method calls.
 
