@@ -2,10 +2,10 @@
 # Quark Platform — Makefile
 # =============================================================================
 # Build system for the v6 Quark Platform:
-#   server/    — control plane (Go + Fiber, single binary)
-#   runtime/   — data plane (Java/GraalJS, with GraalJS/Truffle)
+#   quark-server/ — control plane (Go + Fiber, single binary)
+#   quark-runtime/ — data plane (Java/GraalJS, with GraalJS/Truffle)
 #   quark-catalog/ — Catalog service (Go + SQLite)
-#   cli/       — quarkctl (Go + Cobra)
+#   quark-cli/ — quarkctl (Go + Cobra)
 #
 # The control plane is now a single Go binary. It spawns the data plane
 # (Java runtime with GraalJS) as a child process via ProcessManager.
@@ -39,9 +39,9 @@ endif
 GOFLAGS     ?= -trimpath -buildvcs=false
 
 # ----- Project paths -----
-CLI_DIR          := cli
+CLI_DIR          := quark-cli
 CLI_BIN          := $(CLI_DIR)/quarkctl
-SERVER_DIR       := server
+SERVER_DIR       := quark-server
 SERVER_BIN       := $(SERVER_DIR)/quark-server
 CATALOG_DIR      := quark-catalog
 CATALOG_BIN      := $(CATALOG_DIR)/quark-catalog
@@ -59,8 +59,8 @@ SERVER_GO_MAIN := $(SERVER_DIR)/cmd/server
 # <finalName>-runner.jar = quark-runtime-runner-runner.jar.
 # The thin jar <finalName>.jar = quark-runtime-runner.jar has no main manifest
 # and is NOT runnable — do not use it for `java -jar`.
-RUNTIME_JAR    := runtime/quark-runtime/target/quark-runtime-runner-runner.jar
-RUNTIME_NATIVE := runtime/quark-runtime/target/quark-runtime-runner-runner
+RUNTIME_JAR    := quark-runtime/quark-runtime/target/quark-runtime-runner-runner.jar
+RUNTIME_NATIVE := quark-runtime/quark-runtime/target/quark-runtime-runner-runner
 
 # Default run mode = JVM (use RUN_MODE=native for native runtime)
 # Note: RUN_MODE only affects the runtime now — the server is always Go.
@@ -185,7 +185,7 @@ build-native: build-native-runtime ## Build the native runtime binary (server is
 build-native-runtime: ## Build the data plane native binary with GraalJS (~9 min, 6.5 GB RAM, 194 MB output)
 	@printf "$(C_BLUE)[native] > Building data plane (runtime) native image with GraalJS/Truffle...$(C_RESET)\n"
 	$(check_native_image)
-	@$(MAVEN) $(MAVEN_OPTS) -pl runtime/quark-runtime -am -Pnative install -DskipTests
+	@$(MAVEN) $(MAVEN_OPTS) -pl quark-runtime/quark-runtime -am -Pnative install -DskipTests
 	@printf "$(C_GREEN)✓ Runtime native build complete$(C_RESET)\n"
 	@ls -lh $(RUNTIME_NATIVE)
 
@@ -302,7 +302,7 @@ docker-build-java: ## Build Java project in a clean Docker container
 docker-build-native: ## Build the native runtime in Docker (Mandrel builder image)
 	@printf "$(C_BLUE)> Building native runtime in Docker (quay.io/quarkus/ubi-quarkus-mandrel-builder-image)...$(C_RESET)\n"
 	docker run --rm -v "$$PWD":/app -w /app maven:3.9-eclipse-temurin-21 \
-	mvn -B -pl runtime/quark-runtime -am -Pnative clean install -DskipTests
+	mvn -B -pl quark-runtime/quark-runtime -am -Pnative clean install -DskipTests
 	@printf "$(C_GREEN)✓ Native Docker build complete (runtime binary)$(C_RESET)\n"
 
 docker-build-go: ## Build Go CLI in a clean Docker container
