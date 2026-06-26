@@ -27,7 +27,7 @@
         <quarkus.platform.version>3.17.8</quarkus.platform.version>
 
         <!-- Dependencies -->
-        <snakeyaml-engine.version>2.9</snakeyaml-engine.version>
+        <snakeyaml-engine.version>3.0.1</snakeyaml-engine.version>
         <graaljs.version>24.1.2</graaljs.version>
         <nats.version>2.20.2</nats.version>
 
