@@ -24,23 +24,23 @@
         <!-- Quarkus -->
         <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
         <quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id>
-        <quarkus.platform.version>3.17.8</quarkus.platform.version>
+        <quarkus.platform.version>3.37.0</quarkus.platform.version>
 
         <!-- Dependencies -->
         <snakeyaml-engine.version>2.9</snakeyaml-engine.version>
         <graaljs.version>24.1.2</graaljs.version>
-        <nats.version>2.20.2</nats.version>
+        <nats.version>2.25.3</nats.version>
 
         <!-- Test -->
-        <assertj.version>3.27.3</assertj.version>
-        <mockito.version>5.15.2</mockito.version>
-        <awaitility.version>4.2.2</awaitility.version>
+        <assertj.version>3.27.7</assertj.version>
+        <mockito.version>5.23.0</mockito.version>
+        <awaitility.version>4.3.0</awaitility.version>
 
         <!-- Plugins -->
-        <compiler-plugin.version>3.14.0</compiler-plugin.version>
-        <surefire-plugin.version>3.5.2</surefire-plugin.version>
-        <failsafe-plugin.version>3.5.2</failsafe-plugin.version>
-        <jandex-plugin.version>3.2.3</jandex-plugin.version>
+        <compiler-plugin.version>3.15.0</compiler-plugin.version>
+        <surefire-plugin.version>3.5.6</surefire-plugin.version>
+        <failsafe-plugin.version>3.5.6</failsafe-plugin.version>
+        <jandex-plugin.version>3.6.0</jandex-plugin.version>
     </properties>
 
     <modules>
