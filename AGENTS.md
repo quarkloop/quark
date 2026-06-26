@@ -2,6 +2,14 @@
 
 > **If you read nothing else, read this:** Quark is a **three-service platform** with a strict service-based directory layout. The `.quark.ts` file IS the program — users write only TypeScript and never touch Java. The flow: CLI sends the TypeScript to the **control plane** (server, Go + Fiber), which persists it verbatim to the **Catalog** (Go + SQLite, via NATS) and forwards deploy commands to a **data plane** (runtime, Java/GraalJS) process. The data plane parses the source with `GraalJsSystemParser` (full ESM evaluation) + `SimpleSystemParser` (structural extraction), pulls every node package from the Catalog via `registry.node.pull`, and executes TypeScript node logic over an external NATS server.
 
+## Repository
+
+- **Name**: Quark Platform
+- **Language**: Java 21+ (Quarkus/GraalVM), Go 1.24+ (Fiber/nats.go), TypeScript (node definitions)
+- **License**: Apache 2.0
+- **Repo**: [github.com/quarkloop/quark](https://github.com/quarkloop/quark)
+- **Guidelines**: [quarkloop/guidelines](https://github.com/quarkloop/guidelines)
+
 ---
 
 ## Quick orientation
@@ -381,3 +389,12 @@ make clean-native           # Remove only native binaries
 ```
 
 The `RUN_MODE=jvm|native` env var (replaces the old `BUILD_MODE`) controls which binary `make run-*` targets use. Native builds are independent of `RUN_MODE` — `make build-native-*` always builds native regardless.
+
+## When you're stuck
+
+- Read `docs/architecture.mdx` for the three-service model, process types, and runtime isolation.
+- Read `docs/protocol.mdx` for NATS subjects and wire protocol shapes.
+- Read `docs/build.mdx` for JVM vs native mode, Makefile targets, and Docker verification.
+- Read the [AGENTS.md spec](https://github.com/quarkloop/guidelines/blob/main/agents/SPEC.md) for org-wide conventions.
+- Search existing issues and PRs before asking.
+- If unsure about a service boundary change, open an issue and ask before implementing.
