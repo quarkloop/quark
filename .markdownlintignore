@@ -1,0 +1,8 @@
+node_modules/
+.next/
+.vercel/
+target/
+bin/
+dist/
+docs/content/
+go.sum
