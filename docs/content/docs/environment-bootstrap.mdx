@@ -19,7 +19,7 @@ evaluation.
 <Callout type="info">
   Throughout this guide, `$PROJECT_ROOT` refers to the directory containing
   the Quark Platform source tree (the folder with `pom.xml`, `Makefile`,
-  `core/`, `server/`, `runtime/`, `cli/`, `quark-catalog/`). Set it once:
+  `core/`, `quark-server/`, `quark-runtime/`, `quark-cli/`, `quark-catalog/`). Set it once:
 
   ```bash
   export PROJECT_ROOT=/path/to/quark-platform
@@ -31,9 +31,9 @@ evaluation.
 
 | Service | Language | Includes GraalJS? | Role |
 |---------|----------|-------------------|------|
-| Control plane (`server/`) | Java/Native | No | REST API, deploy orchestration, spawns data-plane processes |
+| Control plane (`quark-server/`) | Java/Native | No | REST API, deploy orchestration, spawns data-plane processes |
 | Catalog (`quark-catalog/`) | Go 1.25 + SQLite (pure Go, no CGO) | n/a | Metadata store (systems, nodes, events, sources, registry) |
-| Data plane (`runtime/`) | Java/Native | Yes (via `--macro:truffle-svm`) | Executes nodes, hosts GraalJS, runs providers |
+| Data plane (`quark-runtime/`) | Java/Native | Yes (via `--macro:truffle-svm`) | Executes nodes, hosts GraalJS, runs providers |
 | NATS broker | Go (external) | n/a | Message bus for all inter-service communication |
 
 **Key versions:**
@@ -167,10 +167,10 @@ Expected output:
 ```
 [jvm] > Building Java modules (JVM mode)...
 ✓ Java build complete
-    Server JAR:    server/quark-server.jar
-    Runtime JAR:   runtime/quark-runtime/target/quark-runtime-runner-runner.jar
+    Server JAR:    quark-server/quark-server.jar
+    Runtime JAR:   quark-runtime/quark-runtime/target/quark-runtime-runner-runner.jar
 > Building Go CLI binary...
-✓ Go build complete: cli/quarkctl
+✓ Go build complete: quark-cli/quarkctl
 > Building Catalog service...
 ✓ Catalog build complete: quark-catalog/quark-catalog
 ```
@@ -226,14 +226,14 @@ grep "Catalog service ready" /tmp/catalog.log
     cd "$PROJECT_ROOT"
     java -Dquark.state.root="$QUARK_STATE_ROOT" \
          -Dquark.nats.url=nats://localhost:4222 \
-         -jar server/quark-server.jar \
+         -jar quark-server/quark-server.jar \
          > /tmp/server.log 2>&1 &
     ```
   </Tab>
   <Tab value="Native mode">
     ```bash
     cd "$PROJECT_ROOT"
-    ./server/quark-server \
+    ./quark-server/quark-server \
       -Dquark.state.root="$QUARK_STATE_ROOT" \
       -Dquark.nats.url=nats://localhost:4222 > /tmp/server.log 2>&1 &
     ```
@@ -254,12 +254,12 @@ The control plane will auto-spawn a data-plane process when a system is deployed
 
 ```bash
 cd "$PROJECT_ROOT"
-./cli/quarkctl apply -f example/simple-streaming/system.quark.ts -n alice
+./quark-cli/quarkctl apply -f example/simple-streaming/system.quark.ts -n alice
 sleep 3
-./cli/quarkctl get namespaces
-./cli/quarkctl get systems -n alice
-./cli/quarkctl get nodes -n alice -s monitor
-./cli/quarkctl delete system monitor -n alice
+./quark-cli/quarkctl get namespaces
+./quark-cli/quarkctl get systems -n alice
+./quark-cli/quarkctl get nodes -n alice -s monitor
+./quark-cli/quarkctl delete system monitor -n alice
 ```
 
 Expected: System deploys, nodes ACTIVE/HEALTHY, the control plane spawns the
@@ -277,12 +277,12 @@ data plane, events flow, clean undeploy.
 | Go 1.24 | wherever you extracted it — set `GOROOT` |
 | NATS server binary | `$GOPATH/bin/nats-server` |
 | Maven wrapper | `$PROJECT_ROOT/mvnw` (DO NOT delete `.mvn/wrapper/`) |
-| CLI binary | `$PROJECT_ROOT/cli/quarkctl` |
+| CLI binary | `$PROJECT_ROOT/quark-cli/quarkctl` |
 | Catalog binary | `$PROJECT_ROOT/quark-catalog/quark-catalog` |
-| Server JAR (JVM) | `$PROJECT_ROOT/server/quark-server.jar` |
+| Server JAR (JVM) | `$PROJECT_ROOT/quark-server/quark-server.jar` |
 | Server native binary | `$PROJECT_ROOT/server/quark-server` |
-| Runtime JAR (JVM) | `$PROJECT_ROOT/runtime/quark-runtime/target/quark-runtime-runner-runner.jar` |
-| Runtime native binary | `$PROJECT_ROOT/runtime/quark-runtime/target/quark-runtime-runner-runner` |
+| Runtime JAR (JVM) | `$PROJECT_ROOT/quark-runtime/quark-runtime/target/quark-runtime-runner-runner.jar` |
+| Runtime native binary | `$PROJECT_ROOT/quark-runtime/quark-runtime/target/quark-runtime-runner-runner` |
 | State root | `$QUARK_STATE_ROOT` (contains `catalog.db` + `dataplane-logs/`) |
 
 ---
@@ -334,7 +334,7 @@ pkill nats-server 2>/dev/null
 
 # Remove build artifacts (optional — keeps disk usage low)
 cd "$PROJECT_ROOT" && find . -type d -name target -prune -exec rm -rf {} + 2>/dev/null
-rm -f cli/quarkctl quark-catalog/quark-catalog
+rm -f quark-cli/quarkctl quark-catalog/quark-catalog
 
 # Remove state (CAUTION: deletes catalog.db and all persisted systems)
 rm -rf "$QUARK_STATE_ROOT"

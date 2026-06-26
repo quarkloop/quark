@@ -35,10 +35,10 @@ command maps 1:1 to a REST endpoint on the control plane.
 ### Via Makefile (recommended)
 
 ```bash
-make build-go      # builds cli/quarkctl
+make build-go      # builds quark-cli/quarkctl
 ```
 
-The binary is at `cli/quarkctl`. Copy it to your `$PATH` manually if you want
+The binary is at `quark-cli/quarkctl`. Copy it to your `$PATH` manually if you want
 it globally available (the Makefile does not install to `/usr/local/bin`).
 
 ## Configuration
@@ -91,7 +91,7 @@ quarkctl get node cpu -n alice -s monitor
 ### Node Package Registry — push, pull, search
 
 The `node` subcommand manages the node package registry (pushed `.ts`/`.jar`
-payloads stored in the Catalog). Nodes live in `nodes/` at the project root;
+payloads stored in the Catalog). Nodes live in `quark-nodes/` at the project root;
 build compiles `src/` per `build.toml`, push packages the result into a zip
 and sends it to the Catalog:
 
@@ -136,7 +136,7 @@ quarkctl get namespaces                     # list all active namespaces
 ## Building the CLI
 
 ```bash
-make build-go          # build cli/quarkctl
+make build-go          # build quark-cli/quarkctl
 make build             # build Java + Go CLI + Catalog (full build)
 ```
 

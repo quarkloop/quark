@@ -65,7 +65,7 @@ const features = [
     icon: Boxes,
     title: "Strict tier separation",
     description:
-      "core/ (shared) ← server/ (control plane) and core/ ← runtime/ (data plane). Never server/ ↔ runtime/.",
+      "core/ (shared) ← quark-server/ (control plane) and core/ ← quark-runtime/ (data plane). Never quark-server/ ↔ runtime/.",
   },
   {
     icon: Terminal,
