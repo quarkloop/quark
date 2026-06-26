@@ -49,10 +49,10 @@ polyglot Quark node. Followed exactly — no shortcuts.
 - [ ] **5. Create the directory**
 
   ```
-  nodes/quark/<domain>/<subdomain>/<node>/<version>/
+  quark-nodes/quark/<domain>/<subdomain>/<node>/<version>/
   ```
 
-  Example: `nodes/quark/io/file/watch/v1/`
+  Example: `quark-nodes/quark/io/file/watch/v1/`
 
 - [ ] **6. Create `manifest.json`**
 
@@ -261,7 +261,7 @@ polyglot Quark node. Followed exactly — no shortcuts.
 - [ ] **19. Verify artifacts exist and are non-empty**
 
   ```bash
-  ls -lh nodes/quark/io/file/watch/v1/target/
+  ls -lh quark-nodes/quark/io/file/watch/v1/target/
   ```
 
   For TypeScript nodes, no build step — `src/` is used as-is.
@@ -282,7 +282,7 @@ polyglot Quark node. Followed exactly — no shortcuts.
 - [ ] **21. Verify the zip contents**
 
   ```bash
-  unzip -l nodes/quark/io/file/watch/v1/target/watch-v1.0.0.zip
+  unzip -l quark-nodes/quark/io/file/watch/v1/target/watch-v1.0.0.zip
   ```
 
   Should contain:
