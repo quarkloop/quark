@@ -290,5 +290,5 @@ cpu listens ["timer.tick"] → receives tick → reads CPU → publishes "data"
 | 5 | Type safety | The `quark.d.ts` npm package provides full type definitions. |
 | 6 | Multi-tenant by construction | NATS subjects encode namespace. Cross-tenant access is impossible. |
 | 7 | Declarative | The file declares what nodes exist and how they communicate. The engine handles execution. |
-| 8 | Strict tier separation | `core/` (shared, no GraalJS) ← `server/` (control plane, no GraalJS), `core/` ← `runtime/` (data plane, with GraalJS). Never `server/` ↔ `runtime/`. |
+| 8 | Strict tier separation | `core/` (shared, no GraalJS) ← `quark-server/` (control plane, no GraalJS), `core/` ← `quark-runtime/` (data plane, with GraalJS). Never `quark-server/` ↔ `quark-runtime/`. |
 | 9 | Fail-fast | No silent fallbacks. If a dependency (NATS, Catalog, GraalJS) is down, throw. |

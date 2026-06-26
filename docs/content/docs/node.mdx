@@ -37,23 +37,23 @@ diagram):
 
 | Service | Tier | Includes GraalJS? | Responsibility |
 |---------|------|-------------------|----------------|
-| **Control plane** (`server/`) | `server/` | ❌ No | REST API, deploy orchestration, parses `.quark.ts` with `SimpleSystemParser` (comment-aware), spawns data-plane processes |
+| **Control plane** (`quark-server/`) | `quark-server/` | ❌ No | REST API, deploy orchestration, parses `.quark.ts` with `SimpleSystemParser` (comment-aware), spawns data-plane processes |
 | **Catalog** (`quark-catalog/`) | (Go) | n/a | SQLite-backed metadata store (systems, nodes, events, source, registry) |
-| **Data plane** (`runtime/`) | `runtime/` | ✅ Yes | Executes nodes via GraalJS + providers; connects to external NATS server |
+| **Data plane** (`quark-runtime/`) | `quark-runtime/` | ✅ Yes | Executes nodes via GraalJS + providers; connects to external NATS server |
 
 ### Parse-time vs Execute-time
 
 The `.quark.ts` file is parsed **twice**:
 
-1. **Parse-time (control plane)**: `SimpleSystemParser` (in `runtime/quark-core`)
+1. **Parse-time (control plane)**: `SimpleSystemParser` (in `quark-runtime/quark-core`)
    extracts system name, namespace, runtime mode, and node definitions using
    regex. No GraalJS, no JS evaluation. This produces a `SystemDefinition`
    record used for metadata persistence and deploy routing.
 
 2. **Execute-time (data plane)**: `GraalJsSystemParser` (in
-   `runtime/quark-script`) evaluates the TypeScript via GraalJS to extract
+   `quark-runtime/quark-script`) evaluates the TypeScript via GraalJS to extract
    runtime config (e.g. dynamic config values that require JS evaluation).
-   `TypeScriptNodeFactory` (in `runtime/quark-polyglot`) uses GraalJS to
+   `TypeScriptNodeFactory` (in `quark-runtime/quark-polyglot`) uses GraalJS to
    execute TypeScript node implementations.
 
 ### Provider Layer

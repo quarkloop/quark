@@ -33,7 +33,7 @@ system.
 5. **Type Safety** — The `quark.d.ts` npm package provides full TypeScript type definitions.
 6. **Multi-tenant by Construction** — NATS subjects encode namespace. Cross-tenant access is impossible.
 7. **Declarative** — The file declares what nodes exist and how they communicate. The engine handles execution.
-8. **Strict Tier Separation** — `core/`, `server/`, `runtime/` are Maven tiers with one-way dependencies. The control plane never includes GraalJS; only the data plane does.
+8. **Strict Tier Separation** — `core/`, `quark-server/`, `quark-runtime/` are Maven tiers with one-way dependencies. The control plane never includes GraalJS; only the data plane does.
 
 ---
 
@@ -42,10 +42,10 @@ system.
 Quark runs as three cooperating services plus an external NATS broker. Each
 service has a single responsibility and communicates exclusively via NATS.
 
-### Service 1: Control Plane (`server/`)
+### Service 1: Control Plane (`quark-server/`)
 
 - **Language**: Java 21 / Native image (Oracle GraalVM)
-- **Binary**: `server/quark-server` (76 MB native, 4 min build, 46 ms startup)
+- **Binary**: `quark-server/quark-server` (76 MB native, 4 min build, 46 ms startup)
 - **Includes GraalJS**: ❌ No — uses `SimpleSystemParser` (comment-aware, no GraalJS) to parse `.quark.ts`
 - **Responsibility**: REST API, deploy/undeploy orchestration, spawns data-plane processes, forwards persistence requests to the Catalog
 - **Does NOT**: Execute node logic, touch GraalJS, open the SQLite database directly
@@ -58,10 +58,10 @@ service has a single responsibility and communicates exclusively via NATS.
 - **Responsibility**: SQLite-backed metadata store (systems, nodes, events, source, registry, node packages). Listens on `catalog.*` and `registry.*` NATS subjects.
 - **Does NOT**: Execute node logic, talk to the data plane, know about NATS subjects beyond its own request-reply protocol
 
-### Service 3: Data Plane (`runtime/`)
+### Service 3: Data Plane (`quark-runtime/`)
 
 - **Language**: Java 21 / Native image (Oracle GraalVM with `--macro:truffle-svm`)
-- **Binary**: `runtime/quark-runtime/target/quark-runtime-runner-runner` (194 MB native, 9 min build, 38 ms startup)
+- **Binary**: `quark-runtime/quark-runtime/target/quark-runtime-runner-runner` (194 MB native, 9 min build, 38 ms startup)
 - **Includes GraalJS**: ✅ Yes — uses `GraalJsSystemParser` + `TypeScriptNodeFactory` for TypeScript node execution
 - **Responsibility**: Executes node systems, hosts GraalJS, runs providers, forwards events/metrics to the control plane
 - **Does NOT**: Expose a REST API (only `/q/health/*`), persist state directly (forwards everything to control plane → Catalog)
@@ -212,5 +212,5 @@ native build must NOT include it.
 | Type safety | npm package provides full type definitions. |
 | Multi-tenant by construction | Subjects encode namespace. |
 | Declarative | Declare what, not how. Engine handles execution. |
-| Strict tier separation | `core/` ← `server/`, `core/` ← `runtime/`. Never `server/` ↔ `runtime/`. |
+| Strict tier separation | `core/` ← `quark-server/`, `core/` ← `quark-runtime/`. Never `quark-server/` ↔ `quark-runtime/`. |
 | Fail-fast | No silent fallbacks. If a dependency is down, throw. |

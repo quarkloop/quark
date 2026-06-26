@@ -26,11 +26,11 @@ lives under `src/`. Configuration files (`manifest.json`, `build.toml`,
 
 ### 2.1 The node tree
 
-Nodes live under a top-level `nodes/` directory. The path mirrors the URI
+Nodes live under a top-level `quark-nodes/` directory. The path mirrors the URI
 exactly:
 
 ```
-nodes/
+quark-nodes/
 └── quark/                           ← namespace
     └── io/                          ← domain
         └── file/                    ← subdomain
@@ -40,7 +40,7 @@ nodes/
 ```
 
 The URI `quark/io/file/watch:v1` maps to the path
-`nodes/quark/io/file/watch/v1/`. No ambiguity — the path IS the URI.
+`quark-nodes/quark/io/file/watch/v1/`. No ambiguity — the path IS the URI.
 
 ### 2.2 Internal layout
 
@@ -492,7 +492,7 @@ When a `.quark.ts` file references a URI not in the built-in registry:
 4. The data plane instantiates the `NodeImplementationFactory` from the loaded code (Java: reflective load via URLClassLoader; TypeScript: `TypeScriptNodeFactory` wraps the ESM source).
 
 <Steps>
-  <Step>**Developer writes** `nodes/quark/io/file/watch/v1/` with `manifest.json`, `src/node.java`, `build.toml`.</Step>
+  <Step>**Developer writes** `quark-nodes/quark/io/file/watch/v1/` with `manifest.json`, `src/node.java`, `build.toml`.</Step>
   <Step>**`quarkctl node build`** compiles `src/*.java` → `target/watch-v1.jar` (JVM) and/or `target/watch-v1.so` (native).</Step>
   <Step>**`quarkctl node build`** packages `manifest.json` + build output into a single zip blob.</Step>
   <Step>**`quarkctl node push`** sends the zip blob to the Catalog via `registry.node.push` NATS request.</Step>
