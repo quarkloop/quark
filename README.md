@@ -30,7 +30,7 @@ cd quark
 make build         # builds Java modules + Go CLI + Catalog service
 ```
 
-See [BUILD.md](./BUILD.md) for full prerequisites (JDK 21+, Go 1.24+, NATS server, optional GraalVM for native mode) and per-component build instructions.
+See [Build & development](./docs/build.mdx) for full prerequisites (JDK 21+, Go 1.24+, NATS server, optional GraalVM for native mode) and per-component build instructions.
 
 ## Quick start
 
@@ -51,10 +51,10 @@ For native mode: `make build-native && make run-example RUN_MODE=native`.
 
 ## Documentation
 
-- [Architecture](./ARCHITECTURE.md) — three-service model, runtime isolation, process types, node lifecycle
-- [API reference](./API.md) — REST endpoints and CLI commands
-- [Wire protocol](./PROTOCOL.md) — NATS subjects for control-plane ↔ data-plane communication
-- [Build & development](./BUILD.md) — prerequisites, JVM vs native mode, Makefile targets, Docker verification
+- [Architecture](./docs/architecture.mdx) — three-service model, runtime isolation, process types, node lifecycle
+- [API reference](./docs/api.mdx) — REST endpoints and CLI commands
+- [Wire protocol](./docs/protocol.mdx) — NATS subjects for control-plane ↔ data-plane communication
+- [Build & development](./docs/build.mdx) — prerequisites, JVM vs native mode, Makefile targets, Docker verification
 - [Changelog](./CHANGELOG.md) — release history
 - [Contributing](./CONTRIBUTING.md) — development setup, PR workflow, code style per language
 - [AI agent guide](./AGENTS.md) — read this first if you're an AI working on the codebase

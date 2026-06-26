@@ -1,18 +1,22 @@
 {
-  "title": "Documentation",
+  "title": "Platform",
   "pages": [
     "---Concepts---",
     "abstraction",
     "design",
+    "architecture",
     "---Specification---",
     "node-uri",
     "node-catalog",
     "node-layout",
     "declaration",
     "node",
+    "protocol",
     "---Guides---",
     "environment-bootstrap",
+    "build",
     "cli",
+    "api",
     "user-story"
   ]
 }
