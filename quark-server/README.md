@@ -9,7 +9,7 @@ through the Catalog via NATS.
 ## Build
 
 ```bash
-make build-server   # produces server/quark-server
+make build-server   # produces quark-server/quark-server
 ```
 
 ## Run
@@ -35,7 +35,7 @@ All config is via env vars (prefix `QUARK_`):
 ## Package Layout
 
 ```
-server/
+quark-server/
 ├── cmd/server/main.go             # entry point + graceful shutdown
 └── internal/
     ├── config/                    # env-var config
