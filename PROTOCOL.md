@@ -1,0 +1,149 @@
+# Wire protocol
+
+This document specifies the NATS subjects and message formats used for inter-service communication in the Quark platform.
+
+For the REST API and CLI, see [API.md](./API.md). For architecture, see [ARCHITECTURE.md](./ARCHITECTURE.md).
+
+## Table of contents
+
+- [Overview](#overview)
+- [Control-plane ↔ data-plane subjects](#control-plane--data-plane-subjects)
+- [Catalog subjects](#catalog-subjects)
+- [Serialization](#serialization)
+- [Reliability](#reliability)
+
+---
+
+## Overview
+
+All inter-service communication flows through an external NATS broker. The platform uses NATS Core (not JetStream) — no message persistence, no automatic retries, no fallback routing. The `onFailure` field in `.quark.ts` is parsed but not enforced at runtime.
+
+The `runtimeId` encoded in subjects determines routing:
+
+- `runtimeId = "shared"` for non-isolated namespaces — messages go to the shared data-plane process
+- `runtimeId = "ns-<namespace>"` for isolated namespaces — messages go to the dedicated process for that namespace
+
+---
+
+## Control-plane ↔ data-plane subjects
+
+| Direction | Subject | Purpose |
+|---|---|---|
+| Control → Data | `quark.control.<runtimeId>.deploy` | Deploy command (carries `.quark.ts` source) |
+| Control → Data | `quark.control.<runtimeId>.undeploy` | Undeploy command |
+| Data → Control | `quark.data.<runtimeId>.status` | Deploy/undeploy result (includes node info) |
+| Data → Control | `quark.data.event.>` | Forwarded lifecycle events (NODE_CREATED, etc.) — wildcard sub |
+| Data → Control | `quark.data.heartbeat.>` | Per-namespace metrics (CPU%, throughput, errors) — wildcard sub |
+
+### Deploy
+
+**Request** (control → data, request-reply):
+
+```json
+{
+  "namespace": "alice",
+  "systemName": "monitor",
+  "source": "<.quark.ts file contents as string>",
+  "runtimeMode": "shared"
+}
+```
+
+**Response** (data → control, on reply subject):
+
+```json
+{
+  "success": true,
+  "nodes": [
+    { "uri": "quark/time/schedule/timer:v1", "type": "java" },
+    { "uri": "quark/io/file/write:v1", "type": "java" }
+  ]
+}
+```
+
+On failure, `success` is `false` and an `error` field contains the message.
+
+### Undeploy
+
+Same shape as deploy, but the request only carries `namespace` and `systemName`. The data plane stops all node providers for that system and releases resources.
+
+### Lifecycle events
+
+The data plane publishes lifecycle events to `quark.data.event.<namespace>.<systemName>.<eventType>`:
+
+| Event type | When fired |
+|---|---|
+| `NODE_CREATED` | A node provider was instantiated |
+| `NODE_STARTED` | A node provider's `start()` method completed |
+| `NODE_STOPPED` | A node provider's `close()` method completed |
+| `NODE_ERROR` | A node provider threw an unhandled exception |
+
+The control plane subscribes to `quark.data.event.>` (wildcard) and persists every event to the Catalog's `events` table.
+
+### Heartbeat metrics
+
+Every 2 seconds, the data plane publishes a metrics snapshot to `quark.data.heartbeat.<namespace>`:
+
+```json
+{
+  "namespace": "alice",
+  "timestamp": "2026-06-26T12:34:56Z",
+  "cpuPercent": 12.3,
+  "throughputPerSec": 145.7,
+  "errorCount": 0,
+  "nodeCount": 5
+}
+```
+
+The control plane subscribes to `quark.data.heartbeat.>` and uses these for the `/api/v1/namespaces/{ns}` metrics response.
+
+---
+
+## Catalog subjects
+
+The Catalog service subscribes to `catalog.*` subjects for system/node/event/source/package storage and retrieval.
+
+| Subject | Purpose |
+|---|---|
+| `catalog.system.get` | Fetch a system by namespace + name |
+| `catalog.system.put` | Persist a system (deploy) |
+| `catalog.system.delete` | Remove a system (undeploy) |
+| `catalog.system.list` | List systems in a namespace |
+| `catalog.node.push` | Upload a node package (zip blob) |
+| `catalog.node.pull` | Download a node package by URI |
+| `catalog.node.list` | List registered node URIs |
+| `catalog.node.info` | Get node metadata |
+| `catalog.event.append` | Append a lifecycle event |
+| `catalog.event.query` | Query events with filters |
+| `catalog.source.get` | Fetch the original `.quark.ts` source |
+| `catalog.source.put` | Persist the `.quark.ts` source |
+
+All Catalog subjects use request-reply semantics. The Catalog is a single Go process with a SQLite backend — it does not cluster.
+
+---
+
+## Serialization
+
+All payloads are JSON strings serialized via Jackson (Java data plane) or `encoding/json` (Go control plane and Catalog). Binary content (node packages) is base64-encoded within the JSON envelope.
+
+Date/time fields use ISO 8601 with UTC timezone (e.g. `2026-06-26T12:34:56Z`).
+
+---
+
+## Reliability
+
+### Request-reply timeout
+
+Deploy and undeploy use NATS request-reply with a 3-second timeout and 5 retries. If the data plane doesn't respond after 5 retries, the control plane returns a 504 Gateway Timeout to the REST client.
+
+### Pub/sub (fire-and-forget)
+
+Lifecycle events and heartbeat metrics use NATS pub/sub — no reply subject, no acknowledgment. If the control plane is down when an event is published, the event is lost. This is acceptable for metrics (a new snapshot arrives every 2 seconds) but means the events table may have gaps during control-plane outages.
+
+### No persistence
+
+NATS Core has no message persistence. If a subscriber is offline when a message is published, the message is not delivered. The platform relies on:
+
+- The Catalog's SQLite database for durable state (systems, nodes, events, source)
+- The data plane's in-memory state for transient execution state (recoverable by redeploying from the Catalog)
+
+Future versions may add JetStream for event persistence and guaranteed delivery.

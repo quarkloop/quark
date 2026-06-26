@@ -1,0 +1,164 @@
+# Build & development
+
+How to set up a local development environment for the Quark platform, build the JVM and native binaries, run tests, and verify everything in a clean container.
+
+For architecture, see [ARCHITECTURE.md](./ARCHITECTURE.md). For the public API, see [API.md](./API.md).
+
+## Table of contents
+
+- [Prerequisites](#prerequisites)
+- [Build modes](#build-modes)
+- [Build commands](#build-commands)
+- [Run](#run)
+- [Test](#test)
+- [Docker verification](#docker-verification)
+- [Makefile targets](#makefile-targets)
+
+---
+
+## Prerequisites
+
+- **Java 21+** (JDK — must include `javac`). For native mode: Oracle GraalVM 21+ with `native-image` on `$PATH`
+- **Go 1.24+** (for the control plane, CLI, and Catalog)
+- The repo includes `mvnw` — no need to pre-install Maven
+- **NATS server** on `nats://localhost:4222` (external)
+
+### Native mode prerequisites
+
+- Oracle GraalVM 21+ with `native-image` on `$PATH`
+- Set `JAVA_HOME` to the GraalVM installation
+- Mandrel is sufficient for the **control plane** (no GraalJS), but the **data plane** requires Oracle GraalVM (Truffle support)
+
+---
+
+## Build modes
+
+The platform supports **two run modes**: JVM (default) and Native Image. The `RUN_MODE` env var selects which binary `make run-*` targets use.
+
+### JVM Mode (default)
+
+Standard `java -jar` execution. Full GraalJS support for `.quark.ts` evaluation.
+
+```bash
+make build                              # Build JVM jars + Go CLI + Catalog
+make run-example                        # Run example with JVM server
+make run-server                         # Start server (Ctrl+C to stop)
+```
+
+### Native Image Mode
+
+GraalVM native executable. Starts in milliseconds, uses less memory. **Two separate native binaries** — one for the control plane (no GraalJS, 76 MB), one for the data plane (with GraalJS, 194 MB).
+
+```bash
+make build-native                       # Build BOTH native binaries + Go CLI
+make build-native-server                # Control plane only (~4 min, 3 GB RAM, 76 MB)
+make build-native-runtime               # Data plane with GraalJS (~9 min, 6.5 GB RAM, 194 MB)
+RUN_MODE=native make run-example        # Run example with native binaries
+```
+
+### Native mode notes
+
+- **GraalJS in data plane only**: The data plane native binary includes GraalJS via `--macro:truffle-svm`. The control plane native binary excludes GraalJS entirely (uses `SimpleSystemParser`). This is what keeps the server image small. GraalJS evaluates `.ts` files via native ESM module support (`js.esm-eval-returns-exports=true`) — the platform's `.ts` files are valid ECMAScript modules with no actual TypeScript type annotations.
+- **Virtual threads**: Truffle JIT compilation doesn't support virtual threads. Providers automatically use platform threads in native mode (detected via `quark.native` system property).
+- **Catalog persistence**: Works in both JVM and native modes (Go + SQLite, no JNI).
+
+### Run mode selection
+
+The `RUN_MODE=jvm|native` env var (replaces the old `BUILD_MODE`) controls which binary `make run-*` targets use:
+
+```bash
+make run-example                        # JVM mode (default)
+make run-example RUN_MODE=native        # Native mode
+```
+
+The `ProcessManager` automatically detects which binary is available (native or JAR) and spawns data-plane processes accordingly. Native binaries are preferred when both exist.
+
+---
+
+## Build commands
+
+### Build everything (JVM mode)
+
+```bash
+make build         # builds Java modules + Go CLI + Catalog service
+```
+
+This builds:
+- Java data plane (`quark-runtime/quark-runtime-runner-runner.jar`)
+- Go control plane (`quark-server/quark-server`)
+- Go CLI (`quark-cli/quarkctl`)
+- Go Catalog service (`quark-catalog/quark-catalog`)
+
+### Build native executables
+
+```bash
+make build-native           # builds both native binaries + Go CLI + Catalog
+make build-native-server    # control plane only (~4 min)
+make build-native-runtime   # data plane with GraalJS (~9 min)
+```
+
+---
+
+## Run
+
+### Run the example
+
+```bash
+make run-example                       # JVM mode, 15-second run (default)
+make run-example EXAMPLE_DURATION=30   # JVM mode, 30-second run
+make run-example RUN_MODE=native       # Native mode
+```
+
+This deploys `example/simple-streaming/system.quark.ts` under namespace `alice`, observes the streaming output for the given duration, then undeploys and shuts down cleanly.
+
+### Run the server
+
+```bash
+make run-server                       # JVM mode (port 8080)
+make run-server-native                # Native mode (port 8080)
+make server-dev                       # Quarkus dev mode (hot reload)
+```
+
+---
+
+## Test
+
+```bash
+make test          # runs Java + Go tests (JVM mode)
+```
+
+This runs:
+- Java unit tests via `mvn test`
+- Go unit tests via `go test ./...` in each Go module (`quark-server`, `quark-cli`, `quark-catalog`)
+
+For native-image compatibility tests, see `quark-runtime/quark-runtime/src/test/java/.../nativeimage/`.
+
+---
+
+## Docker verification
+
+```bash
+make docker-verify
+```
+
+Builds the entire project inside Docker containers with no host toolchain — useful for confirming the build does not depend on any local installations. See `Dockerfile` for the multi-stage build definition.
+
+---
+
+## Makefile targets
+
+| Target | What it does |
+|---|---|
+| `make build` | Build JVM jars + Go CLI + Go Catalog + Go control plane |
+| `make build-native` | Build BOTH native binaries + Go CLI + Catalog |
+| `make build-native-server` | Control plane native only (~4 min) |
+| `make build-native-runtime` | Data plane native with GraalJS (~9 min) |
+| `make run-example` | Deploy the simple-streaming example, observe for 15s, tear down |
+| `make run-server` | Start the control plane (JVM mode, port 8080) |
+| `make run-server-native` | Start the control plane (native mode, port 8080) |
+| `make server-dev` | Start the control plane in Quarkus dev mode (hot reload) |
+| `make test` | Run Java + Go unit tests (JVM mode) |
+| `make docker-verify` | Build everything in a clean Docker container |
+| `make clean` | Remove all build artifacts |
+
+Run `make help` for a complete list of targets with descriptions.
