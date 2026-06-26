@@ -35,17 +35,17 @@ make server-dev          # dev mode with hot reload
 make cli
 
 # Deploy the .quark.ts file — this is ALL the user does
-./cli/quarkctl apply -f example/simple-streaming/system.quark.ts -n alice
+./quark-cli/quarkctl apply -f example/simple-streaming/system.quark.ts -n alice
 
 # Deploy the same file in a different namespace
-./cli/quarkctl apply -f example/simple-streaming/system.quark.ts -n bob
+./quark-cli/quarkctl apply -f example/simple-streaming/system.quark.ts -n bob
 
 # Verify deployment
-./cli/quarkctl get systems -n alice
-./cli/quarkctl get nodes -n alice -s monitor
+./quark-cli/quarkctl get systems -n alice
+./quark-cli/quarkctl get nodes -n alice -s monitor
 
 # Watch events in real time
-./cli/quarkctl watch events -n alice -s monitor
+./quark-cli/quarkctl watch events -n alice -s monitor
 
 # Query the streaming endpoint (Alice's data only — multi-tenant isolated)
 curl -N http://localhost:8081/stream/alice/monitor/stream
@@ -54,8 +54,8 @@ curl -N http://localhost:8081/stream/alice/monitor/stream
 curl -N http://localhost:8081/stream/bob/monitor/stream
 
 # Undeploy when done
-./cli/quarkctl delete system monitor -n alice
-./cli/quarkctl delete system monitor -n bob
+./quark-cli/quarkctl delete system monitor -n alice
+./quark-cli/quarkctl delete system monitor -n bob
 ```
 
 ## Multi-Tenant Isolation
