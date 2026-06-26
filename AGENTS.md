@@ -1,6 +1,6 @@
-# AGENTS.md — Guide for AI Agents Working on Quark
+# Agent Guide
 
-> **If you read nothing else, read this:** Quark is a **three-service platform** with a strict service-based directory layout. The `.quark.ts` file IS the program — users write only TypeScript and never touch Java. The flow: CLI sends the TypeScript to the **control plane** (server, Go + Fiber), which persists it verbatim to the **Catalog** (Go + SQLite, via NATS) and forwards deploy commands to a **data plane** (runtime, Java/GraalJS) process. The data plane parses the source with `GraalJsSystemParser` (full ESM evaluation) + `SimpleSystemParser` (structural extraction), pulls every node package from the Catalog via `registry.node.pull`, and executes TypeScript node logic over an external NATS server.
+Quark is a **three-service platform** with a strict service-based directory layout. The `.quark.ts` file IS the program — users write only TypeScript and never touch Java. The flow: CLI sends the TypeScript to the **control plane** (server, Go + Fiber), which persists it verbatim to the **Catalog** (Go + SQLite, via NATS) and forwards deploy commands to a **data plane** (runtime, Java/GraalJS) process. The data plane parses the source with `GraalJsSystemParser` (full ESM evaluation) + `SimpleSystemParser` (structural extraction), pulls every node package from the Catalog via `registry.node.pull`, and executes TypeScript node logic over an external NATS server.
 
 ## Repository
 
@@ -10,9 +10,30 @@
 - **Repo**: [github.com/quarkloop/quark](https://github.com/quarkloop/quark)
 - **Guidelines**: [quarkloop/guidelines](https://github.com/quarkloop/guidelines)
 
+## Quick reference
+
+```bash
+# Build everything (JVM mode)
+make build              # Java modules + Go CLI + Go Catalog + Go control plane
+
+# Build native executables
+make build-native       # Both native binaries + Go CLI + Catalog
+make build-native-server    # Control plane only (~4 min)
+make build-native-runtime   # Data plane with GraalJS (~9 min)
+
+# Run the example
+make run-example        # JVM mode, 15-second run
+make run-example RUN_MODE=native  # Native mode
+
+# Dev
+make server-dev         # Quarkus dev mode (hot reload, port 8080)
+make clean              # Remove all build artifacts
+make clean-native       # Remove only native binaries
+```
+
 ---
 
-## Quick orientation
+## Structure
 
 ```
 quark-platform/
@@ -111,7 +132,7 @@ quark-platform/
 
 ---
 
-## Architecture
+## Rules
 
 ### Three-service model
 
@@ -166,7 +187,7 @@ Two distinct subject taxonomies flow through NATS:
 
 ---
 
-## Node Lifecycle: Build → Push → Pull → Run
+## Boundaries
 
 The platform uses a **docker-image model** for nodes. The runtime
 binary NEVER contains node implementations — every node is fetched
@@ -303,7 +324,7 @@ Once the factory is loaded, the engine:
 
 ---
 
-## Common pitfalls
+## Common mistakes to avoid
 
 0. **Never create standalone runners or require users to write Java code.** The `.quark.ts` file IS the program. Users deploy via `quarkctl apply -f file.quark.ts -n alice`. The control plane is the interpreter (parser + orchestrator); the data plane is the executor (GraalJS + providers).
 
@@ -339,7 +360,7 @@ Once the factory is loaded, the engine:
 
 ---
 
-## Conventions
+## Commit conventions
 
 ### Java
 - Java 21+. Records for value types. Sealed interfaces for closed hierarchies.
@@ -360,7 +381,7 @@ Once the factory is loaded, the engine:
 
 ---
 
-## Build & test commands
+## Testing
 
 ```bash
 # JVM builds (default)
