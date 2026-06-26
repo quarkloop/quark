@@ -8,7 +8,7 @@ implementations for the `quark/` namespace.
 Every node lives at a directory path matching its URI exactly:
 
 ```
-nodes/
+quark-nodes/
 └── quark/                           ← namespace
     └── io/                          ← domain
         └── file/                    ← subdomain
@@ -22,7 +22,7 @@ nodes/
 ```
 
 The URI `quark/io/file/watch:v1` maps to the path
-`nodes/quark/io/file/watch/v1/`. The path IS the URI.
+`quark-nodes/quark/io/file/watch/v1/`. The path IS the URI.
 
 ## The 18 Domains
 
