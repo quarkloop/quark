@@ -2,9 +2,11 @@
 target/
 !.mvn/wrapper/maven-wrapper.jar
 
-# Go
-cli/quarkctl
-cli/dist/
+# Go build artifacts
+quark-cli/quarkctl
+quark-cli/dist/
+quark-server/quark-server
+quark-catalog/quark-catalog
 dist/
 
 # IDE
@@ -37,6 +39,3 @@ tool-results/
 worklog.md
 *.zip
 .env
-quark-catalog/quark-catalog
-cli/cli
-server/quark-server
