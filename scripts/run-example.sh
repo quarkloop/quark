@@ -10,7 +10,7 @@
 #
 # Prerequisites:
 #   - The Java server is built (mvn install -DskipTests) — make build does this.
-#   - The Go CLI binary exists at cli/quarkctl — make build does this.
+#   - The Go CLI binary exists at quark-cli/quarkctl — make build does this.
 #   - A NATS server is running on nats://localhost:4222 (or the embedded
 #     one is enabled — currently we connect to an external one).
 #
@@ -31,14 +31,14 @@ cd "$ROOT_DIR"
 
 # ---- Locate artifacts ------------------------------------------------------
 BUILD_MODE="${BUILD_MODE:-jvm}"
-CLI_BIN="cli/quarkctl"
+CLI_BIN="quark-cli/quarkctl"
 
 # Use RUN_MODE if set (the Makefile uses RUN_MODE=jvm|native). Backwards-compat with BUILD_MODE.
 RUN_MODE="${RUN_MODE:-${BUILD_MODE:-jvm}}"
 
 # The server is always a Go binary now. RUN_MODE only affects the runtime
 # (which the server spawns as a child process).
-SERVER_BIN="server/quark-server"
+SERVER_BIN="quark-server/quark-server"
 if [ ! -x "$SERVER_BIN" ]; then
     echo "❌ Go server binary not found at $SERVER_BIN — run 'make build' first." >&2
     exit 1
