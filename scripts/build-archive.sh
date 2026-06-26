@@ -58,7 +58,7 @@ BASE="$(basename "$WORK_DIR")"
 #   - */dist/              (Go cross-build artifacts)
 #   - */node_modules/      (any npm artifacts)
 #   - *.jar, *.class       (Java compiled artifacts)
-#   - Go binaries: server/quark-server, cli/quarkctl, quark-catalog/quark-catalog
+#   - Go binaries: quark-server/quark-server, quark-cli/quarkctl, quark-catalog/quark-catalog
 #   - */dataplane-logs/    (data-plane runtime logs)
 #   - */json/system-monitor.jsonl  (example output)
 #   - **/*.log             (log files)
@@ -72,13 +72,13 @@ zip -qr "$ARCHIVE_PATH" "$BASE" \
     -x "$BASE/quark-state/*" \
     -x "$BASE/dist/*" \
     -x "$BASE/node_modules/*" \
-    -x "$BASE/server/quark-server" \
-    -x "$BASE/cli/quarkctl" \
+    -x "$BASE/quark-server/quark-server" \
+    -x "$BASE/quark-cli/quarkctl" \
     -x "$BASE/quark-catalog/quark-catalog" \
     -x "$BASE/quark-state/dataplane-logs/*" \
     -x "$BASE/example/simple-streaming/json/*" \
     -x "$BASE/.git/logs/*" \
-    -x "$BASE/nodes/quark/*/*/v1/target/*.jar" \
+    -x "$BASE/quark-nodes/quark/*/*/v1/target/*.jar" \
     -x "**/*.class" \
     -x "**/*.log" \
     -x "**/.DS_Store"
