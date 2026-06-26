@@ -1,82 +1,72 @@
 # =============================================================================
-# Dockerfile — Quark Platform build verification
+# Dockerfile — Quark build verification image
 # =============================================================================
-# Builds the entire project (Java + Go) in a clean container with no host
-# dependencies. Used by `make docker-verify` to confirm the build doesn't
-# depend on any local tool installations or paths.
+# Multi-stage build that compiles every component of the platform in a clean
+# container with no host toolchain dependencies. Used by `make docker-verify`
+# to confirm the build does not depend on any local installations.
 #
-# This is a BUILD verification image, not a runtime image. The runtime image
-# would be smaller (only JRE + the quarkus-app).
+# This is a BUILD verification image, not a production runtime image. A
+# production image would split components into separate images and ship
+# only the JRE / Go binary each one needs.
 # =============================================================================
 
-# ----- Stage 1: Build Java modules -----
+# ----- Stage 1: Build Java runtime modules -----
+# The data plane is a Quarkus application built with Maven. GraalVM is
+# required for native-image builds; for JVM-mode verification a plain JDK 21
+# is enough.
 FROM maven:3.9-eclipse-temurin-21 AS java-builder
 
 WORKDIR /build
 
-# Copy parent POM and Maven wrapper first (cached layer for deps)
-COPY pom.xml .
-COPY mvnw mvnw.cmd .mvn ./
+# Copy the parent POM and Maven wrapper first so dependency resolution
+# is cached across source-only changes.
+COPY pom.xml mvnw mvnw.cmd .mvn ./
 
-# Copy all module POMs (the reactor layout is: core/, server/, runtime/)
-COPY core/quark-domain/pom.xml core/quark-domain/
-COPY core/quark-event/pom.xml core/quark-event/
-COPY core/quark-registry/pom.xml core/quark-registry/
-COPY core/quark-script/pom.xml core/quark-script/
-COPY core/quark-engine/pom.xml core/quark-engine/
-COPY server/quark-app/pom.xml server/quark-app/
-COPY server/quark-api/pom.xml server/quark-api/
-COPY server/quark-observability/pom.xml server/quark-observability/
-COPY server/quark-server/pom.xml server/quark-server/
-COPY runtime/quark-script/pom.xml runtime/quark-script/
-COPY runtime/quark-polyglot/pom.xml runtime/quark-polyglot/
-COPY runtime/quark-app/pom.xml runtime/quark-app/
-COPY runtime/quark-runtime/pom.xml runtime/quark-runtime/
-COPY runtime/providers/pom.xml runtime/providers/
-COPY runtime/providers/provider-timer/pom.xml runtime/providers/provider-timer/
-COPY runtime/providers/provider-cpu-profiler/pom.xml runtime/providers/provider-cpu-profiler/
-COPY runtime/providers/provider-memory-profiler/pom.xml runtime/providers/provider-memory-profiler/
-COPY runtime/providers/provider-json-writer/pom.xml runtime/providers/provider-json-writer/
-COPY runtime/providers/provider-streaming-endpoint/pom.xml runtime/providers/provider-streaming-endpoint/
+# Copy every Maven module POM. The reactor layout is:
+#   quark-runtime/quark-core
+#   quark-runtime/quark-script
+#   quark-runtime/quark-polyglot
+#   quark-runtime/quark-app
+#   quark-runtime/quark-runtime
+COPY quark-runtime/quark-core/pom.xml      quark-runtime/quark-core/
+COPY quark-runtime/quark-script/pom.xml    quark-runtime/quark-script/
+COPY quark-runtime/quark-polyglot/pom.xml  quark-runtime/quark-polyglot/
+COPY quark-runtime/quark-app/pom.xml       quark-runtime/quark-app/
+COPY quark-runtime/quark-runtime/pom.xml   quark-runtime/quark-runtime/
 
-# Pre-fetch dependencies (cached layer). Tolerate failures here because
-# the parent POM references some artifacts that aren't needed in this build.
+# Pre-fetch dependencies. Tolerate failures because the parent POM
+# references some artifacts (GraalVM polyglot) that may not resolve
+# cleanly in every environment.
 RUN mvn -B dependency:go-offline -DskipTests || true
 
 # Copy sources and build
-COPY core/quark-domain/src core/quark-domain/src
-COPY core/quark-event/src core/quark-event/src
-COPY core/quark-registry/src core/quark-registry/src
-COPY core/quark-script/src core/quark-script/src
-COPY core/quark-engine/src core/quark-engine/src
-COPY server/quark-app/src server/quark-app/src
-COPY server/quark-api/src server/quark-api/src
-COPY server/quark-observability/src server/quark-observability/src
-COPY server/quark-server/src server/quark-server/src
-COPY runtime/quark-script/src runtime/quark-script/src
-COPY runtime/quark-polyglot/src runtime/quark-polyglot/src
-COPY runtime/quark-app/src runtime/quark-app/src
-COPY runtime/quark-runtime/src runtime/quark-runtime/src
-COPY runtime/providers/provider-timer/src runtime/providers/provider-timer/src
-COPY runtime/providers/provider-cpu-profiler/src runtime/providers/provider-cpu-profiler/src
-COPY runtime/providers/provider-memory-profiler/src runtime/providers/provider-memory-profiler/src
-COPY runtime/providers/provider-json-writer/src runtime/providers/provider-json-writer/src
-COPY runtime/providers/provider-streaming-endpoint/src runtime/providers/provider-streaming-endpoint/src
+COPY quark-runtime/quark-core/src      quark-runtime/quark-core/src
+COPY quark-runtime/quark-script/src    quark-runtime/quark-script/src
+COPY quark-runtime/quark-polyglot/src  quark-runtime/quark-polyglot/src
+COPY quark-runtime/quark-app/src       quark-runtime/quark-app/src
+COPY quark-runtime/quark-runtime/src   quark-runtime/quark-runtime/src
 
 RUN mvn -B clean install -DskipTests
 
-# ----- Stage 2: Build Go CLI + Catalog -----
+# ----- Stage 2: Build Go control plane, CLI, and catalog -----
 FROM golang:1.24 AS go-builder
 
-# Build CLI
-WORKDIR /build/cli
-COPY cli/go.mod cli/go.sum ./
+# Build the control plane (quark-server)
+WORKDIR /build/quark-server
+COPY quark-server/go.mod quark-server/go.sum ./
 RUN go mod download
-COPY cli/ .
+COPY quark-server/ .
+RUN go vet ./... && go test ./... && go build -trimpath -buildvcs=false -o /quark-server ./cmd/server
+
+# Build the CLI (quarkctl)
+WORKDIR /build/quark-cli
+COPY quark-cli/go.mod quark-cli/go.sum ./
+RUN go mod download
+COPY quark-cli/ .
 RUN go vet ./... && go test ./... && go build -trimpath -buildvcs=false -o /quarkctl .
 
-# Build Catalog
-WORKDIR /build/catalog
+# Build the Catalog service
+WORKDIR /build/quark-catalog
 COPY quark-catalog/go.mod quark-catalog/go.sum ./
 RUN go mod download
 COPY quark-catalog/ .
@@ -85,24 +75,24 @@ RUN go vet ./... && go test ./... && go build -trimpath -buildvcs=false -o /quar
 # ----- Stage 3: Runtime image (JVM mode) -----
 FROM eclipse-temurin:21-jre AS runtime-jvm
 
-# Copy control plane (server) jar + lib dir
-COPY --from=java-builder /build/server/quark-server/target/quark-server-0.1.0-SNAPSHOT-runner.jar /app/quark-server.jar
-COPY --from=java-builder /build/server/quark-server/target/lib /app/lib/server
-# Copy data plane (runtime) jar + lib dir
-COPY --from=java-builder /build/runtime/quark-runtime/target/quark-runtime-runner-runner.jar /app/quark-runtime.jar
-COPY --from=java-builder /build/runtime/quark-runtime/target/lib /app/lib/runtime
-# Copy Go binaries
-COPY --from=go-builder /quarkctl /app/quarkctl
+# Copy the data-plane (Java runtime) jar + lib dir
+COPY --from=java-builder /build/quark-runtime/quark-runtime/target/quark-runtime-runner-runner.jar /app/quark-runtime.jar
+COPY --from=java-builder /build/quark-runtime/quark-runtime/target/lib /app/lib/runtime
+
+# Copy Go binaries (control plane, CLI, catalog)
+COPY --from=go-builder /quark-server  /app/quark-server
+COPY --from=go-builder /quarkctl      /app/quarkctl
 COPY --from=go-builder /quark-catalog /app/quark-catalog
 
-# Smoke tests
+# Smoke tests — confirm every binary is at least runnable.
 RUN /app/quarkctl --help | head -1
 RUN /app/quark-catalog -h 2>&1 | head -1 || true
+RUN /app/quark-server -h 2>&1 | head -1 || true
 RUN java -version 2>&1 | head -1
 
 WORKDIR /app
 EXPOSE 8080 8081 4222
 
-# Default: run the JVM server. For full platform bring-up, also start
-# nats-server, the Catalog, and (if needed) the data-plane jar.
-CMD ["java", "-jar", "quark-server.jar"]
+# Default: run the Go control plane. The data plane is spawned as a
+# child process by the control plane's ProcessManager.
+CMD ["/app/quark-server"]
