@@ -31,6 +31,14 @@ make clean              # Remove all build artifacts
 make clean-native       # Remove only native binaries
 ```
 
+## Repository
+
+- **Name**: Quark Platform
+- **Language**: Java 21+ (Quarkus/GraalVM), Go 1.24+ (Fiber/nats.go), TypeScript (node definitions)
+- **License**: Apache 2.0
+- **Repo**: [github.com/quarkloop/quark](https://github.com/quarkloop/quark)
+- **Guidelines**: [quarkloop/guidelines](https://github.com/quarkloop/guidelines)
+
 ---
 
 ## Structure
