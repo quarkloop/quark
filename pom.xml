@@ -28,7 +28,7 @@
 
         <!-- Dependencies -->
         <snakeyaml-engine.version>2.9</snakeyaml-engine.version>
-        <graaljs.version>24.1.2</graaljs.version>
+        <graaljs.version>25.0.3</graaljs.version>
         <nats.version>2.25.3</nats.version>
 
         <!-- Test -->
